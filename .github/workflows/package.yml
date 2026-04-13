@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*' # Triggers whenever you push a tag like v0.0.9
 
+permissions:
+  contents: write # Essential to allow the bot to create releases
+
 jobs:
   build:
     name: Build for ${{ matrix.os }}
