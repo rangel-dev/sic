@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 
+from src.core.version import VERSION, APP_NAME
 from src.ui.styles.qss_dark  import DARK_STYLESHEET
 from src.ui.styles.qss_light import LIGHT_STYLESHEET
 from src.ui.main_window import MainWindow
@@ -20,9 +21,9 @@ def main():
     )
 
     app = QApplication(sys.argv)
-    app.setApplicationName("SIC — System Intelligence Commerce")
+    app.setApplicationName(APP_NAME)
     app.setOrganizationName("RangelDev")
-    app.setApplicationVersion("0.0.8")
+    app.setApplicationVersion(VERSION)
 
     # ── Settings & Theme ──────────────────────────────────────────────────
     settings = QSettings("SIC", "SIC_Suite")

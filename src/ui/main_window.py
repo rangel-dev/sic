@@ -32,6 +32,10 @@ from src.ui.pages.view_cadastro   import CadastroView
 from src.ui.pages.view_settings   import SettingsView
 from src.ui.pages.view_history    import HistoryView
 
+from src.core.version import VERSION, APP_NAME
+from src.core.update_service import UpdateService
+from src.workers.worker_update import UpdateWorker
+
 
 # ─── Navigation button ────────────────────────────────────────────────────────
 class NavButton(QPushButton):
@@ -54,18 +58,22 @@ class NavButton(QPushButton):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("SIC — System Intelligence Commerce  v0.0.8")
+        self.setWindowTitle(f"{APP_NAME}  v{VERSION}")
         self.setMinimumSize(1280, 800)
         self.resize(1460, 900)
         
         self._nav_buttons: list[NavButton] = []
         self._pages: list[QWidget] = []
+        self._update_url: Optional[str] = None
 
         self._build_ui()
         self.apply_theme_and_font()
 
         # Start on home
         self._switch(0)
+
+        # Check for updates in background
+        self._check_for_updates()
 
     # ── Build ─────────────────────────────────────────────────────────────
     def _build_ui(self):
@@ -84,7 +92,7 @@ class MainWindow(QMainWindow):
 
         # Status bar
         sb = self.statusBar()
-        sb.showMessage("Pronto  —  SIC System Intelligence Commerce v0.0.8")
+        sb.showMessage(f"Pronto  —  {APP_NAME} v{VERSION}")
 
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()
@@ -109,7 +117,7 @@ class MainWindow(QMainWindow):
         title_lbl.setFont(font)
         logo_layout.addWidget(title_lbl)
 
-        ver_lbl = QLabel("System Intelligence Commerce  v0.0.8")
+        ver_lbl = QLabel(f"{APP_NAME}  v{VERSION}")
         ver_lbl.setObjectName("version_label")
         logo_layout.addWidget(ver_lbl)
 
@@ -169,7 +177,23 @@ class MainWindow(QMainWindow):
         self._btn_theme.clicked.connect(self._toggle_theme)
         layout.addWidget(self._btn_theme)
 
-        layout.addSpacing(16)
+        # ── Update Notification Footer (Hidden by default) ────────────────
+        layout.addStretch()
+        self._btn_update = QPushButton("⚡  Atualização Disponível")
+        self._btn_update.setObjectName("btn_primary") # Use primary color to grab attention
+        self._btn_update.setFixedHeight(34)
+        self._btn_update.setContentsMargins(10, 0, 10, 0)
+        self._btn_update.setCursor(Qt.PointingHandCursor)
+        self._btn_update.clicked.connect(self._on_update_clicked)
+        self._btn_update.hide()
+        
+        # Wrapped for padding
+        self._update_container = QWidget()
+        up_layout = QVBoxLayout(self._update_container)
+        up_layout.setContentsMargins(15, 10, 15, 15)
+        up_layout.addWidget(self._btn_update)
+        self._update_container.hide()
+        layout.addWidget(self._update_container)
 
         return sidebar
 
@@ -198,7 +222,45 @@ class MainWindow(QMainWindow):
         NAMES = ["Início", "Gerador", "Sync", "Auditor",
                  "Volumetria", "Cadastro", "Configurações", "Histórico"]
         if 0 <= index < len(NAMES):
-            self.statusBar().showMessage(f"Módulo ativo: {NAMES[index]}")
+            self.statusBar().showMessage(f"Módulo ativo: {NAMES[index]}  |  v{VERSION}")
+
+    # ── Updates ───────────────────────────────────────────────────────────
+    def _check_for_updates(self):
+        self._update_worker = UpdateWorker()
+        self._update_worker.update_found.connect(self._on_update_found)
+        self._update_worker.start()
+
+    def _on_update_found(self, tag: str, url: str):
+        self._update_url = url
+        self._btn_update.setText(f"⚡ Baixar {tag}")
+        self._update_container.show()
+        self._btn_update.show()
+        self.statusBar().showMessage(f"Uma nova versão está disponível: {tag}!")
+
+    def _on_update_clicked(self):
+        if not self._update_url:
+            return
+            
+        from PySide6.QtWidgets import QMessageBox
+        res = QMessageBox.question(
+            self, "Auto-Update", 
+            "Deseja baixar a nova versão agora?\n\nO programa será reiniciado automaticamente após o download.",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if res == QMessageBox.Yes:
+            self._btn_update.setText("⏳ Baixando...")
+            self._btn_update.setEnabled(False)
+            self.statusBar().showMessage("Iniciando download da atualização...")
+            
+            # Use another worker or just run service for simplicity since it's fire-and-forget restart
+            # For now, let's call the service directly (the service will block slightly while downloading)
+            # but then it will os.exit which is what we want.
+            try:
+                UpdateService.download_and_install(self._update_url)
+            except Exception as e:
+                QMessageBox.critical(self, "Erro no Update", f"Não foi possível completar a atualização:\n{str(e)}")
+                self._btn_update.setText("⚡ Tentar Novamente")
+                self._btn_update.setEnabled(True)
 
     # ── Theme & Font Scaling ──────────────────────────────────────────────
     def _toggle_theme(self):
