@@ -10,7 +10,7 @@ from views.widgets import Divider, SectionHeader
 class SettingsView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._settings = QSettings("PricingMaster", "PricingMasterSuite")
+        self._settings = QSettings("SIC", "SIC_Suite")
         self._setup_ui()
         self._load_settings()
 
@@ -70,6 +70,33 @@ class SettingsView(QWidget):
         form.addRow("", hint)
         layout.addWidget(gchat_box)
 
+        # Accessibility
+        acc_box = QGroupBox("Acessibilidade — Visual")
+        acc_layout = QHBoxLayout(acc_box)
+        acc_layout.setContentsMargins(16, 20, 16, 16)
+        acc_layout.setSpacing(12)
+
+        acc_layout.addWidget(QLabel("Tamanho da Fonte:"))
+        
+        btn_font_small = QPushButton("A-")
+        btn_font_small.setFixedWidth(60)
+        btn_font_small.clicked.connect(lambda: self._change_font(-1))
+        
+        btn_font_reset = QPushButton("Normal")
+        btn_font_reset.setFixedWidth(80)
+        btn_font_reset.clicked.connect(lambda: self._reset_font())
+        
+        btn_font_large = QPushButton("A+")
+        btn_font_large.setFixedWidth(60)
+        btn_font_large.clicked.connect(lambda: self._change_font(1))
+
+        acc_layout.addWidget(btn_font_small)
+        acc_layout.addWidget(btn_font_reset)
+        acc_layout.addWidget(btn_font_large)
+        acc_layout.addStretch()
+
+        layout.addWidget(acc_box)
+
         # About
         about_box = QGroupBox("Sobre")
         about_layout = QVBoxLayout(about_box)
@@ -98,6 +125,22 @@ class SettingsView(QWidget):
     def _save_settings(self):
         self._settings.setValue("gchat_webhook", self._webhook_input.text().strip())
         QMessageBox.information(self, "Configurações", "Configurações salvas com sucesso.")
+
+    def _change_font(self, delta: int):
+        val = int(self._settings.value("font_size", 13))
+        new_val = max(10, min(24, val + delta))
+        self._settings.setValue("font_size", new_val)
+        
+        # Notify MainWindow
+        main_win = self.window()
+        if hasattr(main_win, "apply_theme_and_font"):
+            main_win.apply_theme_and_font()
+
+    def _reset_font(self):
+        self._settings.setValue("font_size", 13)
+        main_win = self.window()
+        if hasattr(main_win, "apply_theme_and_font"):
+            main_win.apply_theme_and_font()
 
     # ── Webhook test ──────────────────────────────────────────────────────
     def _test_webhook(self):

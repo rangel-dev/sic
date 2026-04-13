@@ -3,6 +3,7 @@ MainWindow – Pricing Master Suite
 Sidebar navigation (QVBoxLayout of NavButtons) + QStackedWidget for views.
 """
 from __future__ import annotations
+import re
 
 from PySide6.QtCore import Qt, QSize, QSettings
 from PySide6.QtGui import QFont
@@ -56,11 +57,12 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("SIC — System Intelligence Commerce  v0.0.8")
         self.setMinimumSize(1280, 800)
         self.resize(1460, 900)
-
+        
         self._nav_buttons: list[NavButton] = []
         self._pages: list[QWidget] = []
 
         self._build_ui()
+        self.apply_theme_and_font()
 
         # Start on home
         self._switch(0)
@@ -198,27 +200,52 @@ class MainWindow(QMainWindow):
         if 0 <= index < len(NAMES):
             self.statusBar().showMessage(f"Módulo ativo: {NAMES[index]}")
 
-    # ── Theme ─────────────────────────────────────────────────────────────
+    # ── Theme & Font Scaling ──────────────────────────────────────────────
     def _toggle_theme(self):
         settings = QSettings("SIC", "SIC_Suite")
         current  = settings.value("theme", "light")
         new_theme = "dark" if current == "light" else "light"
         settings.setValue("theme", new_theme)
         settings.sync()
+        self.apply_theme_and_font()
 
+    def apply_theme_and_font(self):
+        """Applies both theme QSS and font scaling globally."""
+        settings = QSettings("SIC", "SIC_Suite")
+        theme = settings.value("theme", "light")
+        base_size = int(settings.value("font_size", 13))
+        
+        # 1. Update Application Global Font
         app = QApplication.instance()
-        if new_theme == "dark":
-            app.setStyleSheet(DARK_STYLESHEET)
-            self.statusBar().showMessage("Tema alterado p/ Escuro")
-        else:
-            app.setStyleSheet(LIGHT_STYLESHEET)
-            self.statusBar().showMessage("Tema alterado p/ Claro")
+        font = app.font()
+        font.setPointSize(base_size)
+        app.setFont(font)
 
-        # Refresh all pages that support it
-        for i in range(self._stack.count()):
-            page = self._stack.widget(i)
-            if hasattr(page, "refresh_theme"):
-                page.refresh_theme()
+        # 2. Select Base Stylesheet
+        raw_qss = DARK_STYLESHEET if theme == "dark" else LIGHT_STYLESHEET
+        
+        # 3. Scale QSS (Regex replacement of all 'px' values)
+        # We scale based on ratio to 13px (original base)
+        ratio = base_size / 13.0
+        
+        def scale_px(match):
+            val = int(match.group(1))
+            if val <= 1: return f"{val}px" # Don't scale 1px borders
+            return f"{int(val * ratio)}px"
+        
+        scaled_qss = re.sub(r'(\d+)px', scale_px, raw_qss)
+        app.setStyleSheet(scaled_qss)
+        
+        # 4. Update Status Bar
+        mode = "Escuro" if theme == "dark" else "Claro"
+        self.statusBar().showMessage(f"Tema: {mode} | Fonte: {base_size}px")
+
+        # 5. Refresh all pages that support it
+        if hasattr(self, "_stack"):
+            for i in range(self._stack.count()):
+                page = self._stack.widget(i)
+                if hasattr(page, "refresh_theme"):
+                    page.refresh_theme()
 
     # ── Public API for child widgets ──────────────────────────────────────
     def show_status(self, message: str):

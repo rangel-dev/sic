@@ -54,7 +54,7 @@ class AuditorView(QWidget):
         self._active_filters: set[str]        = set()  # error codes
         self._brand_filter:  str = "all"       # "all", "natura", "avon"
         self._error_cards: dict[str, ErrorCard] = {}
-        self._settings = QSettings("PricingMaster", "PricingMasterSuite")
+        self._settings = QSettings("SIC", "SIC_Suite")
         self._setup_ui()
 
     # ── Layout ────────────────────────────────────────────────────────────
@@ -398,7 +398,7 @@ class AuditorView(QWidget):
 
         self._ai_browser.setHtml(f"""
         <html><body style="background:{bg_html};color:{fg_html};
-                   font-family:'Helvetica Neue', sans-serif;font-size:12px;
+                   font-family:'Helvetica Neue', Arial, Helvetica;font-size:12px;
                    padding:8px;line-height:1.6">
         {html}
         </body></html>""")
