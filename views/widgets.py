@@ -67,15 +67,14 @@ class DropZone(QFrame):
         layout.setAlignment(Qt.AlignCenter)
 
         self._icon_label = QLabel("⊕")
-        self._icon_label.setAlignment(Qt.AlignCenter)
-        self._icon_label.setStyleSheet("font-size:22px; color:#404060; background:transparent;")
+        self._icon_label.setStyleSheet("font-size:22px; background:transparent;")
         self._icon_label.setAttribute(Qt.WA_TransparentForMouseEvents)
         layout.addWidget(self._icon_label)
 
         self._main_label = QLabel(label)
         self._main_label.setAlignment(Qt.AlignCenter)
         self._main_label.setWordWrap(True)
-        self._main_label.setStyleSheet("font-size:12px; color:#555577; background:transparent;")
+        self._main_label.setStyleSheet("font-size:12px; background:transparent;")
         self._main_label.setAttribute(Qt.WA_TransparentForMouseEvents)
         layout.addWidget(self._main_label)
 
@@ -83,7 +82,7 @@ class DropZone(QFrame):
         self._file_label.setAlignment(Qt.AlignCenter)
         self._file_label.setWordWrap(True)
         self._file_label.setStyleSheet(
-            "font-size:11px; font-weight:600; color:#6abf6a; background:transparent;"
+            "font-size:11px; font-weight:600; background:transparent;"
         )
         self._file_label.setAttribute(Qt.WA_TransparentForMouseEvents)
         self._file_label.hide()
@@ -163,7 +162,7 @@ class DropZone(QFrame):
     def set_error(self, message: str) -> None:
         self._file_label.setText(f"⚠  {message}")
         self._file_label.setStyleSheet(
-            "font-size:11px; font-weight:600; color:#e06060; background:transparent;"
+            "font-size:11px; font-weight:600; background:transparent;"
         )
         self._file_label.show()
         self._icon_label.hide()
@@ -225,12 +224,12 @@ class ErrorCard(QFrame):
         top.setSpacing(8)
 
         icon_lbl = QLabel(icon)
-        icon_lbl.setStyleSheet("font-size:14px; background:transparent; color:#555555;")
+        icon_lbl.setStyleSheet("font-size:14px; background:transparent;")
         top.addWidget(icon_lbl)
 
         self._title_lbl = QLabel(title)
         self._title_lbl.setStyleSheet(
-            "font-size:11px; font-weight:600; color:#888888; background:transparent;"
+            "font-size:11px; font-weight:600; background:transparent;"
         )
         self._title_lbl.setWordWrap(True)
         top.addWidget(self._title_lbl, 1)
@@ -239,13 +238,13 @@ class ErrorCard(QFrame):
         # Count
         self._count_lbl = QLabel("—")
         self._count_lbl.setStyleSheet(
-            "font-size:26px; font-weight:700; color:#444444; background:transparent;"
+            "font-size:26px; font-weight:700; background:transparent;"
         )
         root.addWidget(self._count_lbl)
 
         # Brand breakdown
         self._brand_lbl = QLabel("")
-        self._brand_lbl.setStyleSheet("font-size:10px; color:#444444; background:transparent;")
+        self._brand_lbl.setStyleSheet("font-size:10px; background:transparent;")
         root.addWidget(self._brand_lbl)
 
     # ── API ───────────────────────────────────────────────────────────────
@@ -253,7 +252,7 @@ class ErrorCard(QFrame):
         if total == 0:
             self._count_lbl.setText("0")
             self._count_lbl.setStyleSheet(
-                "font-size:26px; font-weight:700; color:#333333; background:transparent;"
+                "font-size:26px; font-weight:700; background:transparent;"
             )
             self._brand_lbl.setText("")
         else:
@@ -309,7 +308,7 @@ class SectionHeader(QWidget):
         self.setObjectName("page_header")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 20, 28, 14)
+        layout.setContentsMargins(28, 12, 28, 10)
         layout.setSpacing(3)
 
         title_lbl = QLabel(title)
@@ -349,7 +348,7 @@ class StatPill(QFrame):
 
         self._val_lbl = QLabel(value)
         self._val_lbl.setObjectName("label_stat_value")
-        self._val_lbl.setStyleSheet(f"font-size:22px;font-weight:700;color:{color};background:transparent;")
+        self._val_lbl.setStyleSheet(f"font-size:22px;font-weight:700;background:transparent;")
         layout.addWidget(self._val_lbl)
 
         lbl = QLabel(label.upper())

@@ -20,12 +20,12 @@ def main():
     )
 
     app = QApplication(sys.argv)
-    app.setApplicationName("Pricing Master Suite")
-    app.setOrganizationName("PricingMaster")
-    app.setApplicationVersion("11.6")
+    app.setApplicationName("SIC — System Intelligence Commerce")
+    app.setOrganizationName("RangelDev")
+    app.setApplicationVersion("0.0.8")
 
     # ── Settings & Theme ──────────────────────────────────────────────────
-    settings = QSettings("PricingMaster", "PricingMasterSuite")
+    settings = QSettings("SIC", "SIC_Suite")
     theme = settings.value("theme", "light")  # Defaulting to light as requested
 
     # ── Font ──────────────────────────────────────────────────────────────

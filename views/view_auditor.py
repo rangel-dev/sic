@@ -40,6 +40,7 @@ from modules.auditor_engine import AuditResult, ERROR_META
 from modules.ai_agent import AiAgent
 from views.widgets import Divider, DropZone, ErrorCard, SectionHeader
 from workers.worker_auditor import AuditorWorker
+from modules.history_engine import HistoryEngine
 
 
 MAX_TABLE_ROWS = 500
@@ -71,20 +72,21 @@ class AuditorView(QWidget):
         # Main splitter: controls top, results bottom
         self._splitter = QSplitter(Qt.Vertical)
         self._splitter.setHandleWidth(4)
+        self._splitter.setChildrenCollapsible(False)
         root.addWidget(self._splitter)
 
         # ── Top panel: file inputs + action bar ──────────────────────────
         top_scroll = QScrollArea()
         top_scroll.setWidgetResizable(True)
         top_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        top_scroll.setMaximumHeight(340)
+        top_scroll.setMinimumHeight(240) # Slightly reduced from 280
         self._splitter.addWidget(top_scroll)
 
         top_widget = QWidget()
         top_scroll.setWidget(top_widget)
         top_layout = QVBoxLayout(top_widget)
-        top_layout.setContentsMargins(28, 20, 28, 16)
-        top_layout.setSpacing(14)
+        top_layout.setContentsMargins(28, 16, 28, 12)
+        top_layout.setSpacing(12)
 
         # File inputs row
         inputs_row = QHBoxLayout()
@@ -193,17 +195,27 @@ class AuditorView(QWidget):
         self._status_lbl.hide()
         top_layout.addWidget(self._status_lbl)
 
-        # ── Bottom panel: dashboard + table + AI ─────────────────────────
-        bottom_widget = QWidget()
-        self._splitter.addWidget(bottom_widget)
-        bottom_main_layout = QHBoxLayout(bottom_widget)
-        bottom_main_layout.setContentsMargins(28, 16, 28, 20)
-        bottom_main_layout.setSpacing(20)
+        top_layout.addStretch()
 
-        # ── LEFT COLUMN: Dashboard + AI Diagnostic ──────────────────────
-        left_col = QVBoxLayout()
-        left_col.setSpacing(16)
-        bottom_main_layout.addLayout(left_col, 2)
+        # ── Bottom panel: dashboard + table + AI ─────────────────────────
+        # Use a horizontal splitter for bottom results part
+        self._bottom_splitter = QSplitter(Qt.Horizontal)
+        self._bottom_splitter.setHandleWidth(4)
+        self._bottom_splitter.setChildrenCollapsible(False)
+        self._splitter.addWidget(self._bottom_splitter)
+
+        # ── LEFT PART: Dashboard + AI (Inside QScrollArea) ──────────────
+        diag_scroll = QScrollArea()
+        diag_scroll.setWidgetResizable(True)
+        diag_scroll.setObjectName("diag_scroll")
+        diag_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._bottom_splitter.addWidget(diag_scroll)
+
+        diag_widget = QWidget()
+        diag_scroll.setWidget(diag_widget)
+        diag_layout = QVBoxLayout(diag_widget)
+        diag_layout.setContentsMargins(18, 12, 10, 12)
+        diag_layout.setSpacing(16)
 
         # Error card dashboard (Flow-like grid)
         self._cards_container = QWidget()
@@ -211,7 +223,7 @@ class AuditorView(QWidget):
         self._cards_grid.setContentsMargins(0, 0, 0, 0)
         self._cards_grid.setSpacing(10)
 
-        # Pre-instantiate all cards but don't add to grid yet
+        # Pre-instantiate cards...
         for code, meta in ERROR_META.items():
             card = ErrorCard(
                 code,
@@ -224,37 +236,37 @@ class AuditorView(QWidget):
             self._error_cards[code] = card
             card.hide()
 
-        left_col.addWidget(self._cards_container)
+        diag_layout.addWidget(self._cards_container)
 
-        # AI panel
-        ai_header = QLabel("Diagnóstico Estratégico — Pricing Master AI")
-        ai_header.setStyleSheet("font-size:12px;font-weight:700;color:#555;background:transparent;")
-        left_col.addWidget(ai_header)
+        ai_header = QLabel("Diagnóstico Estratégico — IA")
+        ai_header.setStyleSheet("font-size:11px;font-weight:700;color:#888;text-transform:uppercase;")
+        diag_layout.addWidget(ai_header)
 
         self._ai_browser = QTextBrowser()
         self._ai_browser.setObjectName("ai_panel")
-        self._ai_browser.setMinimumHeight(160)
+        self._ai_browser.setMinimumHeight(200)
         self._ai_browser.setOpenExternalLinks(False)
-        self._ai_browser.setPlaceholderText("Execute a auditoria para obter o diagnóstico estratégico…")
-        left_col.addWidget(self._ai_browser, 1)
+        self._ai_browser.setPlaceholderText("Diagnóstico estratégico aparecerá aqui…")
+        diag_layout.addWidget(self._ai_browser)
+        diag_layout.addStretch()
 
-        # ── RIGHT COLUMN: SKU List ──────────────────────────────────────
-        right_col = QVBoxLayout()
-        right_col.setSpacing(12)
-        bottom_main_layout.addLayout(right_col, 3)
+        # ── RIGHT PART: SKU List ────────────────────────────────────────
+        table_widget = QWidget()
+        self._bottom_splitter.addWidget(table_widget)
+        table_layout = QVBoxLayout(table_widget)
+        table_layout.setContentsMargins(10, 12, 18, 12)
+        table_layout.setSpacing(12)
 
-        # Table header row
         table_header = QHBoxLayout()
-        self._table_title = QLabel("Selecione um ou mais tipos de erro")
-        self._table_title.setStyleSheet("color:#555;font-size:11px;font-weight:600;background:transparent;")
+        self._table_title = QLabel("Divergências Detalhadas")
+        self._table_title.setStyleSheet("color:#888;font-size:11px;font-weight:700;text-transform:uppercase;")
         table_header.addWidget(self._table_title)
         table_header.addStretch()
         self._table_count_lbl = QLabel("")
         self._table_count_lbl.setObjectName("label_muted")
         table_header.addWidget(self._table_count_lbl)
-        right_col.addLayout(table_header)
+        table_layout.addLayout(table_header)
 
-        # Results table
         self._table = QTableWidget(0, 5)
         self._table.setHorizontalHeaderLabels(["SKU", "Marca", "Tipo", "Detalhe", "Impt."])
         self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
@@ -262,10 +274,16 @@ class AuditorView(QWidget):
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.verticalHeader().setVisible(False)
-        self._table.horizontalHeader().setDefaultSectionSize(100)
-        right_col.addWidget(self._table)
+        table_layout.addWidget(self._table)
 
-        self._splitter.setSizes([260, 740])
+        # Splitter distributions
+        self._splitter.setSizes([220, 680])
+        self._splitter.setStretchFactor(0, 0)
+        self._splitter.setStretchFactor(1, 1)
+
+        self._bottom_splitter.setSizes([450, 750])
+        self._bottom_splitter.setStretchFactor(0, 0)
+        self._bottom_splitter.setStretchFactor(1, 1)
 
     # ── Filter pills ──────────────────────────────────────────────────────
     def _make_filter_pill(self, text: str, key: str, checked: bool) -> QPushButton:
@@ -380,7 +398,7 @@ class AuditorView(QWidget):
 
         self._ai_browser.setHtml(f"""
         <html><body style="background:{bg_html};color:{fg_html};
-                   font-family:'Segoe UI',sans-serif;font-size:12px;
+                   font-family:'Helvetica Neue', sans-serif;font-size:12px;
                    padding:8px;line-height:1.6">
         {html}
         </body></html>""")
@@ -393,6 +411,14 @@ class AuditorView(QWidget):
                     f"Auditoria: {result.total_excel_skus} SKUs · "
                     f"{total} divergências detectadas"
                 )
+
+        # Log to History
+        brands = " / ".join(result.brands_found) if result.brands_found else "Desconhecida"
+        HistoryEngine.add_entry(
+            "Auditor",
+            brands,
+            f"Auditoria concluída: {result.total_excel_skus} SKUs, {total} divergências."
+        )
 
     # ── Error ─────────────────────────────────────────────────────────────
     def _on_error(self, msg: str):
@@ -561,7 +587,7 @@ class AuditorView(QWidget):
             "cards": [
                 {
                     "header": {
-                        "title": "Pricing Master — Relatório de Auditoria",
+                        "title": "SIC — Relatório de Auditoria",
                         "subtitle": f"{self._result.total_excel_skus} SKUs auditados",
                     },
                     "sections": [

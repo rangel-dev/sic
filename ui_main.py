@@ -29,6 +29,7 @@ from views.view_auditor    import AuditorView
 from views.view_volumetria import VolumetriaView
 from views.view_cadastro   import CadastroView
 from views.view_settings   import SettingsView
+from views.view_history    import HistoryView
 
 
 # ─── Navigation button ────────────────────────────────────────────────────────
@@ -52,7 +53,7 @@ class NavButton(QPushButton):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Pricing Master Suite  v11.6")
+        self.setWindowTitle("SIC — System Intelligence Commerce  v0.0.8")
         self.setMinimumSize(1280, 800)
         self.resize(1460, 900)
 
@@ -81,7 +82,7 @@ class MainWindow(QMainWindow):
 
         # Status bar
         sb = self.statusBar()
-        sb.showMessage("Pronto  —  Pricing Master Suite v11.6")
+        sb.showMessage("Pronto  —  SIC System Intelligence Commerce v0.0.8")
 
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()
@@ -98,15 +99,15 @@ class MainWindow(QMainWindow):
         logo_layout.setContentsMargins(18, 22, 16, 16)
         logo_layout.setSpacing(3)
 
-        title_lbl = QLabel("⬡  Pricing Master")
+        title_lbl = QLabel("⬡  SIC")
         title_lbl.setObjectName("logo_label")
         font = QFont()
-        font.setPointSize(14)
+        font.setPointSize(16)
         font.setWeight(QFont.Bold)
         title_lbl.setFont(font)
         logo_layout.addWidget(title_lbl)
 
-        ver_lbl = QLabel("Suite Enterprise  v11.6")
+        ver_lbl = QLabel("System Intelligence Commerce  v0.0.8")
         ver_lbl.setObjectName("version_label")
         logo_layout.addWidget(ver_lbl)
 
@@ -135,6 +136,7 @@ class MainWindow(QMainWindow):
             ("✓",  "Auditor",     3),
             ("◎",  "Volumetria",  4),
             ("≡",  "Cadastro",    5),
+            ("◔",  "Histórico",   7),
         ]
 
         for icon, label, idx in NAV_ITEMS:
@@ -178,6 +180,7 @@ class MainWindow(QMainWindow):
             VolumetriaView(self),  # 4
             CadastroView(self),    # 5
             SettingsView(self),    # 6
+            HistoryView(self),     # 7
         ]
         for page in self._pages:
             self._stack.addWidget(page)
@@ -191,13 +194,13 @@ class MainWindow(QMainWindow):
             btn.setChecked(i == index)
 
         NAMES = ["Início", "Gerador", "Sync", "Auditor",
-                 "Volumetria", "Cadastro", "Configurações"]
+                 "Volumetria", "Cadastro", "Configurações", "Histórico"]
         if 0 <= index < len(NAMES):
             self.statusBar().showMessage(f"Módulo ativo: {NAMES[index]}")
 
     # ── Theme ─────────────────────────────────────────────────────────────
     def _toggle_theme(self):
-        settings = QSettings("PricingMaster", "PricingMasterSuite")
+        settings = QSettings("SIC", "SIC_Suite")
         current  = settings.value("theme", "light")
         new_theme = "dark" if current == "light" else "light"
         settings.setValue("theme", new_theme)
@@ -211,10 +214,11 @@ class MainWindow(QMainWindow):
             app.setStyleSheet(LIGHT_STYLESHEET)
             self.statusBar().showMessage("Tema alterado p/ Claro")
 
-        # Refresh current page if it supports it
-        current_widget = self._stack.currentWidget()
-        if hasattr(current_widget, "refresh_theme"):
-            current_widget.refresh_theme()
+        # Refresh all pages that support it
+        for i in range(self._stack.count()):
+            page = self._stack.widget(i)
+            if hasattr(page, "refresh_theme"):
+                page.refresh_theme()
 
     # ── Public API for child widgets ──────────────────────────────────────
     def show_status(self, message: str):

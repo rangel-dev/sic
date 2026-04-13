@@ -77,7 +77,7 @@ class SettingsView(QWidget):
         about_layout.setSpacing(6)
 
         for line in [
-            "Pricing Master Suite  v11.6",
+            "SIC — System Intelligence Commerce  v0.0.8",
             "Enterprise Pricing & Catalog Management para Salesforce Demandware",
             "Compatível com: Natura (NATBRA-), Avon (AVNBRA-), Minha Loja (ML)",
             "Dependências: PySide6, Pandas, lxml, openpyxl, pytesseract",
@@ -109,7 +109,7 @@ class SettingsView(QWidget):
             import requests
             resp = requests.post(
                 url,
-                json={"text": "✅ Pricing Master Suite — conexão de teste bem-sucedida!"},
+                json={"text": "✅ SIC System Intelligence Commerce — conexão de teste bem-sucedida!"},
                 timeout=8,
             )
             if resp.status_code == 200:

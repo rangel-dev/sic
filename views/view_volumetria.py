@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from views.widgets import Divider, DropZone, SectionHeader
+from modules.history_engine import HistoryEngine
 
 
 # ─── OCR Worker ──────────────────────────────────────────────────────────────
@@ -279,6 +280,13 @@ class VolumetriaView(QWidget):
                 self._table.setItem(r, c, item)
 
         self._table.show()
+
+        # Log to History
+        HistoryEngine.add_entry(
+            "Volumetria",
+            "N/A",
+            f"Análise de volumetria concluída: {len(rows)} imagens processadas."
+        )
 
     def _on_error(self, msg: str):
         self._btn_run.setEnabled(True)

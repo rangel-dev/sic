@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from views.widgets import Divider, DropZone, SectionHeader, StatPill
 from workers.worker_gerador import GeradorWorker
+from modules.history_engine import HistoryEngine
 
 
 class GeradorView(QWidget):
@@ -216,6 +217,14 @@ class GeradorView(QWidget):
                 parent.show_status(
                     f"Gerador: {s.get('total', 0)} SKUs processados ({s.get('mode', '')})"
                 )
+
+        # Log to History
+        brand = result.get("brand", "Desconhecida")
+        HistoryEngine.add_entry(
+            "Gerador",
+            brand,
+            f"Preço gerado ({s.get('mode', 'full').upper()}): {s.get('total', 0)} SKUs."
+        )
 
     def _on_error(self, msg: str):
         self._btn_run.setEnabled(True)

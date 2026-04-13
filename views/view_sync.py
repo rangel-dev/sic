@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from views.widgets import Divider, DropZone, SectionHeader, StatPill
 from workers.worker_sync import SyncWorker
 from modules.sync_engine import SyncResult
+from modules.history_engine import HistoryEngine
 
 
 class SyncView(QWidget):
@@ -189,6 +190,14 @@ class SyncView(QWidget):
                 p.show_status(
                     f"Sync: +{s.get('additions',0)} / -{s.get('removals',0)} assignamentos"
                 )
+
+        # Log to History
+        brand = result.catalog_id if result.catalog_id else "Desconhecida"
+        HistoryEngine.add_entry(
+            "Sync",
+            brand,
+            f"Sync finalizado: +{s.get('additions', 0)} / -{s.get('removals', 0)} modificações."
+        )
 
     def _on_error(self, msg: str):
         self._btn_run.setEnabled(True)

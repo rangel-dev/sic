@@ -28,11 +28,11 @@ class HomeView(QWidget):
         layout.setSpacing(0)
 
         # Hero
-        hero_title = QLabel("Pricing Master Suite")
+        hero_title = QLabel("SIC")
         hero_title.setStyleSheet("font-size:32px;font-weight:800;background:transparent;")
         layout.addWidget(hero_title)
 
-        hero_sub = QLabel("Enterprise Pricing & Catalog Management  ·  v11.6")
+        hero_sub = QLabel("System Intelligence Commerce  ·  v0.0.8")
         hero_sub.setStyleSheet("font-size:13px;color:#555;background:transparent;margin-bottom:28px;")
         layout.addWidget(hero_sub)
 
