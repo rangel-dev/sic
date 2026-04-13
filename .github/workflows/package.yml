@@ -40,7 +40,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           cd dist
-          compress-archive -Path SIC -DestinationPath SIC_Windows.zip
+          compress-archive -Path SIC.exe -DestinationPath SIC_Windows.zip
         shell: pwsh
 
       - name: Archive Production Artifact (Mac)
