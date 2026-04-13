@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Pricing Master Suite V11.6 (Dev)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .hidden-el { display: none !important; }
+        .smooth-transition { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .hover-lift:hover { transform: translateY(-4px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); }
+        .btn-press:active { transform: scale(0.97); }
+        .row-alert { border-left: 4px solid #f97316; background-color: #fff7ed; }
+        .row-error { border-left: 4px solid #ef4444; background-color: #fef2f2; }
+        html.dark .row-alert { background-color: rgba(249, 115, 22, 0.1); border-left-color: #fb923c; }
+        html.dark .row-error { background-color: rgba(239, 68, 68, 0.1); border-left-color: #f87171; color: #fca5a5; }
+        .table-row-hover:hover { cursor: default; }
+        html:not(.dark) .table-row-hover:hover { background-color: #f1f5f9; }
+        html.dark .table-row-hover:hover { background-color: #1e293b; }
+        .filter-card { cursor: pointer; border: 2px solid transparent; }
+        .filter-active { transform: scale(1.02); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        .filter-dimmed { opacity: 0.35; filter: grayscale(100%); transform: scale(0.98); }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-spin-fast { animation: spin 0.8s linear infinite; }
+        .progress-transition { transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        html.dark .custom-scroll::-webkit-scrollbar-track { background: #0f172a; }
+        html.dark .custom-scroll::-webkit-scrollbar-thumb { background: #334155; }
+        html.dark .custom-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .fade-in { animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .badge-count { font-size: 10px; padding: 2px 8px; border-radius: 6px; font-weight: 900; display: inline-flex; align-items: center; gap: 4px; letter-spacing: 0.5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        
+        /* AI Agent Styles */
+        .glass-panel { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.3); box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
+        html.dark .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .ai-glow { position: relative; }
+        .ai-glow::after { content: ''; position: absolute; top: -2px; left: -2px; right: -2px; bottom: -2px; background: linear-gradient(45deg, #6366f1, #a855f7, #6366f1); z-index: -1; border-radius: 12px; opacity: 0.15; filter: blur(8px); animation: ai-pulse 4s infinite linear; }
+        @keyframes ai-pulse { 0% { opacity: 0.1; } 50% { opacity: 0.3; } 100% { opacity: 0.1; } }
+    </style>
+</head>
+<body class="text-slate-800 bg-slate-50 dark:bg-slate-900 dark:text-slate-100 transition-colors duration-300 antialiased min-h-screen flex flex-col">
+
+    <nav class="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 shadow-sm transition-colors duration-300">
+        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-4 cursor-pointer hover:opacity-80 smooth-transition" onclick="App.switchView('menu')">
+                <div class="w-8 h-8 bg-slate-900 dark:bg-slate-100 rounded-lg flex items-center justify-center text-white dark:text-slate-900 shadow-md"><i data-lucide="layers" class="w-5 h-5"></i></div>
+                <h1 class="text-xl font-black text-slate-800 dark:text-white tracking-tight">Pricing Master Suite <span class="text-indigo-600 dark:text-indigo-400 font-bold">V11.6</span></h1>
+            </div>
+            <div class="flex gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl transition-colors overflow-x-auto no-scrollbar">
+                <button onclick="App.switchView('menu')" id="nav-menu" class="px-4 py-1.5 rounded-lg text-sm font-bold bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm transition-all btn-press flex items-center gap-2 whitespace-nowrap"><i data-lucide="layout-grid" class="w-4 h-4"></i> Home</button>
+                <button onclick="App.switchView('gen')" id="nav-gen" class="px-4 py-1.5 rounded-lg text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition-all btn-press whitespace-nowrap">1. Gerador</button>
+                <button onclick="App.switchView('sync')" id="nav-sync" class="px-4 py-1.5 rounded-lg text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition-all btn-press whitespace-nowrap">2. Sync</button>
+                <button onclick="App.switchView('aud')" id="nav-aud" class="px-4 py-1.5 rounded-lg text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition-all btn-press whitespace-nowrap">3. Auditor</button>
+                <button onclick="App.switchView('vol')" id="nav-vol" class="px-4 py-1.5 rounded-lg text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition-all btn-press whitespace-nowrap">4. Volumetria</button>
+                <button onclick="App.switchView('cad')" id="nav-cad" class="px-4 py-1.5 rounded-lg text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition-all btn-press whitespace-nowrap">5. Cadastro</button>
+                <button onclick="App.switchView('pt')" id="nav-pt" class="px-4 py-1.5 rounded-lg text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition-all btn-press whitespace-nowrap">6. Pontuação</button>
+                <div class="w-px bg-slate-300 dark:bg-slate-600 my-1 mx-1 shrink-0"></div>
+                <button onclick="App.toggleTheme()" class="px-3 py-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all btn-press flex items-center justify-center shrink-0"><i data-lucide="moon" class="w-4 h-4 hidden dark:block"></i><i data-lucide="sun" class="w-4 h-4 block dark:hidden"></i></button>
+                <button onclick="App.switchView('settings')" id="nav-settings" class="px-3 py-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all btn-press flex items-center justify-center"><i data-lucide="settings" class="w-4 h-4"></i></button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto w-full px-6 py-8 flex-1">
+        
+        <div id="view-menu" class="space-y-8 fade-in">
+            <div class="mb-10 text-center max-w-2xl mx-auto mt-8">
+                <h2 class="text-4xl font-black text-slate-800 dark:text-white tracking-tight mb-4">Central de Ferramentas</h2>
+                <p class="text-slate-500 dark:text-slate-400 text-lg">Selecione o módulo que deseja utilizar.</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div onclick="App.switchView('gen')" class="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 hover-lift smooth-transition cursor-pointer group flex flex-col items-center text-center gap-4 relative overflow-hidden">
+                    <div class="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center group-hover:scale-110 smooth-transition shadow-inner dark:shadow-none"><i data-lucide="circle-dollar-sign" class="w-10 h-10"></i></div>
+                    <div><h2 class="text-2xl font-black text-slate-800 dark:text-slate-100 mb-3 tracking-tight">1. Gestão de Preços</h2></div>
+                </div>
+                <div onclick="App.switchView('sync')" class="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 hover-lift smooth-transition cursor-pointer group flex flex-col items-center text-center gap-4 relative overflow-hidden">
+                    <div class="w-20 h-20 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-2xl flex items-center justify-center group-hover:scale-110 smooth-transition shadow-inner dark:shadow-none"><i data-lucide="folder-sync" class="w-10 h-10"></i></div>
+                    <div><h2 class="text-2xl font-black text-slate-800 dark:text-slate-100 mb-3 tracking-tight">2. Merchandising Sync</h2></div>
+                </div>
+                <div onclick="App.switchView('aud')" class="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 hover-lift smooth-transition cursor-pointer group flex flex-col items-center text-center gap-4 relative overflow-hidden">
+                    <div class="w-20 h-20 bg-slate-800 dark:bg-slate-900 flex items-center justify-center text-emerald-400 dark:text-emerald-500 rounded-2xl group-hover:scale-110 smooth-transition shadow-inner dark:shadow-none"><i data-lucide="shield-check" class="w-10 h-10"></i></div>
+                    <div><h2 class="text-2xl font-black text-slate-800 dark:text-slate-100 mb-3 tracking-tight">3. Auditoria B2C</h2></div>
+                </div>
+                <!-- NOVOS MÓDULOS Placeholder -->
+                <div onclick="App.switchView('vol')" class="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 hover-lift smooth-transition cursor-pointer group flex flex-col items-center text-center gap-4 relative overflow-hidden">
+                    <div class="w-20 h-20 bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400 rounded-2xl flex items-center justify-center group-hover:scale-110 smooth-transition shadow-inner dark:shadow-none"><i data-lucide="image" class="w-10 h-10"></i></div>
+                    <div><h2 class="text-2xl font-black text-slate-800 dark:text-slate-100 mb-3 tracking-tight">4. Volumetria c/ IA</h2></div>
+                </div>
+                <div onclick="App.switchView('cad')" class="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 hover-lift smooth-transition cursor-pointer group flex flex-col items-center text-center gap-4 relative overflow-hidden">
+                    <div class="w-20 h-20 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center group-hover:scale-110 smooth-transition shadow-inner dark:shadow-none"><i data-lucide="package-plus" class="w-10 h-10"></i></div>
+                    <div><h2 class="text-2xl font-black text-slate-800 dark:text-slate-100 mb-3 tracking-tight">5. Cadastro Prod.</h2></div>
+                </div>
+                <div onclick="App.switchView('pt')" class="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 hover-lift smooth-transition cursor-pointer group flex flex-col items-center text-center gap-4 relative overflow-hidden">
+                    <div class="w-20 h-20 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center group-hover:scale-110 smooth-transition shadow-inner dark:shadow-none"><i data-lucide="award" class="w-10 h-10"></i></div>
+                    <div><h2 class="text-2xl font-black text-slate-800 dark:text-slate-100 mb-3 tracking-tight">6. Pontuação</h2></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-gen" class="hidden-el space-y-6 fade-in">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="p-3 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl shadow-md dark:shadow-none"><i data-lucide="circle-dollar-sign" class="w-6 h-6"></i></div>
+                <div>
+                    <h2 class="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Gestão de Preços (Gerador)</h2>
+                    <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Converta planilhas comerciais B2C em Pricebook XML.</p>
+                </div>
+            </div>
+
+            <div id="genModeSelector" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 pt-2">
+                <div onclick="Gerador.selectMode('full')" class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 hover-lift smooth-transition cursor-pointer group flex flex-col items-center text-center gap-4 relative overflow-hidden border-b-4 !border-b-indigo-500">
+                    <div class="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center group-hover:scale-110 smooth-transition"><i data-lucide="layers" class="w-8 h-8"></i></div>
+                    <div>
+                        <h3 class="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">Grade Full</h3>
+                        <p class="text-[11px] text-slate-500 font-medium mt-1">Gera o Pricebook completo a partir de 1 Excel.</p>
+                    </div>
+                </div>
+                <div onclick="Gerador.selectMode('delta')" class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 hover-lift smooth-transition cursor-pointer group flex flex-col items-center text-center gap-4 relative overflow-hidden border-b-4 !border-b-emerald-500">
+                    <div class="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center justify-center group-hover:scale-110 smooth-transition"><i data-lucide="file-diff" class="w-8 h-8"></i></div>
+                    <div>
+                        <h3 class="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">Ajustes (Delta)</h3>
+                        <p class="text-[11px] text-slate-500 font-medium mt-1">Requer XML Atual. Exporta apenas preços alterados.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="genStepUpload" class="hidden-el fade-in">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 id="genUploadTitle" class="font-black text-slate-700 dark:text-slate-200 text-lg"></h3>
+                    <button onclick="Gerador.resetMode()" class="text-xs font-bold text-slate-400 hover:text-slate-700 smooth-transition flex items-center gap-1"><i data-lucide="arrow-left" class="w-3 h-3"></i> Trocar Modo</button>
+                </div>
+                
+                <div id="genXmlUploadZone" class="hidden-el bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 smooth-transition hover-lift relative overflow-hidden mb-4">
+                    <div class="absolute top-0 left-0 w-1 h-full bg-emerald-500 dark:bg-emerald-400"></div>
+                    <input type="file" id="genXmlInput" accept=".xml" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="Gerador.checkReady(event, 'xml')">
+                    <div class="flex items-center gap-3 mb-1"><i data-lucide="file-code-2" class="text-emerald-500 dark:text-emerald-400 w-5 h-5"></i><h3 class="font-bold text-slate-700 dark:text-slate-200 text-sm">Upload XML Pricebook Atual</h3></div>
+                    <p class="text-[10px] text-slate-400 dark:text-slate-500 ml-8">Baixe do SFCC e arraste aqui para base de comparação.</p>
+                </div>
+
+                <div id="genExcelUploadZone" class="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 smooth-transition hover-lift relative overflow-hidden mb-4">
+                    <div class="absolute top-0 left-0 w-1 h-full bg-indigo-500 dark:bg-indigo-400"></div>
+                    <input type="file" id="genExcelInput" accept=".xlsx, .xls, .xlsm, .csv" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onchange="Gerador.checkReady(event, 'excel')">
+                    <div class="flex items-center gap-3 mb-1"><i data-lucide="file-spreadsheet" class="text-indigo-500 dark:text-indigo-400 w-5 h-5"></i><h3 class="font-bold text-slate-700 dark:text-slate-200 text-sm">Upload Excel Grade (Novos Preços)</h3></div>
+                    <p class="text-[10px] text-slate-400 dark:text-slate-500 ml-8">Planilha de Ativação B2C (Arraste aqui)</p>
+                </div>
+
+                <button id="genProcessBtn" onclick="Gerador.processData()" class="hidden-el w-full bg-slate-800 text-white py-3 rounded-xl font-black hover:bg-slate-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 flex items-center justify-center gap-2 btn-press shadow-md transition-all"><i data-lucide="play" class="w-5 h-5"></i> Iniciar Processamento</button>
+            </div>
+
+            <div id="genStatusArea" class="hidden-el bg-white dark:bg-slate-800 p-12 rounded-2xl shadow-lg border border-indigo-100 dark:border-slate-700 text-center">
+                <div class="flex flex-col items-center justify-center gap-4 mb-6">
+                    <div class="p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-full"><i data-lucide="loader-2" class="w-8 h-8 text-indigo-600 dark:text-indigo-400 animate-spin-fast"></i></div>
+                    <h3 id="genStatusText" class="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Lendo Planilha...</h3>
+                </div>
+                <div class="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2 max-w-xl mx-auto mb-3 overflow-hidden">
+                    <div id="genProgressBar" class="h-full bg-gradient-to-r from-indigo-400 to-indigo-600 dark:from-indigo-500 dark:to-indigo-400 w-0 progress-transition"></div>
+                </div>
+                <p id="genStepDetails" class="text-sm font-bold text-indigo-500 dark:text-indigo-400 animate-pulse tracking-wide">Aguarde...</p>
+            </div>
+
+            <div id="genStepResult" class="hidden-el fade-in">
+                <div id="genResultBox" class="border dark:bg-slate-800 dark:border-slate-700 p-8 rounded-xl mb-6 text-center smooth-transition">
+                    <div class="flex justify-center mb-4"><i id="genResultIcon" data-lucide="check-circle" class="w-8 h-8 dark:text-white"></i></div>
+                    <h3 id="genResultTitle" class="text-3xl font-black tracking-tight dark:text-slate-100"></h3>
+                    <p id="genResultSubtitle" class="font-bold text-sm mb-1 uppercase tracking-widest dark:text-slate-400"></p>
+                    <div class="mt-4 flex justify-center gap-6 text-sm">
+                        <div class="bg-white/60 dark:bg-slate-900/50 px-4 py-2 rounded-lg shadow-sm border border-slate-200/50 dark:border-slate-700/50"><span class="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">Marca Fixada</span><span id="genDetectedBrand" class="font-black text-slate-700 dark:text-white text-lg"></span></div>
+                        <div class="bg-white/60 dark:bg-slate-900/50 px-4 py-2 rounded-lg shadow-sm border border-slate-200/50 dark:border-slate-700/50"><span class="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">SKUs Processados</span><span id="genSkuCount" class="font-black text-slate-700 dark:text-white text-lg"></span></div>
+                    </div>
+                </div>
+                <button id="genBtn" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-black hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 flex items-center justify-center gap-2 btn-press shadow-md transition-all text-lg"><i data-lucide="download" class="w-6 h-6"></i> Baixar Pricebook XML</button>
+            </div>
+        </div>
+
+        <div id="view-sync" class="hidden-el space-y-6 fade-in">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="p-3 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded-xl shadow-md dark:shadow-none"><i data-lucide="folder-sync" class="w-6 h-6"></i></div>
+                <div>
+                    <h2 class="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Merchandising Sync</h2>
+                    <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Gere Catálogos XML (Delta) de Listas de Vitrines.</p>
+                </div>
+            </div>
+
+            <div id="syncStepUploads">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 smooth-transition hover-lift relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-purple-500 dark:bg-purple-400"></div>
+                        <input type="file" id="syncExcelInput" accept=".xlsx, .xls, .xlsm, .csv" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                        <div class="flex items-center gap-3 mb-1"><i data-lucide="file-spreadsheet" class="text-purple-500 dark:text-purple-400 w-5 h-5"></i><h3 class="font-bold text-slate-700 dark:text-slate-200 text-sm">Upload Excel</h3></div>
+                        <p class="text-[10px] text-slate-400 dark:text-slate-500 ml-8">Planilhas de Listas (Arraste aqui)</p>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 smooth-transition hover-lift relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-slate-500 dark:bg-slate-400"></div>
+                        <input type="file" id="syncXmlInput" accept=".xml" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                        <div class="flex items-center gap-3 mb-1"><i data-lucide="tag" class="text-slate-500 dark:text-slate-400 w-5 h-5"></i><h3 class="font-bold text-slate-700 dark:text-slate-200 text-sm">Upload XML</h3></div>
+                        <p class="text-[10px] text-slate-400 dark:text-slate-500 ml-8">Catálogo Base do Site (Arraste aqui)</p>
+                    </div>
+                </div>
+                <button id="syncProcessBtn" class="hidden-el w-full bg-purple-600 text-white py-4 rounded-xl font-black hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600 flex items-center justify-center gap-2 btn-press shadow-md transition-all text-lg"><i data-lucide="play" class="w-6 h-6"></i> Sincronizar Catálogo</button>
+            </div>
+
+            <div id="syncStatusArea" class="hidden-el bg-white dark:bg-slate-800 p-12 rounded-2xl shadow-lg border border-purple-100 dark:border-slate-700 text-center">
+                <div class="flex flex-col items-center justify-center gap-4 mb-6">
+                    <div class="p-4 bg-purple-50 dark:bg-purple-900/30 rounded-full"><i data-lucide="loader-2" class="w-8 h-8 text-purple-600 dark:text-purple-400 animate-spin-fast"></i></div>
+                    <h3 id="syncStatusText" class="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Sincronizando...</h3>
+                </div>
+                <div class="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2 max-w-xl mx-auto mb-3 overflow-hidden">
+                    <div id="syncProgressBar" class="h-full bg-gradient-to-r from-purple-400 to-purple-600 dark:from-purple-500 dark:to-purple-400 w-0 progress-transition"></div>
+                </div>
+                <p id="syncStepDetails" class="text-sm font-bold text-purple-500 dark:text-purple-400 animate-pulse tracking-wide">Aguarde...</p>
+            </div>
+
+            <div id="syncResultArea" class="hidden-el fade-in">
+                <div id="syncResultBox" class="border dark:border-slate-700 dark:bg-slate-800 p-6 rounded-xl mb-6 text-center smooth-transition">
+                    <div class="flex justify-center mb-4"><i data-lucide="check-circle" class="w-8 h-8 text-purple-600 dark:text-purple-400"></i></div>
+                    <h3 id="syncResultTitle" class="text-2xl font-black tracking-tight dark:text-white"></h3>
+                    <p id="syncResultSubtitle" class="font-bold text-sm mb-4 uppercase tracking-widest dark:text-slate-400"></p>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm max-w-3xl mx-auto">
+                        <div class="bg-white/60 dark:bg-slate-900/50 p-3 rounded-lg shadow-sm border border-slate-200/50 dark:border-slate-700/50"><span class="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">Marca</span><span id="syncDetectedBrand" class="font-black text-slate-700 dark:text-white text-lg"></span></div>
+                        <div class="bg-white/60 dark:bg-slate-900/50 p-3 rounded-lg shadow-sm border border-slate-200/50 dark:border-slate-700/50"><span class="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">Listas</span><span id="syncListCount" class="font-black text-blue-600 dark:text-blue-400 text-lg"></span></div>
+                        <div class="bg-white/60 dark:bg-slate-900/50 p-3 rounded-lg shadow-sm border border-slate-200/50 dark:border-slate-700/50"><span class="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">Add/Subir</span><span id="syncAddCount" class="font-black text-emerald-600 dark:text-emerald-400 text-lg"></span></div>
+                        <div class="bg-white/60 dark:bg-slate-900/50 p-3 rounded-lg shadow-sm border border-slate-200/50 dark:border-slate-700/50"><span class="text-slate-500 dark:text-slate-400 block text-[10px] uppercase font-bold">Remover</span><span id="syncRemCount" class="font-black text-red-600 dark:text-red-400 text-lg"></span></div>
+                    </div>
+                </div>
+                <div class="flex gap-3">
+                    <button id="syncDownloadBtn" class="flex-1 bg-purple-600 text-white py-4 rounded-xl font-black hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600 flex items-center justify-center gap-2 btn-press shadow-md transition-all text-lg"><i data-lucide="download" class="w-6 h-6"></i> Baixar XML Delta</button>
+                    <button id="syncChatBtn" class="bg-indigo-600 text-white px-6 rounded-xl font-black hover:bg-indigo-700 flex items-center justify-center gap-2 btn-press shadow-md transition-all"><i data-lucide="message-square" class="w-6 h-6 text-indigo-200"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-aud" class="hidden-el space-y-6 fade-in">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="p-3 bg-slate-800 dark:bg-slate-900 text-emerald-400 dark:text-emerald-500 rounded-xl shadow-md dark:shadow-none"><i data-lucide="shield-check" class="w-6 h-6"></i></div>
+                <div>
+                    <h2 class="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Auditoria B2C (Double-Blind)</h2>
+                    <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Auto-Discovery ativado para Excels Comerciais.</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 smooth-transition hover-lift relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1 h-full bg-indigo-500 dark:bg-indigo-400"></div>
+                    <input type="file" id="audPbInput" accept=".xml" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                    <div class="flex items-center gap-3 mb-1"><i data-lucide="file-digit" class="text-indigo-500 dark:text-indigo-400 w-5 h-5"></i><h3 class="font-bold text-slate-700 dark:text-slate-200 text-sm">1. Pricebook</h3></div>
+                    <p class="text-[10px] text-slate-400 dark:text-slate-500 ml-8">Arquivo XML unificado</p>
+                </div>
+                
+                <div class="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 smooth-transition hover-lift relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1 h-full bg-slate-500 dark:bg-slate-400"></div>
+                    <input type="file" id="audCatInput" accept=".xml" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                    <div class="flex items-center gap-3 mb-1"><i data-lucide="tag" class="text-slate-500 dark:text-slate-400 w-5 h-5"></i><h3 class="font-bold text-slate-700 dark:text-slate-200 text-sm">2. Catalogs (3x)</h3></div>
+                    <p class="text-[10px] text-slate-400 dark:text-slate-500 ml-8">Nat, Avn e ML XMLs</p>
+                </div>
+
+                <div class="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 smooth-transition hover-lift relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-orange-500 to-purple-600 dark:from-orange-400 dark:to-purple-500"></div>
+                    <input type="file" id="audExcelInput" accept=".xlsx, .xls, .xlsm, .csv" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                    <div class="flex items-center gap-3 mb-1">
+                        <i data-lucide="file-spreadsheet" class="text-slate-600 dark:text-slate-300 w-5 h-5"></i>
+                        <h3 id="excelUploadTitle" class="font-bold text-slate-700 dark:text-slate-200 text-sm">3. Excel Comercial</h3>
+                    </div>
+                    <p id="excelUploadDesc" class="text-[10px] text-slate-400 dark:text-slate-500 ml-8">Natura e/ou Avon (Arraste aqui)</p>
+                </div>
+            </div>
+
+            <div id="audFileInfoBox" class="hidden-el bg-slate-800 dark:bg-slate-900 border-slate-700 dark:border-slate-800 text-slate-300 p-4 rounded-xl shadow-md border flex items-start gap-3">
+                <i data-lucide="info" class="w-5 h-5 text-emerald-400 mt-0.5 shrink-0"></i>
+                <div class="w-full">
+                    <h4 class="font-bold text-white text-sm mb-2">Arquivos Carregados</h4>
+                    <ul id="audFileList" class="text-xs space-y-1 font-mono"></ul>
+                </div>
+            </div>
+
+            <button id="audProcessBtn" class="w-full bg-emerald-600 text-white py-5 rounded-xl font-black hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 flex items-center justify-center gap-2 btn-press text-lg shadow-md hover:shadow-lg smooth-transition"><i data-lucide="play" class="w-6 h-6"></i> Executar Auditoria Double-Blind</button>
+
+            <div id="audStatusArea" class="hidden-el bg-white dark:bg-slate-800 p-12 rounded-2xl shadow-lg border border-emerald-100 dark:border-slate-700 text-center">
+                <div class="flex flex-col items-center justify-center gap-4 mb-6">
+                    <div class="p-4 bg-emerald-50 dark:bg-emerald-900/30 rounded-full"><i data-lucide="loader-2" class="w-8 h-8 text-emerald-600 dark:text-emerald-400 animate-spin-fast"></i></div>
+                    <h3 id="audStatusText" class="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Preparando Motor...</h3>
+                </div>
+                <div class="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2 max-w-xl mx-auto mb-3 overflow-hidden">
+                    <div id="audProgressBar" class="h-full bg-gradient-to-r from-emerald-400 via-teal-500 to-indigo-600 dark:from-emerald-500 dark:via-teal-400 dark:to-indigo-500 w-0 progress-transition"></div>
+                </div>
+                <p id="audStepDetails" class="text-sm font-bold text-emerald-500 dark:text-emerald-400 animate-pulse tracking-wide">Aguardando...</p>
+            </div>
+
+            <div id="audPreflightError" class="hidden-el p-8 bg-red-50 dark:bg-red-900/30 rounded-2xl border border-red-200 dark:border-red-800/50 text-center shadow-sm fade-in mt-6">
+                <div class="w-16 h-16 bg-red-100 dark:bg-red-800/50 rounded-full flex items-center justify-center mx-auto mb-4 relative overflow-hidden">
+                    <div class="absolute inset-0 bg-red-200 dark:bg-red-600 animate-ping opacity-75"></div>
+                    <i data-lucide="alert-octagon" class="w-8 h-8 text-red-600 dark:text-red-400 relative z-10"></i>
+                </div>
+                <h3 id="audPreflightErrorTitle" class="text-2xl font-black text-red-700 dark:text-red-400 tracking-tight">Alerta de Segurança</h3>
+                <p id="audPreflightErrorMsg" class="text-red-900 dark:text-red-300 mt-3 text-sm font-medium whitespace-pre-line max-w-2xl mx-auto"></p>
+                <button onclick="document.getElementById('audPreflightError').classList.add('hidden-el'); document.getElementById('audProcessBtn').classList.remove('hidden-el');" class="mt-8 bg-red-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 transition-all btn-press shadow-md hover:shadow-lg flex items-center gap-2 mx-auto"><i data-lucide="x-circle" class="w-5 h-5"></i> Ciente, vou corrigir o upload</button>
+            </div>
+
+            <div id="audAllGoodMsg" class="hidden-el p-16 bg-white dark:bg-slate-800 rounded-2xl border border-emerald-200 dark:border-emerald-800 text-center shadow-sm">
+                <div class="w-20 h-20 bg-emerald-50 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="shield-check" class="w-10 h-10 text-emerald-500 dark:text-emerald-400"></i>
+                </div>
+                <h3 class="text-3xl font-black text-slate-800 dark:text-white tracking-tight">Integridade 100%!</h3>
+                <p class="text-slate-500 dark:text-slate-400 mt-2 text-lg">Nenhuma divergência encontrada.</p>
+            </div>
+
+            <div id="audDashboard" class="hidden-el space-y-6 fade-in">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <div>
+                        <h3 class="text-lg font-black text-slate-800 dark:text-white flex items-center gap-2 tracking-tight">Painel de Diagnóstico</h3>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="audChatBtn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 hover-lift shadow-sm hover:bg-indigo-700"><i data-lucide="message-square" class="w-4 h-4"></i> Reportar no Chat</button>
+                        <button id="audExportBtn" class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 hover-lift shadow-sm"><i data-lucide="download" class="w-4 h-4"></i> Exportar Relatório</button>
+                    </div>
+                </div>
+
+                <!-- Novos Filtros de Marca (V11.6) -->
+                <div class="flex flex-wrap gap-4 items-center bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+                    <span class="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest ml-1">Filtro de Marca:</span>
+                    <button onclick="Auditor.toggleBrand('Natura')" id="btn-natura" class="px-6 py-2 rounded-xl text-sm font-black bg-orange-500 text-white shadow-md hover-lift smooth-transition flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4"></i> NATURA</button>
+                    <button onclick="Auditor.toggleBrand('Avon')" id="btn-avon" class="px-6 py-2 rounded-xl text-sm font-black bg-purple-600 text-white shadow-md hover-lift smooth-transition flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4"></i> AVON</button>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                    <div onclick="Auditor.toggleFilter('price')" id="card-price" class="filter-card p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover-lift smooth-transition border-l-4 !border-l-teal-500">
+                        <div class="flex justify-between items-center mb-1"><span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Div. Excel (Preço)</span><div class="w-6 h-6 rounded-full bg-teal-50 dark:bg-teal-900/30 flex items-center justify-center"><i data-lucide="calculator" class="w-3 h-3 text-teal-500 dark:text-teal-400"></i></div></div>
+                        <p id="countPrice" class="text-3xl font-black text-teal-600 dark:text-teal-400 mb-2">0</p>
+                        <div class="flex gap-2">
+                            <span class="badge-count badge-natura">NAT: <b id="countPriceNat">0</b></span>
+                            <span class="badge-count badge-avon">AVN: <b id="countPriceAvn">0</b></span>
+                        </div>
+                    </div>
+                    
+                    <div onclick="Auditor.toggleFilter('list')" id="card-list" class="filter-card p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover-lift smooth-transition border-l-4 !border-l-cyan-500">
+                        <div class="flex justify-between items-center mb-1"><span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Falta/Inexist. Lista</span><div class="w-6 h-6 rounded-full bg-cyan-50 dark:bg-cyan-900/30 flex items-center justify-center"><i data-lucide="list-x" class="w-3 h-3 text-cyan-500 dark:text-cyan-400"></i></div></div>
+                        <p id="countList" class="text-3xl font-black text-cyan-600 dark:text-cyan-400 mb-2">0</p>
+                        <div class="flex gap-2">
+                            <span class="badge-count badge-natura">NAT: <b id="countListNat">0</b></span>
+                            <span class="badge-count badge-avon">AVN: <b id="countListAvn">0</b></span>
+                        </div>
+                    </div>
+
+                    <div onclick="Auditor.toggleFilter('ml')" id="card-ml" class="filter-card p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover-lift smooth-transition border-l-4 !border-l-red-500">
+                        <div class="flex justify-between items-center mb-1"><span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Divergência ML</span><div class="w-6 h-6 rounded-full bg-red-50 dark:bg-red-900/30 flex items-center justify-center"><i data-lucide="store" class="w-3 h-3 text-red-500 dark:text-red-400"></i></div></div>
+                        <p id="countMl" class="text-3xl font-black text-red-600 dark:text-red-400 mb-2">0</p>
+                        <div class="flex gap-2">
+                            <span class="badge-count badge-natura">NAT: <b id="countMlNat">0</b></span>
+                            <span class="badge-count badge-avon">AVN: <b id="countMlAvn">0</b></span>
+                        </div>
+                    </div>
+
+                    <div onclick="Auditor.toggleFilter('margin')" id="card-margin" class="filter-card p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover-lift smooth-transition border-l-4 !border-l-orange-500">
+                        <div class="flex justify-between items-center mb-1"><span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Conflito Margem</span><div class="w-6 h-6 rounded-full bg-orange-50 dark:bg-orange-900/30 flex items-center justify-center"><i data-lucide="alert-triangle" class="w-3 h-3 text-orange-500 dark:text-orange-400"></i></div></div>
+                        <p id="countMargin" class="text-3xl font-black text-orange-500 dark:text-orange-400 mb-2">0</p>
+                        <div class="flex gap-2">
+                            <span class="badge-count badge-natura">NAT: <b id="countMarginNat">0</b></span>
+                            <span class="badge-count badge-avon">AVN: <b id="countMarginAvn">0</b></span>
+                        </div>
+                    </div>
+
+                    <div onclick="Auditor.toggleFilter('logic')" id="card-logic" class="filter-card p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover-lift smooth-transition border-l-4 !border-l-indigo-500">
+                        <div class="flex justify-between items-center mb-1"><span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Erro Lógico (POR>DE)</span><div class="w-6 h-6 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center"><i data-lucide="arrow-up-down" class="w-3 h-3 text-indigo-500 dark:text-indigo-400"></i></div></div>
+                        <p id="countLogic" class="text-3xl font-black text-indigo-600 dark:text-indigo-400 mb-2">0</p>
+                        <div class="flex gap-2">
+                            <span class="badge-count badge-natura">NAT: <b id="countLogicNat">0</b></span>
+                            <span class="badge-count badge-avon">AVN: <b id="countLogicAvn">0</b></span>
+                        </div>
+                    </div>
+
+                    <div onclick="Auditor.toggleFilter('missing')" id="card-missing" class="filter-card p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover-lift smooth-transition border-l-4 !border-l-amber-500">
+                        <div class="flex justify-between items-center mb-1"><span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Preço Faltante</span><div class="w-6 h-6 rounded-full bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center"><i data-lucide="file-warning" class="w-3 h-3 text-amber-500 dark:text-amber-400"></i></div></div>
+                        <p id="countMissing" class="text-3xl font-black text-amber-600 dark:text-amber-400 mb-2">0</p>
+                        <div class="flex gap-2">
+                            <span class="badge-count badge-natura">NAT: <b id="countMissingNat">0</b></span>
+                            <span class="badge-count badge-avon">AVN: <b id="countMissingAvn">0</b></span>
+                        </div>
+                    </div>
+
+                    <div onclick="Auditor.toggleFilter('primary')" id="card-primary" class="filter-card p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover-lift smooth-transition border-l-4 !border-l-blue-500">
+                        <div class="flex justify-between items-center mb-1"><span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Falta Cat. Primária</span><div class="w-6 h-6 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center"><i data-lucide="flag" class="w-3 h-3 text-blue-500 dark:text-blue-400"></i></div></div>
+                        <p id="countPrimary" class="text-3xl font-black text-blue-600 dark:text-blue-400 mb-2">0</p>
+                        <div class="flex gap-2">
+                            <span class="badge-count badge-natura">NAT: <b id="countPrimaryNat">0</b></span>
+                            <span class="badge-count badge-avon">AVN: <b id="countPrimaryAvn">0</b></span>
+                        </div>
+                    </div>
+
+                    <div onclick="Auditor.toggleFilter('bundle')" id="card-bundle" class="filter-card p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover-lift smooth-transition border-l-4 !border-l-pink-500">
+                        <div class="flex justify-between items-center mb-1"><span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Bundle Quebrado</span><div class="w-6 h-6 rounded-full bg-pink-50 dark:bg-pink-900/30 flex items-center justify-center"><i data-lucide="package-x" class="w-3 h-3 text-pink-500 dark:text-pink-400"></i></div></div>
+                        <p id="countBundle" class="text-3xl font-black text-pink-600 dark:text-pink-400 mb-2">0</p>
+                        <div class="flex gap-2">
+                            <span class="badge-count badge-natura">NAT: <b id="countBundleNat">0</b></span>
+                            <span class="badge-count badge-avon">AVN: <b id="countBundleAvn">0</b></span>
+                        </div>
+                    </div>
+
+                    <div onclick="Auditor.toggleFilter('cross')" id="card-cross" class="filter-card p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover-lift smooth-transition border-l-4 !border-l-slate-500">
+                        <div class="flex justify-between items-center mb-1"><span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Marca Cruzada</span><div class="w-6 h-6 rounded-full bg-slate-50 dark:bg-slate-900/50 flex items-center justify-center"><i data-lucide="shuffle" class="w-3 h-3 text-slate-500 dark:text-slate-400"></i></div></div>
+                        <p id="countCross" class="text-3xl font-black text-slate-600 dark:text-slate-400 mb-2">0</p>
+                        <div class="flex gap-2">
+                            <span class="badge-count badge-natura">NAT: <b id="countCrossNat">0</b></span>
+                            <span class="badge-count badge-avon">AVN: <b id="countCrossAvn">0</b></span>
+                        </div>
+                    </div>
+
+                    <div onclick="Auditor.toggleFilter('offline')" id="card-offline" class="filter-card p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover-lift smooth-transition border-l-4 !border-l-rose-500">
+                        <div class="flex justify-between items-center mb-1"><span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Offline na Grade</span><div class="w-6 h-6 rounded-full bg-rose-50 dark:bg-rose-900/30 flex items-center justify-center"><i data-lucide="wifi-off" class="w-3 h-3 text-rose-500 dark:text-rose-400"></i></div></div>
+                        <p id="countOffline" class="text-3xl font-black text-rose-600 dark:text-rose-400 mb-2">0</p>
+                        <div class="flex gap-2">
+                            <span class="badge-count badge-natura">NAT: <b id="countOfflineNat">0</b></span>
+                            <span class="badge-count badge-avon">AVN: <b id="countOfflineAvn">0</b></span>
+                        </div>
+                    </div>
+
+                    <div onclick="Auditor.toggleFilter('job')" id="card-job" class="filter-card p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover-lift smooth-transition border-l-4 !border-l-fuchsia-500">
+                        <div class="flex justify-between items-center mb-1"><span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Job Não Rodou</span><div class="w-6 h-6 rounded-full bg-fuchsia-50 dark:bg-fuchsia-900/30 flex items-center justify-center"><i data-lucide="split" class="w-3 h-3 text-fuchsia-500 dark:text-fuchsia-400"></i></div></div>
+                        <p id="countJob" class="text-3xl font-black text-fuchsia-600 dark:text-fuchsia-400 mb-2">0</p>
+                        <div class="flex gap-2">
+                            <span class="badge-count badge-natura">NAT: <b id="countJobNat">0</b></span>
+                            <span class="badge-count badge-avon">AVN: <b id="countJobAvn">0</b></span>
+                        </div>
+                    </div>
+
+                    <div onclick="Auditor.toggleFilter('searchable')" id="card-searchable" class="filter-card p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover-lift smooth-transition border-l-4 !border-l-indigo-400">
+                        <div class="flex justify-between items-center mb-1"><span class="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Divergência Searchable</span><div class="w-6 h-6 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center"><i data-lucide="eye-off" class="w-3 h-3 text-indigo-500 dark:text-indigo-400"></i></div></div>
+                        <p id="countSearchable" class="text-3xl font-black text-indigo-600 dark:text-indigo-400 mb-2">0</p>
+                        <div class="flex gap-2">
+                            <span class="badge-count badge-natura">NAT: <b id="countSearchableNat">0</b></span>
+                            <span class="badge-count badge-avon">AVN: <b id="countSearchableAvn">0</b></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col h-[500px] mt-8">
+                    <div class="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 rounded-t-xl flex justify-between items-center">
+                        <h4 class="font-bold text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2"><i data-lucide="list-filter" class="w-4 h-4"></i> Relatório de Diagnóstico <span id="filterLabel" class="hidden-el ml-2 px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-[10px] rounded uppercase font-black tracking-widest">Filtrado</span></h4>
+                        <span id="tableRowsCount" class="text-xs font-bold text-slate-400 dark:text-slate-500">0 linhas</span>
+                    </div>
+                    <div class="flex-1 overflow-auto custom-scroll">
+                        <table class="w-full text-left text-sm whitespace-nowrap">
+                            <thead class="bg-white dark:bg-slate-800 sticky top-0 shadow-sm z-10 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+                                <tr><th class="px-6 py-4 font-bold border-b dark:border-slate-700">SKU</th><th class="px-6 py-4 font-bold border-b dark:border-slate-700">Marca</th><th class="px-6 py-4 font-bold border-b dark:border-slate-700">Preço XML</th><th class="px-6 py-4 font-bold border-b dark:border-slate-700">Preço ML</th><th class="px-6 py-4 font-bold w-full border-b dark:border-slate-700">Diagnóstico Crítico</th></tr>
+                            </thead>
+                            <tbody id="audTableBody" class="divide-y divide-slate-100 dark:divide-slate-700/50"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Painel de Insights do Agente de IA (V11.0) - Movido para Baixo -->
+                <div id="aiInsightPanel" class="hidden-el fade-in mt-8 ai-glow">
+                    <div class="glass-panel p-6 rounded-2xl">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg"><i data-lucide="bot" class="w-6 h-6"></i></div>
+                                <div>
+                                    <h4 class="font-black text-slate-800 dark:text-white tracking-tight">Pricing Master AI</h4>
+                                    <p class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">Resumo Estratégico & Insights</p>
+                                </div>
+                            </div>
+                            <button id="aiInsightBtn" onclick="PricingAI.run(Auditor.lastStats)" class="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-black hover:bg-indigo-100 transition-all flex items-center gap-2">
+                                <i data-lucide="sparkles" class="w-4 h-4"></i> ANALISAR COM IA
+                            </button>
+                        </div>
+                        <div id="aiInsightContent" class="text-sm leading-relaxed text-slate-600 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800 italic min-h-[60px]">
+                            Clique no botão acima para que o agente processe o resultado da auditoria e gere os insights de negócio.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-settings" class="hidden-el space-y-8 fade-in">
+            <div class="max-w-2xl mx-auto space-y-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="p-4 bg-slate-800 text-slate-100 rounded-2xl shadow-xl dark:bg-slate-100 dark:text-slate-900 smooth-transition"><i data-lucide="settings-2" class="w-7 h-7"></i></div>
+                    <div>
+                        <h2 class="text-3xl font-black text-slate-800 dark:text-white tracking-tight">Configurações do Sistema</h2>
+                        <p class="text-slate-500 dark:text-slate-400 font-medium">Integrações e preferências globais da V9.1.</p>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 space-y-6">
+                    <div class="flex items-center gap-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+                        <div class="w-12 h-12 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-xl flex items-center justify-center shrink-0">
+                            <i data-lucide="message-square" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-800 dark:text-white">Google Chat Webhook</h3>
+                            <p class="text-xs text-slate-400 dark:text-slate-500">Envie relatórios automáticos para o seu espaço de trabalho.</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="space-y-2">
+                            <label class="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-widest ml-1">URL do Webhook</label>
+                            <input type="password" id="gchat-url" placeholder="https://chat.googleapis.com/v1/spaces/..." class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-slate-100 transition-all font-mono">
+                        </div>
+                        <div class="flex gap-3 pt-2">
+                            <button onclick="App.saveSettings()" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all btn-press shadow-md shadow-indigo-200 dark:shadow-none">Salvar Alterações</button>
+                            <button onclick="App.testWebhook()" class="px-6 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 py-3 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all btn-press flex items-center gap-2 italic text-sm">Testar <i data-lucide="send" class="w-4 h-4"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 p-6 rounded-2xl flex gap-4">
+                    <i data-lucide="shield-alert" class="w-6 h-6 text-amber-600 dark:text-amber-500 shrink-0 mt-1"></i>
+                    <div class="text-sm text-amber-800 dark:text-amber-200">
+                        <p class="font-bold mb-1 tracking-tight italic">Segurança de Dados</p>
+                        <p class="opacity-80">Sua URL do Webhook é salva localmente no seu computador e não é enviada para nenhum servidor externo. Tenha cuidado ao compartilhar o acesso ao navegador.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="toast-container" class="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none"></div>
+
+    <script src="js/utils.js"></script>
+    <script src="js/ai-agent.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/gerador.js"></script>
+    <script src="js/sync.js"></script>
+    <script src="js/auditor.js"></script>
+</body>
+</html>

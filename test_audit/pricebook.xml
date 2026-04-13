@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pricebooks xmlns="http://www.demandware.com/xml/impex/pricebook/2006-10-31">
+    <!-- PRICEBOOK NATURA LISTA -->
+    <pricebook>
+        <header pricebook-id="natura-brazil-list-prices">
+            <currency>BRL</currency>
+        </header>
+        <price-tables>
+            <!-- Check #1: price (Diverge Excel 100 vs SF 120) -->
+            <price-table product-id="NATBRA-1001">
+                <amount quantity="1">120.00</amount>
+            </price-table>
+            <!-- Check #5: logic (POR > DE: 60 > 50) -->
+            <price-table product-id="NATBRA-1002">
+                <amount quantity="1">50.00</amount>
+            </price-table>
+            <!-- Check #8: missing (Falta DE) - Vamos colocar só o POR depois -->
+            <price-table product-id="NATBRA-1003">
+                <amount quantity="1">0.00</amount>
+            </price-table>
+            <!-- Check #10: offline (No Excel mas offline no SF) -->
+            <price-table product-id="NATBRA-1005">
+                <amount quantity="1">100.00</amount>
+            </price-table>
+            <!-- Check #11: ml divergence (Marca 50 vs ML 60) -->
+            <price-table product-id="NATBRA-1009">
+                <amount quantity="1">50.00</amount>
+            </price-table>
+            <!-- Check #12: margin (Em categoria proibida com desconto) -->
+            <price-table product-id="NATBRA-1010">
+                <amount quantity="1">100.00</amount>
+            </price-table>
+            <!-- Check #11: ml divergence -->
+            <price-table product-id="NATBRA-1012">
+                <amount quantity="1">50.00</amount>
+            </price-table>
+        </price-tables>
+    </pricebook>
+
+    <!-- PRICEBOOK NATURA PROMOCIONAL -->
+    <pricebook>
+        <header pricebook-id="natura-brazil-sale-prices">
+            <currency>BRL</currency>
+        </header>
+        <price-tables>
+            <price-table product-id="NATBRA-1001">
+                <amount quantity="1">80.00</amount>
+            </price-table>
+            <price-table product-id="NATBRA-1002">
+                <amount quantity="1">60.00</amount>
+            </price-table>
+            <price-table product-id="NATBRA-1003">
+                <amount quantity="1">40.00</amount>
+            </price-table>
+            <price-table product-id="NATBRA-1009">
+                <amount quantity="1">40.00</amount>
+            </price-table>
+            <price-table product-id="NATBRA-1010">
+                <amount quantity="1">80.00</amount>
+            </price-table>
+            <price-table product-id="NATBRA-1012">
+                <amount quantity="1">40.00</amount>
+            </price-table>
+        </price-tables>
+    </pricebook>
+
+    <!-- PRICEBOOK ML (Minha Loja) -->
+    <pricebook>
+        <header pricebook-id="cbbrazil-list-prices">
+            <currency>BRL</currency>
+        </header>
+        <price-tables>
+            <!-- Check #11: ml divergence (Marca 50 vs ML 60) -->
+            <price-table product-id="NATBRA-1009">
+                <amount quantity="1">60.00</amount>
+            </price-table>
+            <!-- Diferença ML para Avon -->
+            <price-table product-id="AVNBRA-2001">
+                <amount quantity="1">150.00</amount>
+            </price-table>
+        </price-tables>
+    </pricebook>
+
+    <!-- PRICEBOOK AVON LISTA -->
+    <pricebook>
+        <header pricebook-id="avon-brazil-list-prices">
+            <currency>BRL</currency>
+        </header>
+        <price-tables>
+            <price-table product-id="AVNBRA-2001">
+                <amount quantity="1">130.00</amount>
+            </price-table>
+            <price-table product-id="AVNBRA-2002">
+                <amount quantity="1">200.00</amount>
+            </price-table>
+        </price-tables>
+    </pricebook>
+
+    <!-- PRICEBOOK AVON (Para testar Cross-Brand) -->
+    <pricebook>
+        <header pricebook-id="avon-brazil-list-prices">
+            <currency>BRL</currency>
+        </header>
+        <price-tables>
+            <!-- Check #9: cross-brand (NAT no PB de AVN) -->
+            <price-table product-id="NATBRA-1008">
+                <amount quantity="1">99.00</amount>
+            </price-table>
+        </price-tables>
+    </pricebook>
+</pricebooks>

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog xmlns="http://www.demandware.com/xml/impex/catalog/2006-10-31" catalog-id="natura-brazil">
+    
+    <category category-id="C1">
+        <display-name>Categoria Teste</display-name>
+    </category>
+    <category category-id="promocao-da-semana">
+        <display-name>Proibida para Desconto</display-name>
+    </category>
+
+    <!-- Check #1: price ok -->
+    <product product-id="NATBRA-1001">
+        <online-flag>true</online-flag>
+    </product>
+    <!-- Check #5: logic -->
+    <product product-id="NATBRA-1002">
+        <online-flag>true</online-flag>
+    </product>
+    <!-- Check #8: missing -->
+    <product product-id="NATBRA-1003">
+        <online-flag>true</online-flag>
+    </product>
+    <!-- Check #4: primary (Missing primary-flag) -->
+    <product product-id="NATBRA-1004">
+        <online-flag>true</online-flag>
+    </product>
+    <!-- Check #10: offline (online-flag=false) -->
+    <product product-id="NATBRA-1005">
+        <online-flag>false</online-flag>
+    </product>
+    <!-- Check #6: searchable (searchable-flag=false vs Excel=SIM) -->
+    <product product-id="NATBRA-1006">
+        <online-flag>true</online-flag>
+        <searchable-flag>false</searchable-flag>
+    </product>
+    <!-- Check #7: list -->
+    <product product-id="NATBRA-1007">
+        <online-flag>true</online-flag>
+    </product>
+    <!-- Check #9: bundle -->
+    <product product-id="NATBRA-BUN1">
+        <online-flag>true</online-flag>
+        <bundled-products>
+            <bundled-product product-id="NATBRA-1001" quantity="1.0"/>
+            <bundled-product product-id="NATBRA-1005" quantity="1.0"/> <!-- Componente offline -->
+        </bundled-products>
+    </product>
+    <!-- Check #12: margin -->
+    <product product-id="NATBRA-1010">
+        <online-flag>true</online-flag>
+    </product>
+    <!-- Check #JOB: mother part -->
+    <product product-id="NATBRA-1011">
+        <online-flag>true</online-flag>
+    </product>
+
+    <!-- Assignments -->
+    <category-assignment product-id="NATBRA-1001" category-id="C1">
+        <primary-flag>true</primary-flag>
+    </category-assignment>
+    <category-assignment product-id="NATBRA-1004" category-id="C1">
+        <!-- Sem primary flag propositalmente -->
+    </category-assignment>
+    <category-assignment product-id="NATBRA-1010" category-id="promocao-da-semana">
+        <primary-flag>true</primary-flag>
+    </category-assignment>
+    <category-assignment product-id="NATBRA-1011" category-id="C1">
+        <primary-flag>true</primary-flag>
+    </category-assignment>
+
+</catalog>

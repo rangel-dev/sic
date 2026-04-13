@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog xmlns="http://www.demandware.com/xml/impex/catalog/2006-10-31" catalog-id="avon-brazil">
+    
+    <category category-id="AV_C1">
+        <display-name>Maquiagem Avon</display-name>
+    </category>
+
+    <!-- Check: Avon SKU Ok -->
+    <product product-id="AVNBRA-2001">
+        <online-flag>true</online-flag>
+    </product>
+    
+    <!-- Check: Avon SKU sem PRIMARY -->
+    <product product-id="AVNBRA-2002">
+        <online-flag>true</online-flag>
+    </product>
+
+    <category-assignment product-id="AVNBRA-2001" category-id="AV_C1">
+        <primary-flag>true</primary-flag>
+    </category-assignment>
+    
+    <!-- Atribuição sem primary-flag -->
+    <category-assignment product-id="AVNBRA-2002" category-id="AV_C1">
+    </category-assignment>
+
+</catalog>

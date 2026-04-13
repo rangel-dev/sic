@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog xmlns="http://www.demandware.com/xml/impex/catalog/2006-10-31" catalog-id="cbbrazil">
+    
+    <!-- Regra de Espelhamento Natura -->
+    <category category-id="ML_NAT_C1">
+        <display-name>Natura na Minha Loja</display-name>
+        <category-assignment-rule>
+            <category-condition category-id="C1"/>
+        </category-assignment-rule>
+    </category>
+
+    <!-- Regra de Espelhamento Avon -->
+    <category category-id="ML_AVN_C1">
+        <display-name>Avon na Minha Loja</display-name>
+        <category-assignment-rule>
+            <category-condition category-id="AV_C1"/>
+        </category-assignment-rule>
+    </category>
+
+    <!-- Assignments Manuais (Para forçar erros de divergência de JOB) -->
+    
+    <!-- NATBRA-1011 está na C1 da Natura, então deve estar na ML_NAT_C1 -->
+    <category-assignment product-id="NATBRA-1011" category-id="ML_NAT_C1">
+        <primary-flag>true</primary-flag>
+    </category-assignment>
+    
+    <!-- AVNBRA-2001 está na AV_C1 da Avon, então deve estar na ML_AVN_C1 -->
+    <category-assignment product-id="AVNBRA-2001" category-id="ML_AVN_C1">
+        <primary-flag>true</primary-flag>
+    </category-assignment>
+
+    <!-- PROPOSITAL: AVNBRA-2100 (Não existe na Avon) ou falta de um SKU real -->
+    <!-- Se não colocarmos o AVNBRA-2002 aqui, mas ele está na AV_C1 da Avon, o JOB acusará erro -->
+
+</catalog>
