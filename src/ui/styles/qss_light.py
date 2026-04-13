@@ -472,4 +472,28 @@ QStatusBar {
     border: 1px solid #e4e9f2;
     border-radius: 10px;
 }
+
+/* ============================================================
+   DASHBOARD / EXECUTIVE NEXUS
+   ============================================================ */
+#kpi_card {
+    background-color: #ffffff;
+    border: 1px solid #e8e8e8;
+    border-radius: 16px;
+}
+
+#nexus_card {
+    background-color: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 14px;
+}
+
+#nexus_card:hover {
+    background-color: #fcfcfc;
+    border-color: #d8d8d8;
+}
+
+#nexus_greeting {
+    color: #222222;
+}
 """

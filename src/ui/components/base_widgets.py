@@ -13,8 +13,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QMimeData
-from PySide6.QtGui import QDragEnterEvent, QDropEvent, QMouseEvent
+from PySide6.QtCore import Qt, Signal, QMimeData, QPropertyAnimation, QSequentialAnimationGroup, Property
+from PySide6.QtGui import QDragEnterEvent, QDropEvent, QMouseEvent, QColor, QPainter
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -361,3 +361,115 @@ class StatPill(QFrame):
             self._val_lbl.setStyleSheet(
                 f"font-size:22px;font-weight:700;color:{color};background:transparent;"
             )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  PulseStatus — A pulsing green dot for "System Online"
+# ─────────────────────────────────────────────────────────────────────────────
+class PulseStatus(QWidget):
+    def __init__(self, color: str = "#4CAF50", parent=None):
+        super().__init__(parent)
+        self.setFixedSize(20, 20)
+        self._color = QColor(color)
+        self._opacity = 1.0
+        
+        self.anim = QPropertyAnimation(self, b"opacity")
+        self.anim.setDuration(1200)
+        self.anim.setStartValue(1.0)
+        self.anim.setKeyValueAt(0.5, 0.3)
+        self.anim.setEndValue(1.0)
+        self.anim.setLoopCount(-1)
+        self.anim.start()
+
+    def get_opacity(self): return self._opacity
+    def set_opacity(self, v): 
+        self._opacity = v
+        self.update()
+    opacity = Property(float, get_opacity, set_opacity)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        c = self._color
+        c.setAlphaF(self._opacity)
+        p.setBrush(c)
+        p.setPen(Qt.NoPen)
+        p.drawEllipse(4, 4, 12, 12)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  NexusCard — Large interactive dashboard module cards
+# ─────────────────────────────────────────────────────────────────────────────
+class NexusCard(QFrame):
+    clicked = Signal()
+
+    def __init__(self, icon: str, title: str, desc: str, color_top: str = "#FF8050", parent=None):
+        super().__init__(parent)
+        self.setObjectName("nexus_card")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setMinimumHeight(140)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(8)
+
+        # Style via property
+        self.setStyleSheet(f"""
+            QFrame#nexus_card {{
+                border-top: 3px solid {color_top};
+            }}
+        """)
+
+        self._icon_lbl = QLabel(icon)
+        self._icon_lbl.setStyleSheet(f"font-size: 28px; color: {color_top}; background: transparent;")
+        layout.addWidget(self._icon_lbl)
+
+        self._title_lbl = QLabel(title)
+        self._title_lbl.setStyleSheet("font-size: 16px; font-weight: 700; background: transparent;")
+        layout.addWidget(self._title_lbl)
+
+        self._desc_lbl = QLabel(desc)
+        self._desc_lbl.setStyleSheet("font-size: 12px; color: #888; background: transparent;")
+        self._desc_lbl.setWordWrap(True)
+        layout.addWidget(self._desc_lbl)
+        
+        layout.addStretch()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  KpiWidget — Modern metric display
+# ─────────────────────────────────────────────────────────────────────────────
+class KpiWidget(QFrame):
+    def __init__(self, label: str, value: str = "0", icon: str = "📈", parent=None):
+        super().__init__(parent)
+        self.setObjectName("kpi_card")
+        self.setMinimumWidth(180)
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(12)
+
+        icon_lbl = QLabel(icon)
+        icon_lbl.setStyleSheet("font-size: 24px; background: transparent;")
+        layout.addWidget(icon_lbl)
+
+        txt_container = QVBoxLayout()
+        txt_container.setSpacing(0)
+        
+        self.val_lbl = QLabel(value)
+        self.val_lbl.setStyleSheet("font-size: 20px; font-weight: 800; background: transparent;")
+        txt_container.addWidget(self.val_lbl)
+
+        lbl = QLabel(label.upper())
+        lbl.setStyleSheet("font-size: 10px; font-weight: 600; color: #777; background: transparent;")
+        txt_container.addWidget(lbl)
+        
+        layout.addLayout(txt_container)
+        layout.addStretch()
+
+    def set_value(self, v):
+        self.val_lbl.setText(str(v))

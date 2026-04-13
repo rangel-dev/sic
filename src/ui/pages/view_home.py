@@ -1,119 +1,181 @@
-"""Home / Welcome view."""
-from PySide6.QtCore import Qt
+"""
+Executive Nexus Dashboard — Home View
+Modern, data-driven landing page for SIC.
+"""
+from datetime import datetime
+from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
+    QHBoxLayout, 
+    QLabel, 
+    QScrollArea, 
+    QSizePolicy, 
+    QVBoxLayout, 
+    QWidget,
+    QGridLayout,
+    QSpacerItem
 )
-from src.ui.components.base_widgets import Divider
-
+from src.ui.components.base_widgets import Divider, PulseStatus, KpiWidget, NexusCard
+from src.core.history_engine import HistoryEngine
+from src.core.version import VERSION
 
 class HomeView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.window = parent # MainWindow
         self._setup_ui()
+        self.refresh_stats()
 
     def _setup_ui(self):
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        outer.addWidget(scroll)
+        scroll.setFrameShape(QFrame.NoFrame)
+        root.addWidget(scroll)
 
         container = QWidget()
         scroll.setWidget(container)
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(36, 32, 36, 32)
-        layout.setSpacing(0)
+        
+        self.main_layout = QVBoxLayout(container)
+        self.main_layout.setContentsMargins(40, 40, 40, 40)
+        self.main_layout.setSpacing(0)
 
-        # Hero
-        hero_title = QLabel("SIC")
-        hero_title.setStyleSheet("font-size:32px;font-weight:800;background:transparent;")
-        layout.addWidget(hero_title)
+        # ─── HEADER AREA ──────────────────────────────────────────────────────
+        header = QHBoxLayout()
+        header.setSpacing(12)
+        
+        greeting = self._get_greeting()
+        self.title_lbl = QLabel(greeting)
+        self.title_lbl.setObjectName("nexus_greeting")
+        self.title_lbl.setStyleSheet("font-size: 28px; font-weight: 800;")
+        header.addWidget(self.title_lbl)
 
-        hero_sub = QLabel("System Intelligence Commerce  ·  v0.0.8")
-        hero_sub.setStyleSheet("font-size:13px;color:#555;background:transparent;margin-bottom:28px;")
-        layout.addWidget(hero_sub)
+        header.addWidget(PulseStatus())
+        
+        status_lbl = QLabel("Sistemas Prontos")
+        status_lbl.setStyleSheet("font-size: 12px; color: #4CAF50; font-weight: 600; text-transform: uppercase;")
+        header.addWidget(status_lbl)
+        
+        header.addStretch()
+        self.main_layout.addLayout(header)
 
-        layout.addWidget(Divider())
-        layout.addSpacing(24)
+        sub_header = QLabel(f"Bem-vindo ao centro de comando SIC  ·  Versão {VERSION}")
+        sub_header.setStyleSheet("font-size: 13px; color: #777; margin-bottom: 30px;")
+        self.main_layout.addWidget(sub_header)
 
-        # Module cards row
-        cards_layout = QHBoxLayout()
-        cards_layout.setSpacing(16)
+        # ─── KPI ROW ──────────────────────────────────────────────────────────
+        kpi_row = QHBoxLayout()
+        kpi_row.setSpacing(20)
 
+        self.kpi_total = KpiWidget("Operações Realizadas", "0", "📊")
+        self.kpi_brands = KpiWidget("Marcas Ativas", "2", "🏢")
+        self.kpi_status = KpiWidget("Saúde do Motor", "100%", "⚡")
+
+        kpi_row.addWidget(self.kpi_total)
+        kpi_row.addWidget(self.kpi_brands)
+        kpi_row.addWidget(self.kpi_status)
+        kpi_row.addStretch()
+        
+        self.main_layout.addLayout(kpi_row)
+        self.main_layout.addSpacing(40)
+
+        # ─── NEXUS CENTER (Action Cards) ──────────────────────────────────────
+        nexus_label = QLabel("NEXUS DE OPERAÇÕES")
+        nexus_label.setStyleSheet("font-size: 11px; font-weight: 700; color: #555; letter-spacing: 1.5px; margin-bottom: 15px;")
+        self.main_layout.addWidget(nexus_label)
+
+        nexus_grid = QGridLayout()
+        nexus_grid.setSpacing(20)
+
+        # Module Cards
         modules = [
-            ("⊕", "Gerador",     "Converte planilhas Excel em XMLs de Pricebook para o Salesforce Demandware."),
-            ("↕", "Sync",        "Sincroniza listas de vitrine e atributos de produto (online-flag, searchable)."),
-            ("✓", "Auditor",     "Validação Double-Blind: cruza Excel vs Pricebook vs Catálogo em 12 regras."),
-            ("◎", "Volumetria",  "OCR em imagens de produto para validar volume vs catálogo SF."),
+            ("⊕", "Gerador Pro",  "Processamento de planilhas e geração de XML Pricebook.", "#FF8050", 1),
+            ("↕", "Sync Hub",     "Sincronização de vitrines e atributos Salesforce.",    "#FF8050", 2),
+            ("✓", "Audit Nexus",  "Motor de auditoria integrada com 12 regras.",          "#BB88FF", 3),
+            ("◎", "Volumetria",   "Validação de volumes via processamento de catálogo.",  "#BB88FF", 4),
         ]
 
-        for icon, name, desc in modules:
-            card = self._make_module_card(icon, name, desc)
-            cards_layout.addWidget(card)
+        for i, (icon, name, desc, color, idx) in enumerate(modules):
+            card = NexusCard(icon, name, desc, color)
+            card.clicked.connect(lambda i=idx: self.window._switch(i)) # Access main window
+            nexus_grid.addWidget(card, 0, i)
 
-        layout.addLayout(cards_layout)
-        layout.addSpacing(32)
+        self.main_layout.addLayout(nexus_grid)
+        self.main_layout.addSpacing(40)
 
-        # Getting started
-        gs_title = QLabel("Como começar")
-        gs_title.setStyleSheet("font-size:15px;font-weight:700;background:transparent;margin-bottom:12px;")
-        layout.addWidget(gs_title)
+        # ─── RECENT ACTIVITY ──────────────────────────────────────────────────
+        self.main_layout.addWidget(Divider())
+        self.main_layout.addSpacing(25)
+        
+        activity_header = QHBoxLayout()
+        act_title = QLabel("Atividade Recente")
+        act_title.setStyleSheet("font-size: 16px; font-weight: 700;")
+        activity_header.addWidget(act_title)
+        activity_header.addStretch()
+        
+        view_all = QPushButton("Ver Histórico Completo →")
+        view_all.setObjectName("btn_ghost")
+        view_all.setCursor(Qt.PointingHandCursor)
+        view_all.clicked.connect(lambda: self.window._switch(7))
+        activity_header.addWidget(view_all)
+        
+        self.main_layout.addLayout(activity_header)
+        self.main_layout.addSpacing(15)
 
-        steps = [
-            ("1", "Gerador",    "Carregue a planilha GRADE DE ATIVAÇÃO e gere o XML de Pricebook."),
-            ("2", "Sync",       "Carregue o Excel + XMLs de Catálogo para calcular o delta de listas."),
-            ("3", "Auditor",    "Carregue todos os arquivos para executar a auditoria completa."),
-            ("4", "Exportar",   "Exporte o resultado para Excel ou envie ao Google Chat."),
-        ]
+        self.activity_container = QVBoxLayout()
+        self.activity_container.setSpacing(10)
+        self.main_layout.addLayout(self.activity_container)
 
-        for num, step, desc in steps:
-            row = QHBoxLayout()
-            row.setSpacing(12)
+        self.main_layout.addStretch()
 
-            num_lbl = QLabel(num)
-            num_lbl.setFixedSize(28, 28)
-            num_lbl.setAlignment(Qt.AlignCenter)
-            num_lbl.setStyleSheet(
-                "background:#2a1508;color:#ff8050;border-radius:14px;"
-                "font-weight:700;font-size:12px;"
-            )
-            row.addWidget(num_lbl)
+    def _get_greeting(self) -> str:
+        hour = datetime.now().hour
+        if hour < 12: return "Bom dia"
+        if hour < 18: return "Boa tarde"
+        return "Boa noite"
 
-            step_lbl = QLabel(f"<b>{step}:</b> {desc}")
-            step_lbl.setStyleSheet("font-size:12px;background:transparent;")
-            step_lbl.setWordWrap(True)
-            row.addWidget(step_lbl, 1)
+    def refresh_stats(self):
+        """Pulls real data from engines."""
+        try:
+            entries = HistoryEngine.get_entries()
+            self.kpi_total.set_value(len(entries))
+            
+            # Update activity feed (last 3)
+            # Clear previous
+            for i in reversed(range(self.activity_container.count())): 
+                self.activity_container.itemAt(i).widget().setParent(None)
 
-            layout.addLayout(row)
-            layout.addSpacing(8)
+            for entry in entries[:3]:
+                row = QFrame()
+                row.setObjectName("card_flat")
+                row_layout = QHBoxLayout(row)
+                row_layout.setContentsMargins(15, 10, 15, 10)
+                
+                mod_lbl = QLabel(f"<b>{entry['module']}</b>")
+                mod_lbl.setFixedWidth(80)
+                row_layout.addWidget(mod_lbl)
+                
+                act_lbl = QLabel(entry['action'])
+                row_layout.addWidget(act_lbl, 1)
+                
+                # Format Date: DD/MM/YYYY
+                try:
+                    dt = datetime.fromisoformat(entry['timestamp'])
+                    date_str = dt.strftime("%d/%m/%Y")
+                except:
+                    date_str = entry['timestamp'].split('T')[0]
 
-        layout.addStretch()
+                date_lbl = QLabel(date_str)
+                date_lbl.setStyleSheet("color: #666; font-size: 11px;")
+                row_layout.addWidget(date_lbl)
+                
+                self.activity_container.addWidget(row)
+        except Exception as e:
+            print(f"Error refreshing dashboard: {e}")
 
-    def _make_module_card(self, icon: str, name: str, desc: str) -> QWidget:
-        card = QWidget()
-        card.setObjectName("card")
-        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+    def refresh_theme(self):
+        self.refresh_stats()
 
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(6)
-
-        icon_lbl = QLabel(icon)
-        icon_lbl.setStyleSheet(
-            "font-size:24px;color:#FF6B35;background:transparent;"
-        )
-        layout.addWidget(icon_lbl)
-
-        name_lbl = QLabel(name)
-        name_lbl.setStyleSheet("font-size:14px;font-weight:700;background:transparent;")
-        layout.addWidget(name_lbl)
-
-        desc_lbl = QLabel(desc)
-        desc_lbl.setStyleSheet("font-size:11px;color:#555;background:transparent;")
-        desc_lbl.setWordWrap(True)
-        layout.addWidget(desc_lbl)
-
-        return card
+from PySide6.QtWidgets import QFrame, QPushButton

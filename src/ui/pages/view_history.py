@@ -149,10 +149,10 @@ class HistoryView(QWidget):
             # ID
             self._table.setItem(i, 0, QTableWidgetItem(str(entry['id'])))
             
-            # Format Date: DD-MM-YYYY HH:MM
+            # Format Date: DD/MM/YYYY HH:MM
             try:
                 dt = datetime.fromisoformat(entry['timestamp'])
-                dt_str = dt.strftime("%d-%m-%Y %H:%M")
+                dt_str = dt.strftime("%d/%m/%Y %H:%M")
             except:
                 dt_str = entry['timestamp']
             

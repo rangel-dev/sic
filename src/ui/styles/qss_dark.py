@@ -768,4 +768,28 @@ QSplitter::handle:vertical {
     padding: 0;
     line-height: 1.6;
 }
+
+/* ============================================================
+   DASHBOARD / EXECUTIVE NEXUS
+   ============================================================ */
+#kpi_card {
+    background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 #222222, stop:1 #1a1a1a);
+    border: 1px solid #2d2d2d;
+    border-radius: 16px;
+}
+
+#nexus_card {
+    background-color: #1a1a1a;
+    border: 1px solid #282828;
+    border-radius: 14px;
+}
+
+#nexus_card:hover {
+    background-color: #222222;
+    border-color: #444444;
+}
+
+#nexus_greeting {
+    color: #ffffff;
+}
 """

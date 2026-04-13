@@ -64,7 +64,7 @@ class AuditorView(QWidget):
         root.setSpacing(0)
 
         root.addWidget(SectionHeader(
-            "✓  Auditor  — Double-Blind Validation Engine",
+            "✓  Auditor  — Motor de Auditoria de Catálogo",
             "Cruza Excel × Pricebook XML × Catálogo XML em 12 regras de negócio"
         ))
         root.addWidget(Divider())

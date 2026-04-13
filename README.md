@@ -2,7 +2,7 @@
 
 Módulo de Inteligência Comercial e Auditoria de Catálogo para o ecossistema Natura & Avon.
 
-Este software realiza a validação "Double-Blind" entre dados comerciais (Excel) e dados técnicos do Salesforce Commerce Cloud (XML), identificando divergências de preço, visibilidade, SEO e integridade de bundles.
+Este software realiza a auditoria avançada entre dados comerciais (Excel) e dados técnicos do Salesforce Commerce Cloud (XML), identificando divergências de preço, visibilidade, SEO e integridade de bundles.
 
 ## 🏗️ Estrutura do Projeto
 
