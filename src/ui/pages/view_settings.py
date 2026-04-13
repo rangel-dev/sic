@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
-from views.widgets import Divider, SectionHeader
+from src.ui.components.base_widgets import Divider, SectionHeader
 
 
 class SettingsView(QWidget):

@@ -23,9 +23,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from views.widgets import Divider, DropZone, SectionHeader, StatPill
-from workers.worker_gerador import GeradorWorker
-from modules.history_engine import HistoryEngine
+from src.ui.components.base_widgets import Divider, DropZone, SectionHeader, StatPill
+from src.workers.worker_gerador import GeradorWorker
+from src.core.history_engine import HistoryEngine
 
 
 class GeradorView(QWidget):

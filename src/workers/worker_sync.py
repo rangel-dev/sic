@@ -4,7 +4,7 @@ Runs the catalog delta calculation off the main thread.
 """
 from PySide6.QtCore import QThread, Signal
 
-from modules.sync_engine import SyncEngine, SyncResult
+from src.core.sync_engine import SyncEngine, SyncResult
 
 
 class SyncWorker(QThread):

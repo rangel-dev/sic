@@ -22,8 +22,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from modules.history_engine import HistoryEngine
-from views.widgets import Divider, SectionHeader
+from src.core.history_engine import HistoryEngine
+from src.ui.components.base_widgets import Divider, SectionHeader
 
 
 class HistoryView(QWidget):

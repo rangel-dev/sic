@@ -5,7 +5,7 @@ Runs Excel→XML generation off the main thread.
 from typing import Optional
 from PySide6.QtCore import QThread, Signal
 
-from modules.gerador_engine import GeradorEngine
+from src.core.gerador_engine import GeradorEngine
 
 
 class GeradorWorker(QThread):

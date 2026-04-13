@@ -20,17 +20,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from styles.qss_dark  import DARK_STYLESHEET
-from styles.qss_light import LIGHT_STYLESHEET
+from src.ui.styles.qss_dark  import DARK_STYLESHEET
+from src.ui.styles.qss_light import LIGHT_STYLESHEET
 
-from views.view_home       import HomeView
-from views.view_gerador    import GeradorView
-from views.view_sync       import SyncView
-from views.view_auditor    import AuditorView
-from views.view_volumetria import VolumetriaView
-from views.view_cadastro   import CadastroView
-from views.view_settings   import SettingsView
-from views.view_history    import HistoryView
+from src.ui.pages.view_home       import HomeView
+from src.ui.pages.view_gerador    import GeradorView
+from src.ui.pages.view_sync       import SyncView
+from src.ui.pages.view_auditor    import AuditorView
+from src.ui.pages.view_volumetria import VolumetriaView
+from src.ui.pages.view_cadastro   import CadastroView
+from src.ui.pages.view_settings   import SettingsView
+from src.ui.pages.view_history    import HistoryView
 
 
 # ─── Navigation button ────────────────────────────────────────────────────────

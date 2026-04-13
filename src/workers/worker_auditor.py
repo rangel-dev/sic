@@ -4,7 +4,7 @@ Runs the full double-blind audit off the main thread so the UI stays responsive.
 """
 from PySide6.QtCore import QThread, Signal
 
-from modules.auditor_engine import AuditorEngine, AuditResult
+from src.core.auditor_engine import AuditorEngine, AuditResult
 
 
 class AuditorWorker(QThread):

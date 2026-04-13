@@ -26,8 +26,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from views.widgets import Divider, DropZone, SectionHeader
-from modules.history_engine import HistoryEngine
+from src.ui.components.base_widgets import Divider, DropZone, SectionHeader
+from src.core.history_engine import HistoryEngine
 
 
 # ─── OCR Worker ──────────────────────────────────────────────────────────────

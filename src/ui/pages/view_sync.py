@@ -16,10 +16,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from views.widgets import Divider, DropZone, SectionHeader, StatPill
-from workers.worker_sync import SyncWorker
-from modules.sync_engine import SyncResult
-from modules.history_engine import HistoryEngine
+from src.ui.components.base_widgets import Divider, DropZone, SectionHeader, StatPill
+from src.workers.worker_sync import SyncWorker
+from src.core.sync_engine import SyncResult
+from src.core.history_engine import HistoryEngine
 
 
 class SyncView(QWidget):

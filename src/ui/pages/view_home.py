@@ -3,7 +3,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 )
-from views.widgets import Divider
+from src.ui.components.base_widgets import Divider
 
 
 class HomeView(QWidget):

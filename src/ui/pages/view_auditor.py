@@ -36,11 +36,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from modules.auditor_engine import AuditResult, ERROR_META
-from modules.ai_agent import AiAgent
-from views.widgets import Divider, DropZone, ErrorCard, SectionHeader
-from workers.worker_auditor import AuditorWorker
-from modules.history_engine import HistoryEngine
+from src.core.auditor_engine import AuditResult, ERROR_META
+from src.core.ai_agent import AiAgent
+from src.ui.components.base_widgets import Divider, DropZone, ErrorCard, SectionHeader
+from src.workers.worker_auditor import AuditorWorker
+from src.core.history_engine import HistoryEngine
 
 
 MAX_TABLE_ROWS = 500

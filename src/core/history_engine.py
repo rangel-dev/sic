@@ -8,8 +8,8 @@ DB_NAME = "history.db"
 class HistoryEngine:
     @staticmethod
     def _get_connection():
-        # Get the path relative to the project root
-        db_path = Path(__file__).parent.parent / DB_NAME
+        # Get the path relative to the project root (3 levels up from src/core/history_engine.py)
+        db_path = Path(__file__).parent.parent.parent / DB_NAME
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         return conn
