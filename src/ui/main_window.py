@@ -23,14 +23,7 @@ from PySide6.QtWidgets import (
 from src.ui.styles.qss_dark  import DARK_STYLESHEET
 from src.ui.styles.qss_light import LIGHT_STYLESHEET
 
-from src.ui.pages.view_home       import HomeView
-from src.ui.pages.view_gerador    import GeradorView
-from src.ui.pages.view_sync       import SyncView
-from src.ui.pages.view_auditor    import AuditorView
-from src.ui.pages.view_volumetria import VolumetriaView
-from src.ui.pages.view_cadastro   import CadastroView
-from src.ui.pages.view_settings   import SettingsView
-from src.ui.pages.view_history    import HistoryView
+# View modules will be imported lazily in _load_page to drastically improve application startup time.
 
 from src.core.version import VERSION, APP_NAME
 from src.core.update_service import UpdateService
@@ -198,21 +191,62 @@ class MainWindow(QMainWindow):
         return sidebar
 
     def _build_pages(self):
-        self._pages = [
-            HomeView(self),        # 0
-            GeradorView(self),     # 1
-            SyncView(self),        # 2
-            AuditorView(self),     # 3
-            VolumetriaView(self),  # 4
-            CadastroView(self),    # 5
-            SettingsView(self),    # 6
-            HistoryView(self),     # 7
-        ]
-        for page in self._pages:
-            self._stack.addWidget(page)
+        self._pages = [None] * 8
+        for i in range(8):
+            self._stack.addWidget(QWidget())  # Dummy placeholder
+            
+        # Pre-load only the Home view for immediate startup
+        self._load_page(0)
+
+    def _load_page(self, index: int):
+        if self._pages[index] is not None:
+            return
+
+        from PySide6.QtWidgets import QApplication
+
+        # Lazy Imports
+        if index == 0:
+            from src.ui.pages.view_home import HomeView
+            page = HomeView(self)
+        elif index == 1:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            from src.ui.pages.view_gerador import GeradorView
+            page = GeradorView(self)
+            QApplication.restoreOverrideCursor()
+        elif index == 2:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            from src.ui.pages.view_sync import SyncView
+            page = SyncView(self)
+            QApplication.restoreOverrideCursor()
+        elif index == 3:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            from src.ui.pages.view_auditor import AuditorView
+            page = AuditorView(self)
+            QApplication.restoreOverrideCursor()
+        elif index == 4:
+            from src.ui.pages.view_volumetria import VolumetriaView
+            page = VolumetriaView(self)
+        elif index == 5:
+            from src.ui.pages.view_cadastro import CadastroView
+            page = CadastroView(self)
+        elif index == 6:
+            from src.ui.pages.view_settings import SettingsView
+            page = SettingsView(self)
+        elif index == 7:
+            from src.ui.pages.view_history import HistoryView
+            page = HistoryView(self)
+        else:
+            return
+
+        self._pages[index] = page
+        old_widget = self._stack.widget(index)
+        self._stack.insertWidget(index, page)
+        self._stack.removeWidget(old_widget)
+        old_widget.deleteLater()
 
     # ── Navigation ────────────────────────────────────────────────────────
     def _switch(self, index: int):
+        self._load_page(index)
         self._stack.setCurrentIndex(index)
 
         # Update button states (manual exclusive group — sidebar has no auto-exclusive)
