@@ -18,8 +18,9 @@ def verify_core_integrity() -> bool:
         
     sha256_hash = hashlib.sha256()
     with open(rules_path, "rb") as f:
-        # Read and update hash string value in blocks of 4K
-        for byte_block in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(byte_block)
+        # Normalizamos os line endings para garantir que o Hash seja idêntico
+        # independente se o Git baixou em formato Windows (CRLF) ou Mac (LF).
+        content = f.read().replace(b"\r\n", b"\n")
+        sha256_hash.update(content)
             
     return sha256_hash.hexdigest() == EXPECTED_V11_HASH
