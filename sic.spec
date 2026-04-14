@@ -54,7 +54,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='assets/icons/app.ico' if os.path.exists('assets/icons/app.ico') else None
+    icon='assets/icons/app.ico'
 )
 
 # For Mac, we still want the .app bundle wrapper
@@ -62,7 +62,7 @@ if sys.platform == 'darwin':
     app = BUNDLE(
         exe,
         name='SIC.app',
-        icon='assets/icons/app.icns' if os.path.exists('assets/icons/app.icns') else None,
+        icon='assets/icons/app.icns',
         bundle_id='com.rangeldev.sic',
         info_plist={
             'NSHighResolutionCapable': 'True',

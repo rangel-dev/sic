@@ -66,6 +66,7 @@ def main():
 
     # ── Launch ────────────────────────────────────────────────────────────
     window = MainWindow()
+    window.setWindowIcon(QIcon(icon_path))
     window.show()
 
     sys.exit(app.exec())
