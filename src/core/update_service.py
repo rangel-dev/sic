@@ -74,24 +74,56 @@ class UpdateService:
     @staticmethod
     def download_and_install(download_url: str):
         """
-        Downloads the file and prepares the bootstrap restart.
-        In a real prod app, you'd use a separate process for this.
+        Downloads the file, extracts it (ZIP), and prepares the bootstrap restart.
         """
+        import zipfile
+        
         # 1. Download to temp
         temp_dir = tempfile.gettempdir()
         filename = download_url.split("/")[-1]
-        target_path = os.path.join(temp_dir, filename)
+        target_zip_path = os.path.join(temp_dir, filename)
         
         try:
             resp = requests.get(download_url, stream=True)
-            with open(target_path, "wb") as f:
+            with open(target_zip_path, "wb") as f:
                 for chunk in resp.iter_content(chunk_size=8192):
                     f.write(chunk)
             
-            # 2. Trigger Bootstrap Update
-            UpdateService._trigger_restart_swap(target_path)
+            # 2. Extract Zip
+            extract_dir = os.path.join(temp_dir, "sic_update_extracted")
+            os.makedirs(extract_dir, exist_ok=True)
+            
+            with zipfile.ZipFile(target_zip_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+                
+            # Find the extracted executable/app
+            is_windows = platform.system().lower() == "windows"
+            new_file_path = None
+            
+            if is_windows:
+                # Look for SIC.exe
+                for root, _, files in os.walk(extract_dir):
+                    for name in files:
+                        if name.lower().endswith(".exe"):
+                            new_file_path = os.path.join(root, name)
+                            break
+            else:
+                # Look for SIC.app on Mac
+                for root, dirs, _ in os.walk(extract_dir):
+                    for name in dirs:
+                        if name.endswith(".app"):
+                            new_file_path = os.path.join(root, name)
+                            break
+                            
+            if not new_file_path:
+                print("Failed to find executable in extracted update.")
+                return
+
+            # 3. Trigger Bootstrap Update
+            UpdateService._trigger_restart_swap(new_file_path)
+            
         except Exception as e:
-            print(f"Download failed: {e}")
+            print(f"Update failed: {e}")
 
     @staticmethod
     def _trigger_restart_swap(new_file_path: str):
@@ -99,7 +131,6 @@ class UpdateService:
         current_exe = sys.executable
         if "python" in current_exe.lower():
             # Running as script, can't really "auto-update" the python env easily
-            # but we can simulate success.
             print("Running as script. Auto-update skipped (would replace .exe).")
             return
 
