@@ -127,39 +127,49 @@ class UpdateService:
 
     @staticmethod
     def _trigger_restart_swap(new_file_path: str):
-        """Creates a batch/sh script to swap the executable and restarts."""
+        """Creates a batch/sh script to swap the executable and restarts in a detached state."""
         current_exe = sys.executable
         if "python" in current_exe.lower():
-            # Running as script, can't really "auto-update" the python env easily
             print("Running as script. Auto-update skipped (would replace .exe).")
             return
 
         is_windows = platform.system().lower() == "windows"
         
         if is_windows:
-            # Simple Batch Swap
             script_path = os.path.join(tempfile.gettempdir(), "sic_update.bat")
             with open(script_path, "w") as f:
-                f.write(f"""
-@echo off
-timeout /t 2 /nobreak > nul
+                f.write(f"""@echo off
+:loop
+timeout /t 1 /nobreak > nul
+tasklist | find /i "SIC.exe" > nul
+if not errorlevel 1 goto loop
 move /y "{new_file_path}" "{current_exe}"
 start "" "{current_exe}"
 del "%~f0"
 """)
-            subprocess.Popen([script_path], shell=True)
+            subprocess.Popen([script_path], shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
         else:
             # Mac Shell Swap
+            # Extract App root (e.g. going up from SIC.app/Contents/MacOS/SIC to SIC.app)
+            app_root = current_exe
+            while len(app_root) > 1:
+                if app_root.endswith(".app"):
+                    break
+                app_root = os.path.dirname(app_root)
+            
+            if not app_root.endswith(".app"):
+                app_root = current_exe # Fallback if not bundled properly
+                
             script_path = os.path.join(tempfile.gettempdir(), "sic_update.sh")
             with open(script_path, "w") as f:
-                f.write(f"""
-#!/bin/bash
+                f.write(f"""#!/bin/bash
 sleep 2
-mv -f "{new_file_path}" "{current_exe}"
-open "{current_exe}"
+rm -rf "{app_root}"
+mv -f "{new_file_path}" "{app_root}"
+open "{app_root}"
 rm -- "$0"
 """)
             os.chmod(script_path, 0o755)
-            subprocess.Popen(["/bin/bash", script_path])
+            subprocess.Popen(["/bin/bash", script_path], start_new_session=True)
 
         sys.exit(0)

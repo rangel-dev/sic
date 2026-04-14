@@ -286,15 +286,17 @@ class MainWindow(QMainWindow):
             self._btn_update.setEnabled(False)
             self.statusBar().showMessage("Iniciando download da atualização...")
             
-            # Use another worker or just run service for simplicity since it's fire-and-forget restart
-            # For now, let's call the service directly (the service will block slightly while downloading)
-            # but then it will os.exit which is what we want.
-            try:
-                UpdateService.download_and_install(self._update_url)
-            except Exception as e:
-                QMessageBox.critical(self, "Erro no Update", f"Não foi possível completar a atualização:\n{str(e)}")
-                self._btn_update.setText("⚡ Tentar Novamente")
-                self._btn_update.setEnabled(True)
+            # Run updater in background thread to prevent UI freezing
+            import threading
+            def run_update():
+                try:
+                    UpdateService.download_and_install(self._update_url)
+                except Exception as e:
+                    # Thread errors are hard to show directly in QMessageBox without signals, 
+                    # but the main process exits on success anyway.
+                    print(f"Update background thread failed: {e}")
+            
+            threading.Thread(target=run_update, daemon=True).start()
 
     # ── Theme & Font Scaling ──────────────────────────────────────────────
     def _toggle_theme(self):
