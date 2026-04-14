@@ -47,6 +47,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           cd dist
+          chmod +x SIC.app/Contents/MacOS/SIC
           zip -r SIC_Mac.zip SIC.app
 
       - name: Upload Release Assets
