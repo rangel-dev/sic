@@ -352,9 +352,31 @@ class AuditorView(QWidget):
     # ── Finished ──────────────────────────────────────────────────────────
     def _on_finished(self, result: AuditResult):
         self._result = result
+        self._progress_bar.hide()
+        self._status_lbl.hide()
         self._btn_run.setEnabled(True)
         self._btn_export.setEnabled(True)
         self._btn_webhook.setEnabled(True)
+
+        # ── Lacre de Segurança (Integridade) ──────────────────────────
+        if result.integrity_error:
+            bg_html = "#2a0a0a"
+            fg_html = "#ffb3b3"
+            html = """
+            <h2 style='color:#ff4444;'>🚨 ALERTA CRÍTICO DE INTEGRIDADE 🚨</h2>
+            <p>O arquivo fonte das regras de validação ('parity_rules_v11.py') foi modificado ou corrompido.</p>
+            <p><strong>A execução foi abortada por razões de conformidade.</strong></p>
+            <p>Qualquer adulteração no núcleo destrói a Paridade V11.6 validada contra o sistema Legado.</p>
+            <p>Restaure a versão original das regras ou adicione novas validações na pasta 'custom_rules/'.</p>
+            """
+            self._ai_browser.setHtml(f"<html><body style='background:{bg_html};color:{fg_html};padding:12px;font-size:14px;font-family:sans-serif;'>{html}</body></html>")
+            self._cards_container.hide()
+            self._table_title.setText("Auditoria Bloqueada pelo Kernel")
+            QMessageBox.critical(
+                self, "Lacre Violado",
+                "O Motor de Auditoria foi corrompido ou editado manual ou artificialmente.\nA execução está bloqueada para preservar a confiabilidade dos números."
+            )
+            return
 
         # Update error cards — Flow organization (no holes)
         # 1. Clear current grid
