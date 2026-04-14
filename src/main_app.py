@@ -2,7 +2,9 @@
 Pricing Master Suite v11.6 – Entry Point
 Run: python main.py
 """
+import os
 import sys
+import platform
 
 from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QFont, QIcon
@@ -14,7 +16,26 @@ from src.ui.styles.qss_light import LIGHT_STYLESHEET
 from src.ui.main_window import MainWindow
 
 
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+
 def main():
+    # ── Windows Taskbar Icon Fix ──────────────────────────────────────────
+    if platform.system().lower() == "windows":
+        try:
+            import ctypes
+            myappid = f"rangeldev.sic.suite.{VERSION}"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
+
     # ── HiDPI + anti-aliasing ─────────────────────────────────────────────
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
@@ -24,7 +45,9 @@ def main():
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("RangelDev")
     app.setApplicationVersion(VERSION)
-    app.setWindowIcon(QIcon("assets/icons/app_icon.png"))
+    
+    icon_path = resource_path("assets/icons/app_icon.png")
+    app.setWindowIcon(QIcon(icon_path))
 
     # ── Settings & Theme ──────────────────────────────────────────────────
     settings = QSettings("SIC", "SIC_Suite")
