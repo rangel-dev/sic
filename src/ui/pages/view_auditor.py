@@ -300,6 +300,7 @@ class AuditorView(QWidget):
         self._brand_filter = key
         for btn in (self._btn_all, self._btn_natura, self._btn_avon):
             btn.setChecked(btn.property("filter_key") == key)
+        self._refresh_cards()
         self._refresh_table()
 
     # ── Run ───────────────────────────────────────────────────────────────
@@ -378,28 +379,7 @@ class AuditorView(QWidget):
             )
             return
 
-        # Update error cards — Flow organization (no holes)
-        # 1. Clear current grid
-        for i in reversed(range(self._cards_grid.count())):
-            self._cards_grid.itemAt(i).widget().setParent(None)
-
-        # 2. Add only visible cards in a compact grid (max 2 columns in the sidebar)
-        visible_cards = []
-        for code, card in self._error_cards.items():
-            bt = result.stats.get("by_type", {}).get(code, {})
-            total = bt.get("total", 0)
-            card.update_counts(total, bt.get("natura", 0), bt.get("avon", 0))
-            if total > 0:
-                visible_cards.append(card)
-                card.show()
-            else:
-                card.hide()
-
-        for idx, card in enumerate(visible_cards):
-            row, col = divmod(idx, 2)
-            self._cards_grid.addWidget(card, row, col)
-
-        self._cards_container.setVisible(len(visible_cards) > 0)
+        self._refresh_cards()
 
         # Default: show all errors (clear selection)
         self._active_filters.clear()
@@ -464,6 +444,41 @@ class AuditorView(QWidget):
         self._refresh_table()
 
     # ── Table refresh ─────────────────────────────────────────────────────
+    def _refresh_cards(self):
+        if not self._result:
+            return
+
+        for i in reversed(range(self._cards_grid.count())):
+            self._cards_grid.itemAt(i).widget().setParent(None)
+
+        visible_cards = []
+        for code, card in self._error_cards.items():
+            bt = self._result.stats.get("by_type", {}).get(code, {})
+            
+            if self._brand_filter == "natura":
+                nat = bt.get("natura", 0)
+                card.update_counts(nat, nat, 0)
+                if nat > 0: visible_cards.append(card)
+            elif self._brand_filter == "avon":
+                avn = bt.get("avon", 0)
+                card.update_counts(avn, 0, avn)
+                if avn > 0: visible_cards.append(card)
+            else:
+                total = bt.get("total", 0)
+                card.update_counts(total, bt.get("natura", 0), bt.get("avon", 0))
+                if total > 0: visible_cards.append(card)
+                
+            if card in visible_cards:
+                card.show()
+            else:
+                card.hide()
+
+        for idx, card in enumerate(visible_cards):
+            row, col = divmod(idx, 2)
+            self._cards_grid.addWidget(card, row, col)
+
+        self._cards_container.setVisible(len(visible_cards) > 0)
+
     def _refresh_table(self):
         if not self._result:
             return
@@ -596,20 +611,17 @@ class AuditorView(QWidget):
         avn_err = stats.get("by_brand", {}).get("avon",   0)
 
         agent = AiAgent()
-        ai_text = agent.generate_report(
+        plain_ai = agent.generate_gchat_report(
             stats,
             brands_found=self._result.brands_found,
             total_excel_skus=self._result.total_excel_skus,
         )
-        # Strip HTML for plain text
-        import re
-        plain_ai = re.sub(r"<[^>]+>", "", ai_text).strip()
 
         payload = {
             "cards": [
                 {
                     "header": {
-                        "title": "SIC — Relatório de Auditoria",
+                        "title": "SIC — Relatório Estratégico",
                         "subtitle": f"{self._result.total_excel_skus} SKUs auditados",
                     },
                     "sections": [

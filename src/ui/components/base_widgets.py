@@ -263,9 +263,9 @@ class ErrorCard(QFrame):
             )
             parts = []
             if natura > 0:
-                parts.append(f'<span style="color:#ff8050">N:{natura}</span>')
+                parts.append(f'<span style="color:#ff8050">Natura:{natura}</span>')
             if avon > 0:
-                parts.append(f'<span style="color:#bb88ff">A:{avon}</span>')
+                parts.append(f'<span style="color:#bb88ff">Avon:{avon}</span>')
             self._brand_lbl.setText("  ".join(parts))
 
     def set_selected(self, selected: bool) -> None:

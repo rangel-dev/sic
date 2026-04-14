@@ -5,7 +5,7 @@ Run: python main.py
 import sys
 
 from PySide6.QtCore import Qt, QSettings
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication
 
 from src.core.version import VERSION, APP_NAME
@@ -24,6 +24,7 @@ def main():
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("RangelDev")
     app.setApplicationVersion(VERSION)
+    app.setWindowIcon(QIcon("assets/icons/app_icon.png"))
 
     # ── Settings & Theme ──────────────────────────────────────────────────
     settings = QSettings("SIC", "SIC_Suite")

@@ -145,3 +145,39 @@ Identificamos <strong style="color:{strong_color}; font-weight:900;">{total_erro
 
         return html_out
 
+    def generate_gchat_report(self, stats: dict, brands_found: Optional[list[str]] = None, total_excel_skus: int = 0) -> str:
+        """Return a formatted string using Google Chat supported Markdown."""
+        by_type = stats.get("by_type", {})
+        error_keys = [k for k, v in by_type.items() if v.get("total", 0) > 0]
+        total_errors = sum(by_type[k].get("total", 0) for k in error_keys)
+
+        if total_errors == 0:
+            return "✅ *Operação Saudável*\nTodas as regras de negócio foram validadas. O catálogo está 100% íntegro para todos os canais."
+
+        num_categories = len(error_keys)
+        out = f"Identificamos *{total_errors} alertas* distribuídos em *{num_categories} categorias*. Confira o detalhamento completo:\n\n"
+
+        priority = ['cross', 'ml', 'margin', 'price', 'missing', 'job', 'bundle', 'offline', 'logic', 'searchable', 'primary']
+        def sort_key(k): return priority.index(k) if k in priority else 99
+        sorted_keys = sorted(error_keys, key=sort_key)
+
+        for key in sorted_keys:
+            s_data = by_type[key]
+            meaning = _KB.get(key, {"title": key, "desc": "Inconsistência técnica.", "impact": "Manual"})
+            
+            b_str = ""
+            nat = s_data.get("natura", 0) > 0
+            avn = s_data.get("avon", 0) > 0
+            if nat and avn: b_str = "Natura e Avon"
+            elif nat: b_str = "Natura"
+            elif avn: b_str = "Avon"
+
+            count = s_data.get("total", 0)
+            
+            out += f"🚩 *{meaning['title']}* ({count} SKUs - {b_str})\n"
+            out += f"• *Contexto:* {meaning['desc']}\n"
+            out += f"• *Risco:* {meaning['impact']}\n\n"
+
+        out += "⚠️ *Ação Recomendada:* Priorize a correção das inconsistências de 'Alto Risco' antes do próximo push de produção."
+        return out
+
