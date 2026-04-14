@@ -175,10 +175,13 @@ class AuditorEngine:
 
             # Listas LISTA_XX / lista-XX
             for name in wb.sheetnames:
+                ws = wb[name]
+                if ws.sheet_state != 'visible':
+                    continue
+                    
                 m = re.match(r"(?i)lista[-_\s]*0*(\d+)", name)
                 if m:
                     num = m.group(1).zfill(2)
-                    ws  = wb[name]
                     # Natura → LISTA_XX, Avon → lista-XX
                     list_key = f"LISTA_{num}" if file_brand == "Natura" else f"lista-{num}"
                     self._parse_lista(ws, file_brand, list_key, excel_lists)
@@ -227,7 +230,8 @@ class AuditorEngine:
         for name in wb.sheetnames:
             n = name.upper()
             if "GRADE" in n or "ATIVA" in n:
-                return wb[name]
+                if wb[name].sheet_state == 'visible':
+                    return wb[name]
         return None
 
     def _parse_grade(self, ws, file_brand: str, out: dict) -> None:
@@ -279,16 +283,36 @@ class AuditorEngine:
             out[sku] = {"DE": de or 0.0, "POR": por or 0.0, "VISIBLE": vis}
 
     def _parse_lista(self, ws, file_brand: str, list_key: str, out: dict) -> None:
-        for row in ws.iter_rows(values_only=True):
-            for cell in row:
-                if not cell or not SKU_RE.match(str(cell).strip()):
+        sku_col = -1
+        rows = list(ws.iter_rows(max_row=10000, values_only=True))
+        
+        # Scanner Dinâmico (Legacy JS findSkuColumnOnly)
+        for i, row in enumerate(rows[:50]):
+            for j, cell in enumerate(row):
+                if cell:
+                    val = str(cell).strip().upper()
+                    if val.startswith("NATBRA-") or val.startswith("AVNBRA-"):
+                        sku_col = j
+                        break
+            if sku_col != -1:
+                break
+                
+        if sku_col == -1:
+            sku_col = 1 # Fallback para coluna B (index 1) - equivalente ao 2 no JS
+            
+        for row in rows:
+            if sku_col < len(row):
+                cell = row[sku_col]
+                if not cell:
                     continue
-                sku = str(cell).strip().upper()
-                if file_brand == "Natura" and sku.startswith("AVNBRA-"):
+                val = str(cell).strip().upper()
+                if not SKU_RE.match(val):
                     continue
-                if file_brand == "Avon" and sku.startswith("NATBRA-"):
+                if file_brand == "Natura" and val.startswith("AVNBRA-"):
                     continue
-                out.setdefault(list_key, set()).add(sku)
+                if file_brand == "Avon" and val.startswith("NATBRA-"):
+                    continue
+                out.setdefault(list_key, set()).add(val)
 
     # ── Parsing Pricebook ─────────────────────────────────────────────────
     def _parse_pricebook(self, path: str) -> dict:
@@ -320,7 +344,9 @@ class AuditorEngine:
             else:
                 continue
 
-            price_type = "POR" if "sale" in pb_id else "DE"
+            # Identificação do Price Type = Legacy Rules Mismatch
+            # Legado JS: pbId.includes("lista") || pbId.includes("list") ? "DE" : "POR";
+            price_type = "DE" if "lista" in pb_id or "list" in pb_id else "POR"
 
             for pt in pb_el.findall(".//pb:price-table", ns):
                 sku = pt.get("product-id", "").upper()
@@ -383,8 +409,20 @@ class AuditorEngine:
             else:
                 brand_cat = "Desconhecido"
 
+            # Função helper espelho da getTagText (JS) - Busca profunda e ignorando strict namespaces
+            def get_tag_text(node, tag: str) -> Optional[str]:
+                for child in node.iter():
+                    if not isinstance(child.tag, str):
+                        continue
+                    # Ignora a URL de namespace ou tag crua
+                    if child.tag.endswith(f"}}{tag}") or child.tag == tag:
+                        if child.text and child.text.strip():
+                            return child.text.strip()
+                return None
+
             skus_in_file:  set[str] = set()
             primary_skus:  set[str] = set()
+            assigned_skus: set[str] = set()
 
             # Regras de Job (Mirroring) - Só no catálogo ML
             if brand_cat == "ML":
@@ -409,28 +447,30 @@ class AuditorEngine:
                 skus_in_file.add(sku)
 
                 # online-flag (true prevalece)
-                o = prod.find("c:online-flag", ns)
-                if o is not None:
-                    flag = (o.text or "").lower() == "true"
-                    if flag:
+                o_flag = get_tag_text(prod, "online-flag")
+                if o_flag is not None:
+                    if o_flag.lower() == "true":
                         online_status[sku] = True
                     elif online_status.get(sku) is not True:
                         online_status[sku] = False
 
                 # searchable-flag
-                s = prod.find("c:searchable-flag", ns)
-                if s is not None:
-                    flag = (s.text or "").lower() == "true"
-                    if flag:
+                s_flag = get_tag_text(prod, "searchable-flag")
+                if s_flag is not None:
+                    if s_flag.lower() == "true":
                         searchable_status[sku] = True
                     elif searchable_status.get(sku) is not True:
                         searchable_status[sku] = False
 
                 # Detecta SKU técnico (nome todo em CAIXA ALTA) - v10.4 logic parity
                 names_to_test = []
-                for tname in ["display-name", "name", "friendly-name"]:
+                for tname in ["display-name", "name"]:
                     for name_el in prod.findall(f".//c:{tname}", ns):
                         if name_el.text: names_to_test.append(name_el.text.strip())
+                
+                f_name = get_tag_text(prod, "friendly-name")
+                if f_name:
+                    names_to_test.append(f_name)
                 
                 if any(n == n.upper() and re.search(r"[A-Z]", n) for n in names_to_test):
                     technical_skus[sku] = True
@@ -438,11 +478,18 @@ class AuditorEngine:
                 # Variation base product
                 var_marker = (prod.get("variation-base-product") or
                               prod.get("is-variation-base") or "").lower()
-                prod_type = (prod.get("type") or "").lower()
+                
+                prod_type_attr = (prod.get("type") or "").lower()
+                prod_type_el = (get_tag_text(prod, "product-type") or "").lower()
+                prod_type = prod_type_attr if prod_type_attr else prod_type_el
+                
                 has_variants = len(prod.findall("c:variants/c:variant", ns)) > 0
-                var_flag_el = prod.find("c:variation-base-product", ns)
+                
+                var_flag_text = (get_tag_text(prod, "variation-base-product") or "").lower()
+                is_var_flag_text = (get_tag_text(prod, "is-variation-base") or "").lower()
+                
                 if (var_marker == "true" or "variation" in prod_type or has_variants
-                        or (var_flag_el is not None and (var_flag_el.text or "").lower() == "true")):
+                        or var_flag_text == "true" or is_var_flag_text == "true"):
                     variation_bases[sku] = True
 
                 # Bundles
@@ -455,11 +502,13 @@ class AuditorEngine:
                         bundles[sku] = comps
 
             # Category-assignments
-            for asgn in root.findall("c:category-assignment", ns):
+            for asgn in root.findall(".//c:category-assignment", ns):
                 sku    = (asgn.get("product-id") or "").upper()
                 cat_id = (asgn.get("category-id") or "")
                 if not sku or not cat_id:
                     continue
+                
+                assigned_skus.add(sku)
 
                 # Mapa para o check de JOB
                 category_assignments_map[brand_cat].setdefault(cat_id, set()).add(sku)
@@ -480,7 +529,8 @@ class AuditorEngine:
                     primary_skus.add(sku)
 
             # SKUs sem categoria primária (Audit Rule: todo SKU no catálogo deve ter category-primary)
-            for sku in skus_in_file:
+            # Requisito do Legado JS: Apenas varre os SKUs que foram marcados com Assigned (assigned_skus), não todos os 'skus_in_file'
+            for sku in assigned_skus:
                 # Ignoramos SKUs técnicos (geralmente não precisam de navegação/SEO)
                 if technical_skus.get(sku):
                     continue
@@ -552,7 +602,8 @@ class AuditorEngine:
 
             brand = "Natura" if sku.startswith("NATBRA-") else "Avon"
             pE = excel_prices.get(sku)
-            is_offline      = online_status.get(sku, True) is not True
+            # Replicando a restritividade exata do JS: Se o SKU não foi explicitamente listado como online=true no XML, é considerado offline.
+            is_offline      = online_status.get(sku) is not True
             is_on_grade     = pE is not None
 
             # Regra JS: se offline E não está no Excel, ignora completamente
@@ -586,7 +637,7 @@ class AuditorEngine:
                     for comp in bundles[sku]:
                         if variation_bases.get(comp):
                             continue
-                        if online_status.get(comp, True) is not True:
+                        if online_status.get(comp) is not True:
                             offline_comps.append(comp)
                         comp_px = (prices_xml.get(comp) or {}).get(brand, {})
                         if (comp_px.get("DE") or 0) <= 0 or (comp_px.get("POR") or 0) <= 0:
@@ -726,12 +777,32 @@ class AuditorEngine:
         error_dfs = {code: pd.DataFrame(rows) if rows else pd.DataFrame()
                      for code, rows in errors.items()}
 
+        # ─── RECONCILIAÇÃO LEGADA V11.6 (Deduplicação de SKUs) ────────────
+        # O sistema em Javascript validava cada SKU apenas 1 vez por categoria no Dashboard,
+        # gerando os números da UI via 'dynamicStats' agrupados por SKU_ID únicos.
+        # Caso um Produto tenha 2 erros de Listas (ex LISTA_1, LISTA_2), ele contava como 1.
+        dedup_stats = {k: {"total": 0, "natura": 0, "avon": 0} for k in ERROR_META}
+        
+        for code, rows in errors.items():
+            unique_skus = {}
+            for row in rows:
+                sku = row["sku"]
+                if sku not in unique_skus:
+                    unique_skus[sku] = row["brand"]
+            
+            dedup_stats[code]["total"] = len(unique_skus)
+            for brand_str in unique_skus.values():
+                if brand_str == "Natura":
+                    dedup_stats[code]["natura"] += 1
+                else:
+                    dedup_stats[code]["avon"] += 1
+
         total_stats = {
-            "total": sum(s["total"] for s in stats.values()),
-            "by_type": stats,
+            "total": sum(s["total"] for s in dedup_stats.values()),
+            "by_type": dedup_stats,
             "by_brand": {
-                "natura": sum(s["natura"] for s in stats.values()),
-                "avon":   sum(s["avon"]   for s in stats.values()),
+                "natura": sum(s["natura"] for s in dedup_stats.values()),
+                "avon":   sum(s["avon"]   for s in dedup_stats.values()),
             },
         }
         return error_dfs, total_stats
@@ -741,7 +812,11 @@ class AuditorEngine:
     def _f(val) -> Optional[float]:
         if val is None:
             return None
-        try:
-            return float(str(val).replace(",", ".").replace("R$", "").strip())
-        except (ValueError, TypeError):
-            return None
+        # Emula estritamente o comportamento do parseFloat() do JavaScript Legado.
+        # Ele lê apenas a parte inicial que se parece com número, truncando na vírgula 
+        # (causando o aumento e identificação do Falso Positivo/Erro de Typping em 10,50 vs 10.5).
+        v_str = str(val).replace("R$", "").strip()
+        m = re.match(r'^[+-]?\d+(?:\.\d+)?', v_str)
+        if m:
+            return float(m.group(0))
+        return None
