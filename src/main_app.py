@@ -113,32 +113,42 @@ def main():
     else:
         app.setStyleSheet(LIGHT_STYLESHEET)
 
-    # ── Splash Screen ─────────────────────────────────────────────────────
+    # ── Splash Screen (Dynamic Scaling) ───────────────────────────────────
     splash_bg_path = resource_path("assets/splash_bg.png")
-    if not os.path.exists(splash_bg_path):
-        # Fallback to icon if background is missing
-        splash_pixmap = QPixmap(icon_path).scaled(
-            256, 256, Qt.KeepAspectRatio, Qt.SmoothTransformation
-        )
-    else:
+    if os.path.exists(splash_bg_path):
         splash_pixmap = QPixmap(splash_bg_path)
+    else:
+        splash_pixmap = QPixmap(icon_path)
+
+    # Escalonamento dinâmico baseado na resolução do monitor primário
+    primary_screen = app.primaryScreen()
+    if primary_screen:
+        screen_geo = primary_screen.geometry()
+        # Escala para ~30% da largura da tela, com limites seguros (450px a 800px)
+        scaling_ratio = 0.3
+        target_w = max(450, min(int(screen_geo.width() * scaling_ratio), 800))
+        splash_pixmap = splash_pixmap.scaledToWidth(target_w, Qt.SmoothTransformation)
 
     splash = PremiumSplash(splash_pixmap, APP_NAME, VERSION)
     splash.show()
     app.processEvents()
 
     # ── Launch ────────────────────────────────────────────────────────────
-    splash.update_progress(10, "Carregando módulos principais...")
+    splash.update_progress(10, "Preparando ambiente...")
+    app.processEvents()
     
     def on_progress(val, msg):
-        # Map 0-100 from MainWindow to 10-100 on Splash
-        mapped_val = 10 + int(val * 0.9)
+        # Mapeia 0-100 da MainWindow para 15-95 no Splash
+        mapped_val = 15 + int(val * 0.8)
         splash.update_progress(mapped_val, msg)
+        app.processEvents()
 
     window = MainWindow(progress_callback=on_progress)
     window.setWindowIcon(QIcon(icon_path))
     
-    splash.update_progress(100, "Concluído")
+    splash.update_progress(100, "Inicialização Concluída")
+    app.processEvents()
+    
     window.show()
     splash.finish(window)
 
