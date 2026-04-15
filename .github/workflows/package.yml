@@ -2,8 +2,12 @@ name: Build and Release SIC
 
 on:
   push:
+    branches:
+        - main
+        - dev
     tags:
-      - 'v*' # Triggers whenever you push a tag like v0.0.9
+      - 'v*' # Mantém suporte para tags manuais se desejar
+
 
 permissions:
   contents: write # Essential to allow the bot to create releases
@@ -50,12 +54,25 @@ jobs:
           chmod +x SIC.app/Contents/MacOS/SIC
           zip -r SIC_Mac.zip SIC.app
 
+      - name: Extract version
+        id: get_version
+        shell: bash
+        run: |
+          # Extrai a versão do version.py
+          VERSION=$(python -c 'import sys; sys.path.append("src"); from core.version import VERSION; print(VERSION)')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
+          tag_name: ${{ steps.get_version.outputs.tag }}
+          name: SIC v${{ env.VERSION }}
+          draft: false
+          prerelease: false
           files: |
             dist/SIC_Windows.zip
             dist/SIC_Mac.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
