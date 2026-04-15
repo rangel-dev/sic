@@ -89,10 +89,13 @@ class UpdateService:
                 for chunk in resp.iter_content(chunk_size=8192):
                     f.write(chunk)
             
-            # 2. Extract Zip
+            # 2. Extract Zip (limpa a pasta antes para evitar resíduos de atualizações anteriores)
+            import shutil
             extract_dir = os.path.join(temp_dir, "sic_update_extracted")
-            os.makedirs(extract_dir, exist_ok=True)
-            
+            if os.path.exists(extract_dir):
+                shutil.rmtree(extract_dir)
+            os.makedirs(extract_dir)
+
             with zipfile.ZipFile(target_zip_path, 'r') as zip_ref:
                 zip_ref.extractall(extract_dir)
                 
@@ -144,6 +147,10 @@ timeout /t 1 /nobreak > nul
 tasklist | find /i "SIC.exe" > nul
 if not errorlevel 1 goto loop
 move /y "{new_file_path}" "{current_exe}"
+rem Aguarda 3 s para o Windows comprometer o arquivo no disco antes de executar.
+rem Sem esse delay o bootloader do PyInstaller falha ao ler o proprio .exe
+rem com "failed to load python dll / LoadLibrary: modulo nao encontrado".
+timeout /t 3 /nobreak > nul
 start "" "{current_exe}"
 del "%~f0"
 """)
