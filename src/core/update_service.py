@@ -162,22 +162,69 @@ class UpdateService:
         is_windows = platform.system().lower() == "windows"
         
         if is_windows:
+            import shutil
             script_path = os.path.join(tempfile.gettempdir(), "sic_update.bat")
-            with open(script_path, "w") as f:
+            exe_dir = os.path.dirname(current_exe)
+
+            # Saneia o ambiente para evitar que variáveis do PyInstaller atual
+            # (como _MEIPASS) confundam a nova instância.
+            clean_env = os.environ.copy()
+            for var in ["_MEIPASS", "PYI_HOME_RET", "PYTHONHOME", "PYTHONPATH"]:
+                clean_env.pop(var, None)
+
+            # Remove o diretório _MEI atual do PATH para forçar a nova instância a criar/usar o seu próprio
+            if hasattr(sys, "_MEIPASS"):
+                mei_path = getattr(sys, "_MEIPASS")
+                path_parts = clean_env.get("PATH", "").split(os.pathsep)
+                clean_env["PATH"] = os.pathsep.join([p for p in path_parts if p != mei_path])
+
+            with open(script_path, "w", encoding="utf-8") as f:
                 f.write(f"""@echo off
+setlocal
+chcp 65001 > nul
+
+rem Limpa variáveis de ambiente do PyInstaller para evitar conflitos
+set _MEIPASS=
+set PYI_HOME_RET=
+set PYTHONHOME=
+set PYTHONPATH=
+
+rem Aguarda o processo principal encerrar
 :loop
 timeout /t 1 /nobreak > nul
-tasklist | find /i "SIC.exe" > nul
+tasklist /fi "imagename eq SIC.exe" 2>nul | find /i "SIC.exe" > nul
 if not errorlevel 1 goto loop
+
+rem Limpa o diretorio temporario do PyInstaller anterior
+timeout /t 2 /nobreak > nul
+
+rem Substitui o executavel (com retry se pegar lock)
 move /y "{new_file_path}" "{current_exe}"
-rem Aguarda 3 s para o Windows comprometer o arquivo no disco antes de executar.
-rem Sem esse delay o bootloader do PyInstaller falha ao ler o proprio .exe
-rem com "failed to load python dll / LoadLibrary: modulo nao encontrado".
+if errorlevel 1 (
+    timeout /t 3 /nobreak > nul
+    move /y "{new_file_path}" "{current_exe}"
+)
+
+rem Aguarda o Windows comprometer no disco
 timeout /t 3 /nobreak > nul
-start "" "{current_exe}"
-del "%~f0"
+
+rem Muda para o diretorio do exe e lanca de la
+cd /d "{exe_dir}"
+start "" /D "{exe_dir}" "{current_exe}"
+
+endlocal
+(goto) 2>nul & del "%~f0"
 """)
-            subprocess.Popen([script_path], shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+
+            # DETACHED_PROCESS desacopla o .bat do Python que esta morrendo
+            DETACHED_PROCESS = 0x00000008
+            subprocess.Popen(
+                [script_path],
+                shell=True,
+                creationflags=DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+                close_fds=True,
+                env=clean_env
+            )
         else:
             # Mac Shell Swap
             # Extract App root (e.g. going up from SIC.app/Contents/MacOS/SIC to SIC.app)
