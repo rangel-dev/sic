@@ -310,8 +310,6 @@ class AuditorView(QWidget):
         cat_paths   = self._dz_cat.file_paths
 
         missing = []
-        if not excel_paths:
-            missing.append("Planilha(s) Excel")
         if not pb_path:
             missing.append("Pricebook XML")
         if not cat_paths:
@@ -323,6 +321,7 @@ class AuditorView(QWidget):
                 "Selecione os seguintes arquivos antes de executar:\n• " + "\n• ".join(missing)
             )
             return
+
 
         self._btn_run.setEnabled(False)
         self._btn_export.setEnabled(False)

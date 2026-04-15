@@ -94,21 +94,19 @@ class AuditorEngine:
             #     )
             #     return result
 
-            # 1. Excel
-            self._prog(10, "Lendo planilhas Excel…")
-            excel_prices, excel_lists, brands_found, has_nat, has_avn = self._parse_excels(excel_paths)
-            result.brands_found = brands_found
+            # 1. Excel (Opcional)
+            self._prog(10, "Lendo planilhas Excel (se houver)…")
+            excel_prices, excel_lists, excel_brands, has_nat, has_avn = self._parse_excels(excel_paths)
             result.total_excel_skus = len(excel_prices)
 
-            if not excel_prices and not excel_lists:
-                result.error = "Nenhum produto encontrado. Verifique a aba 'GRADE DE ATIVAÇÃO'."
-                return result
-
-            # Regra de Ouro (Gold Rule) V11.6
+            # Regra de Ouro (Gold Rule) V11.6 & Detecção de Marcas
             cat_brands = set()
             for p in cat_paths:
                 c_brand = self._get_catalog_brand_quick(p)
                 cat_brands.add(c_brand)
+
+            # Define as marcas encontradas no processo (Excel primeiro, depois XML)
+            result.brands_found = list(set(excel_brands) | (cat_brands - {"ML", "Desconhecida"}))
 
             missing_xmls = []
             if has_nat and "Natura" not in cat_brands: missing_xmls.append("XML Natura")
@@ -118,7 +116,7 @@ class AuditorEngine:
             if missing_xmls:
                 result.preflight_error = (
                     "Estrutura de Catálogos Incompleta\n\n"
-                    "Para os Excels carregados, faltam os seguintes XMLs:\n\n• "
+                    "Para os Excels ou Catálogos carregados, faltam os seguintes XMLs:\n\n• "
                     + "\n• ".join(missing_xmls)
                     + "\n\nAnexe-os para garantir a precisão do cruzamento Double-Blind."
                 )
