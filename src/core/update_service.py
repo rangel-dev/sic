@@ -163,21 +163,53 @@ class UpdateService:
         
         if is_windows:
             script_path = os.path.join(tempfile.gettempdir(), "sic_update.bat")
-            with open(script_path, "w") as f:
+            exe_dir = os.path.dirname(current_exe)
+            # Escreve o .bat em UTF-8 e declara chcp 65001 dentro dele, para que
+            # caminhos com acentos (ex: "Área de Trabalho") não sejam corrompidos
+            # pela codepage OEM padrão do cmd.exe.
+            with open(script_path, "w", encoding="utf-8") as f:
                 f.write(f"""@echo off
+chcp 65001 > nul
+
+rem Aguarda o processo principal (bootloader + filho Python) encerrar
 :loop
 timeout /t 1 /nobreak > nul
-tasklist | find /i "SIC.exe" > nul
+tasklist /fi "imagename eq SIC.exe" 2>nul | find /i "SIC.exe" > nul
 if not errorlevel 1 goto loop
+
+rem Aguarda o cleanup do diretorio temporario _MEI do PyInstaller
+timeout /t 2 /nobreak > nul
+
+rem Substitui o executavel (retenta uma vez se pegar lock residual)
 move /y "{new_file_path}" "{current_exe}"
-rem Aguarda 3 s para o Windows comprometer o arquivo no disco antes de executar.
-rem Sem esse delay o bootloader do PyInstaller falha ao ler o proprio .exe
-rem com "failed to load python dll / LoadLibrary: modulo nao encontrado".
+if errorlevel 1 (
+    timeout /t 3 /nobreak > nul
+    move /y "{new_file_path}" "{current_exe}"
+)
+
+rem Aguarda o Windows comprometer o arquivo no disco (write-behind cache)
 timeout /t 3 /nobreak > nul
-start "" "{current_exe}"
-del "%~f0"
+
+rem Muda para o diretorio do exe e lanca de la, imitando um launch via Explorer.
+rem Sem isso o novo processo herda CWD=%TEMP%, o que confunde o bootloader
+rem do PyInstaller ao resolver dependencias durante a extracao do _MEI.
+cd /d "{exe_dir}"
+start "" /D "{exe_dir}" "{current_exe}"
+
+rem Auto-delete
+(goto) 2>nul & del "%~f0"
 """)
-            subprocess.Popen([script_path], shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            # DETACHED_PROCESS desacopla o .bat do processo Python que esta morrendo.
+            # Sem isso, o novo SIC.exe nasce como "neto" de um processo zumbi e o
+            # bootloader do PyInstaller falha ao chamar LoadLibrary no python3xx.dll,
+            # exibindo "failed to load python dll / modulo nao encontrado".
+            DETACHED_PROCESS = 0x00000008
+            subprocess.Popen(
+                [script_path],
+                shell=True,
+                creationflags=DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+                close_fds=True,
+            )
         else:
             # Mac Shell Swap
             # Extract App root (e.g. going up from SIC.app/Contents/MacOS/SIC to SIC.app)
