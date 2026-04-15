@@ -11,9 +11,7 @@ from PySide6.QtGui import QFont, QIcon, QPixmap
 from PySide6.QtWidgets import QApplication, QSplashScreen, QProgressBar, QLabel
 
 from src.core.version import VERSION, APP_NAME
-from src.ui.styles.qss_dark  import DARK_STYLESHEET
-from src.ui.styles.qss_light import LIGHT_STYLESHEET
-from src.ui.main_window import MainWindow
+from src.core.version import VERSION, APP_NAME
 
 
 def resource_path(relative_path):
@@ -107,12 +105,6 @@ def main():
     font.setStyleStrategy(QFont.PreferAntialias)
     app.setFont(font)
 
-    # ── Apply Stylesheet ──────────────────────────────────────────────────
-    if theme == "dark":
-        app.setStyleSheet(DARK_STYLESHEET)
-    else:
-        app.setStyleSheet(LIGHT_STYLESHEET)
-
     # ── Splash Screen ─────────────────────────────────────────────────────
     splash_bg_path = resource_path("assets/splash_bg.png")
     if not os.path.exists(splash_bg_path):
@@ -123,11 +115,38 @@ def main():
     else:
         splash_pixmap = QPixmap(splash_bg_path)
 
+    # Resolution detection for responsive splash
+    screen = app.primaryScreen().availableGeometry()
+    screen_w, screen_h = screen.width(), screen.height()
+    
+    # Scale if splash is too large (max 30% of screen height)
+    max_h = int(screen_h * 0.30)
+    if splash_pixmap.height() > max_h:
+        splash_pixmap = splash_pixmap.scaledToHeight(max_h, Qt.SmoothTransformation)
+    
+    # Also cap width (max 30% of screen width)
+    max_w = int(screen_w * 0.30)
+    if splash_pixmap.width() > max_w:
+        splash_pixmap = splash_pixmap.scaledToWidth(max_w, Qt.SmoothTransformation)
+
     splash = PremiumSplash(splash_pixmap, APP_NAME, VERSION)
     splash.show()
-    app.processEvents()
+    app.processEvents() # Exibe o splash imediatamente
 
     # ── Launch ────────────────────────────────────────────────────────────
+    splash.update_progress(5, "Carregando módulos principais...")
+    
+    # Deferred heavy imports
+    from src.ui.styles.qss_dark  import DARK_STYLESHEET
+    from src.ui.styles.qss_light import LIGHT_STYLESHEET
+    from src.ui.main_window import MainWindow
+
+    # ── Apply Stylesheet ──────────────────────────────────────────────────
+    if theme == "dark":
+        app.setStyleSheet(DARK_STYLESHEET)
+    else:
+        app.setStyleSheet(LIGHT_STYLESHEET)
+
     splash.update_progress(10, "Carregando módulos principais...")
     
     def on_progress(val, msg):
