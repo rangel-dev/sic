@@ -228,8 +228,8 @@ class AuditorEngine:
                     if any(x in cid for x in ["cb-br", "cbbrazil", "cbcom"]): return "ML"
                     if "natura" in cid: return "Natura"
                     if "avon" in cid: return "Avon"
-        except:
-            pass
+        except Exception as e:
+            print(f"Catalog brand detect error: {e}")
         return "Desconhecida"
 
     def _find_grade_sheet(self, wb):
@@ -327,7 +327,8 @@ class AuditorEngine:
         Classificação por substring (igual ao JS), não por ID exato.
         """
         try:
-            tree = etree.parse(path)
+            parser = etree.XMLParser(resolve_entities=False, no_network=True)
+            tree = etree.parse(path, parser=parser)
         except etree.XMLSyntaxError as exc:
             raise ValueError(f"Pricebook XML inválido: {exc}") from exc
 
@@ -397,7 +398,8 @@ class AuditorEngine:
 
         for path in paths:
             try:
-                tree = etree.parse(path)
+                parser = etree.XMLParser(resolve_entities=False, no_network=True)
+                tree = etree.parse(path, parser=parser)
             except etree.XMLSyntaxError as exc:
                 raise ValueError(f"Catálogo XML inválido ({Path(path).name}): {exc}") from exc
 

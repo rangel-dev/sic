@@ -70,7 +70,8 @@ class VolumetriaWorker(QThread):
         )
         volumes: dict[str, str] = {}
         try:
-            tree = etree.parse(self._xml_path)
+            parser = etree.XMLParser(resolve_entities=False, no_network=True)
+            tree = etree.parse(self._xml_path, parser=parser)
             for prod in tree.findall(".//c:product", ns):
                 pid = prod.get("product-id", "").upper()
                 name_el = prod.find(".//c:display-name", ns)
@@ -78,8 +79,8 @@ class VolumetriaWorker(QThread):
                     m = vol_re.search(name_el.text)
                     if m:
                         volumes[pid] = f"{m.group(1)}{m.group(2).lower()}"
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Erro no parse de volumetria: {e}")
         return volumes
 
     def _analyse_image(self, path: str, sku: str, catalog_vols: dict) -> dict:

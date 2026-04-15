@@ -211,7 +211,8 @@ class SyncEngine:
 
         for path in paths:
             try:
-                tree = etree.parse(path)
+                parser = etree.XMLParser(resolve_entities=False, no_network=True)
+                tree = etree.parse(path, parser=parser)
             except etree.XMLSyntaxError as exc:
                 raise ValueError(f"XML inválido ({Path(path).name}): {exc}") from exc
 

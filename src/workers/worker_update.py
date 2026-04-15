@@ -13,5 +13,5 @@ class UpdateWorker(QThread):
             tag, url = UpdateService.get_latest_release()
             if tag and url and UpdateService.is_update_available(tag):
                 self.update_found.emit(tag, url)
-        except:
-            pass
+        except Exception as e:
+            print(f"Background update worker failed: {e}")

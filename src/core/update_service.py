@@ -66,7 +66,8 @@ class UpdateService:
                     return True
                 elif remote_part < local_part:
                     return False
-        except:
+        except Exception as e:
+            print(f"Update version compare failed: {e}")
             return latest_tag != VERSION
             
         return False
@@ -84,7 +85,7 @@ class UpdateService:
         target_zip_path = os.path.join(temp_dir, filename)
         
         try:
-            resp = requests.get(download_url, stream=True)
+            resp = requests.get(download_url, stream=True, timeout=(10, 60))
             with open(target_zip_path, "wb") as f:
                 for chunk in resp.iter_content(chunk_size=8192):
                     f.write(chunk)

@@ -11,7 +11,6 @@ from PySide6.QtGui import QFont, QIcon, QPixmap
 from PySide6.QtWidgets import QApplication, QSplashScreen, QProgressBar, QLabel
 
 from src.core.version import VERSION, APP_NAME
-from src.core.version import VERSION, APP_NAME
 
 
 def resource_path(relative_path):
@@ -19,7 +18,7 @@ def resource_path(relative_path):
     try:
         # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
-    except Exception:
+    except AttributeError:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
@@ -80,8 +79,8 @@ def main():
             import ctypes
             myappid = f"rangeldev.sic.suite.{VERSION}"
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Set Windows App ID falhou: {e}")
 
     # ── HiDPI + anti-aliasing ─────────────────────────────────────────────
     QApplication.setHighDpiScaleFactorRoundingPolicy(

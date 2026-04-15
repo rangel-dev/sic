@@ -220,7 +220,8 @@ class GeradorEngine:
 
     # ── Base price parsing (for delta) ────────────────────────────────────
     def _parse_base_prices(self, xml_path: str) -> dict:
-        tree = etree.parse(xml_path)
+        parser = etree.XMLParser(resolve_entities=False, no_network=True)
+        tree = etree.parse(xml_path, parser=parser)
         ns = {"pb": PRICEBOOK_NS}
         prices: dict = {}
 
