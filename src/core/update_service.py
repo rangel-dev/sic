@@ -434,14 +434,16 @@ try {{
                 import time
                 time.sleep(2)
                 rc = proc.poll()
-                if rc is not None:
+                if rc is not None and rc != 0:
                     _log(f"  ⚠️ PowerShell já saiu com exit code={rc} — algo deu errado imediatamente.")
                     _show_error_box(
                         "SIC — Erro na Atualização",
-                        f"PowerShell terminou imediatamente (código {rc}).\n\n"
+                        f"PowerShell terminou imediatamente com erro (código {rc}).\n\n"
                         f"Verifique os logs em:\n{PYTHON_LOG_PATH}\n\n"
                         f"E a cópia do script em:\n{copy_path}"
                     )
+                elif rc == 0:
+                    _log("  PowerShell saiu com exit code=0 (provavelmente um launcher shim) — prosseguindo.")
                 else:
                     _log("  PowerShell ainda rodando após 2s — OK, deixando prosseguir")
 
