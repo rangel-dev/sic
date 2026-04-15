@@ -165,6 +165,7 @@ class UpdateService:
             import shutil
             script_path = os.path.join(tempfile.gettempdir(), "sic_update.bat")
             exe_dir = os.path.dirname(current_exe)
+            pid = os.getpid()
 
             # Saneia o ambiente para evitar que variáveis do PyInstaller atual
             # (como _MEIPASS) confundam a nova instância.
@@ -183,35 +184,47 @@ class UpdateService:
 setlocal
 chcp 65001 > nul
 
-rem Limpa variáveis de ambiente do PyInstaller para evitar conflitos
+rem Variáveis de controle
+set "PID={pid}"
+set "EXE_PATH={current_exe}"
+set "NEW_EXE={new_file_path}"
+set "EXE_DIR={exe_dir}"
+
+rem Limpa variáveis de ambiente do PyInstaller para evitar conflitos na nova instância
 set _MEIPASS=
 set PYI_HOME_RET=
 set PYTHONHOME=
 set PYTHONPATH=
 
-rem Aguarda o processo principal encerrar
+rem 1. Aguarda o processo principal ({pid}) encerrar completamente
 :loop
-timeout /t 1 /nobreak > nul
-tasklist /fi "imagename eq SIC.exe" 2>nul | find /i "SIC.exe" > nul
+"%SystemRoot%\\System32\\timeout.exe" /t 1 /nobreak > nul
+"%SystemRoot%\\System32\\tasklist.exe" /fi "pid eq %PID%" 2>nul | "%SystemRoot%\\System32\\find.exe" "%PID%" > nul
 if not errorlevel 1 goto loop
 
-rem Limpa o diretorio temporario do PyInstaller anterior
-timeout /t 2 /nobreak > nul
+rem 2. Folga extra para garantir que o Windows liberou o handle do arquivo
+"%SystemRoot%\\System32\\timeout.exe" /t 2 /nobreak > nul
 
-rem Substitui o executavel (com retry se pegar lock)
-move /y "{new_file_path}" "{current_exe}"
+rem 3. Substitui o executável (com retry agressivo)
+set "retry=0"
+:move_retry
+set /a "retry+=1"
+move /y "%NEW_EXE%" "%EXE_PATH%"
 if errorlevel 1 (
-    timeout /t 3 /nobreak > nul
-    move /y "{new_file_path}" "{current_exe}"
+    if %retry% geq 5 goto move_fail
+    "%SystemRoot%\\System32\\timeout.exe" /t 2 /nobreak > nul
+    goto move_retry
 )
 
-rem Aguarda o Windows comprometer no disco
-timeout /t 3 /nobreak > nul
+rem 4. Sucesso: Lança a nova versão e encerra
+cd /d "%EXE_DIR%"
+start "" /D "%EXE_DIR%" "%EXE_PATH%"
+goto cleanup
 
-rem Muda para o diretorio do exe e lanca de la
-cd /d "{exe_dir}"
-start "" /D "{exe_dir}" "{current_exe}"
+:move_fail
+echo Falha ao atualizar: O arquivo estava bloqueado ou nao foi encontrado. > "%TEMP%\\sic_update_error.log"
 
+:cleanup
 endlocal
 (goto) 2>nul & del "%~f0"
 """)
