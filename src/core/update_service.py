@@ -9,9 +9,43 @@ import subprocess
 import requests
 import platform
 import tempfile
+import datetime
+import traceback
 from pathlib import Path
 from typing import Optional, Tuple
 from .version import VERSION, GITHUB_REPO
+
+# Log path — Python escreve aqui, PowerShell escreve em sic_update.log.
+# Ambos ficam em %TEMP% e são preservados mesmo se o update falhar.
+PYTHON_LOG_PATH = os.path.join(tempfile.gettempdir(), "sic_update_python.log")
+
+
+def _log(msg: str):
+    """Anexa mensagem com timestamp ao log. Silencioso se falhar (disk full etc.)."""
+    try:
+        with open(PYTHON_LOG_PATH, "a", encoding="utf-8") as f:
+            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            f.write(f"[{ts}] {msg}\n")
+    except Exception:
+        pass
+
+
+def _show_error_box(title: str, msg: str):
+    """
+    Mostra MessageBox nativa do Windows (via user32.MessageBoxW).
+    Funciona em builds windowed (sem console) onde print vai para o void.
+    """
+    if platform.system().lower() != "windows":
+        return
+    try:
+        import ctypes
+        MB_OK = 0x00000000
+        MB_ICONERROR = 0x00000010
+        MB_TOPMOST = 0x00040000
+        ctypes.windll.user32.MessageBoxW(0, msg, title, MB_OK | MB_ICONERROR | MB_TOPMOST)
+    except Exception:
+        pass
+
 
 class UpdateService:
     @staticmethod
@@ -77,25 +111,50 @@ class UpdateService:
         Downloads the file, extracts it (ZIP), and prepares the bootstrap restart.
         """
         import zipfile
-        
+
+        # Começa um log novo para esta tentativa — apaga o anterior para não
+        # confundir com corridas antigas
+        try:
+            if os.path.exists(PYTHON_LOG_PATH):
+                os.remove(PYTHON_LOG_PATH)
+        except Exception:
+            pass
+
+        _log("=" * 60)
+        _log(f"download_and_install() iniciado — SIC v{VERSION}")
+        _log(f"Plataforma: {platform.system()} {platform.release()}")
+        _log(f"sys.executable: {sys.executable}")
+        _log(f"sys.frozen: {getattr(sys, 'frozen', False)}")
+        _log(f"URL: {download_url}")
+
         # 1. Download to temp
         temp_dir = tempfile.gettempdir()
         filename = download_url.split("/")[-1]
         target_zip_path = os.path.join(temp_dir, filename)
-        
+        _log(f"Temp dir: {temp_dir}")
+        _log(f"Target zip: {target_zip_path}")
+
         try:
+            _log("Baixando arquivo...")
             resp = requests.get(download_url, stream=True)
+            _log(f"  HTTP status: {resp.status_code}")
+            total_bytes = 0
             with open(target_zip_path, "wb") as f:
                 for chunk in resp.iter_content(chunk_size=8192):
                     f.write(chunk)
-            
+                    total_bytes += len(chunk)
+            _log(f"  Download OK — {total_bytes:,} bytes gravados")
+
             # 2. Extract Zip (limpa a pasta antes para evitar resíduos de atualizações anteriores)
             import shutil
             extract_dir = os.path.join(temp_dir, "sic_update_extracted")
             if os.path.exists(extract_dir):
+                _log(f"Limpando extract_dir anterior: {extract_dir}")
                 shutil.rmtree(extract_dir)
             os.makedirs(extract_dir)
+            _log(f"Extract dir criado: {extract_dir}")
 
+            _log("Extraindo ZIP...")
             if platform.system().lower() == "darwin":
                 # No macOS, o módulo `zipfile` do Python NÃO preserva o bit de
                 # execução (+x) nem symlinks. Isso quebra a extração do .app:
@@ -109,11 +168,21 @@ class UpdateService:
             else:
                 with zipfile.ZipFile(target_zip_path, 'r') as zip_ref:
                     zip_ref.extractall(extract_dir)
-                
+            _log("  Extração concluída")
+
+            # Lista arquivos extraídos para o log (útil pra debug)
+            extracted_files = []
+            for r, _, fs in os.walk(extract_dir):
+                for fn in fs:
+                    extracted_files.append(os.path.join(r, fn))
+            _log(f"  Arquivos extraídos ({len(extracted_files)}):")
+            for ef in extracted_files[:20]:  # limita a 20 para não poluir
+                _log(f"    - {ef}")
+
             # Find the extracted executable/app
             is_windows = platform.system().lower() == "windows"
             new_file_path = None
-            
+
             if is_windows:
                 # Look for SIC.exe (break em loop interno não sai do outer,
                 # então usamos flag para encerrar o os.walk assim que encontrar)
@@ -145,26 +214,46 @@ class UpdateService:
                     )
 
             if not new_file_path:
-                print("Failed to find executable in extracted update.")
+                _log("ERRO: executável não encontrado no ZIP extraído.")
+                _show_error_box(
+                    "SIC — Erro na Atualização",
+                    f"Não foi possível encontrar o executável dentro do arquivo baixado.\n\n"
+                    f"Log: {PYTHON_LOG_PATH}"
+                )
                 return
 
+            _log(f"Executável encontrado: {new_file_path}")
+            _log(f"  Tamanho: {os.path.getsize(new_file_path):,} bytes")
+
             # 3. Trigger Bootstrap Update
+            _log("Chamando _trigger_restart_swap()...")
             UpdateService._trigger_restart_swap(new_file_path)
-            
+
         except Exception as e:
-            print(f"Update failed: {e}")
+            _log(f"EXCEÇÃO em download_and_install: {e}")
+            _log(traceback.format_exc())
+            _show_error_box(
+                "SIC — Erro na Atualização",
+                f"Falha ao baixar/extrair atualização:\n\n{e}\n\nLog: {PYTHON_LOG_PATH}"
+            )
 
     @staticmethod
     def _trigger_restart_swap(new_file_path: str):
         """Creates a batch/sh script to swap the executable and restarts in a detached state."""
         current_exe = sys.executable
+        _log(f"_trigger_restart_swap() — current_exe: {current_exe}")
         if "python" in current_exe.lower():
-            print("Running as script. Auto-update skipped (would replace .exe).")
+            _log("  Rodando como script (python.exe) — auto-update abortado.")
             return
 
         is_windows = platform.system().lower() == "windows"
-        
+
         if is_windows:
+            _log(f"  is_windows=True, PID={os.getpid()}")
+            _log(f"  Arquivo novo existe? {os.path.exists(new_file_path)}")
+            _log(f"  Exe atual existe? {os.path.exists(current_exe)}")
+            _log(f"  Exe atual gravável? {os.access(current_exe, os.W_OK)}")
+            _log(f"  Dir do exe gravável? {os.access(os.path.dirname(current_exe), os.W_OK)}")
             # Abandonamos o .bat em favor de PowerShell. O .bat tinha problemas
             # com pipes (tasklist|find) quando combinado com DETACHED_PROCESS,
             # encoding de paths com acentos e parsing frágil. PowerShell resolve
@@ -293,27 +382,77 @@ try {{
     Stop-Transcript | Out-Null
 }}
 
-# Auto-delete do script (nao do log — usuario pode precisar)
-Start-Sleep -Seconds 1
-Remove-Item -Path $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+# Auto-delete do script (comentado durante diagnostico — mantemos para inspecao)
+# Start-Sleep -Seconds 1
+# Remove-Item -Path $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
 """)
+
+            _log(f"Script PS gravado em: {ps_path}")
+            _log(f"  Tamanho do script: {os.path.getsize(ps_path):,} bytes")
+
+            # Salva uma CÓPIA do script para inspeção pós-mortem. O script
+            # original se auto-deleta ao final; esta cópia permanece.
+            copy_path = os.path.join(tempfile.gettempdir(), "sic_update_copy.ps1")
+            try:
+                import shutil
+                shutil.copy2(ps_path, copy_path)
+                _log(f"  Cópia para diagnóstico: {copy_path}")
+            except Exception as e:
+                _log(f"  Falha ao copiar script (não-fatal): {e}")
+
+            # Usa path absoluto do powershell.exe. Em alguns sistemas PATH
+            # pode estar corrompido ou o processo pai herdou um PATH sem System32.
+            system32 = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
+            ps_exe = os.path.join(system32, "WindowsPowerShell", "v1.0", "powershell.exe")
+            if not os.path.exists(ps_exe):
+                _log(f"  powershell.exe não encontrado em {ps_exe}, caindo para nome simples")
+                ps_exe = "powershell.exe"
+            else:
+                _log(f"  powershell.exe: {ps_exe}")
 
             # Lança o PowerShell totalmente desacoplado (DETACHED_PROCESS + CREATE_NO_WINDOW).
             # -WindowStyle Hidden garante que nenhuma janela apareça.
             # -ExecutionPolicy Bypass permite rodar o script sem configuração prévia.
             DETACHED_PROCESS = 0x00000008
-            subprocess.Popen(
-                [
-                    "powershell.exe",
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-WindowStyle", "Hidden",
-                    "-ExecutionPolicy", "Bypass",
-                    "-File", ps_path,
-                ],
-                creationflags=DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
-                close_fds=True,
-            )
+            try:
+                proc = subprocess.Popen(
+                    [
+                        ps_exe,
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-WindowStyle", "Hidden",
+                        "-ExecutionPolicy", "Bypass",
+                        "-File", ps_path,
+                    ],
+                    creationflags=DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+                    close_fds=True,
+                )
+                _log(f"Popen OK — PowerShell PID={proc.pid}")
+
+                # Espera 2s e checa se o PS já morreu (indica falha imediata,
+                # ex: ExecutionPolicy bloqueada, script malformado, AppLocker).
+                import time
+                time.sleep(2)
+                rc = proc.poll()
+                if rc is not None:
+                    _log(f"  ⚠️ PowerShell já saiu com exit code={rc} — algo deu errado imediatamente.")
+                    _show_error_box(
+                        "SIC — Erro na Atualização",
+                        f"PowerShell terminou imediatamente (código {rc}).\n\n"
+                        f"Verifique os logs em:\n{PYTHON_LOG_PATH}\n\n"
+                        f"E a cópia do script em:\n{copy_path}"
+                    )
+                else:
+                    _log("  PowerShell ainda rodando após 2s — OK, deixando prosseguir")
+
+            except Exception as e:
+                _log(f"EXCEÇÃO ao lançar PowerShell: {e}")
+                _log(traceback.format_exc())
+                _show_error_box(
+                    "SIC — Erro na Atualização",
+                    f"Falha ao lançar o PowerShell:\n\n{e}\n\nLog: {PYTHON_LOG_PATH}"
+                )
+                return  # não chama os._exit — deixa o Qt continuar para o usuário ver o erro
         else:
             # Mac Shell Swap
             # Extract App root (e.g. going up from SIC.app/Contents/MacOS/SIC to SIC.app)
@@ -355,4 +494,5 @@ rm -- "$0"
         # Qt main loop keeps running and the update script waits forever.
         # os._exit() terminates the entire process immediately, allowing the
         # bootstrap script to proceed with the file swap.
+        _log("Chamando os._exit(0) — processo SIC vai morrer agora. PowerShell continua.")
         os._exit(0)
