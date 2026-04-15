@@ -167,74 +167,70 @@ class UpdateService:
             exe_dir = os.path.dirname(current_exe)
             pid = os.getpid()
 
-            # Saneia o ambiente para evitar que variáveis do PyInstaller atual
-            # (como _MEIPASS) confundam a nova instância.
+            # Saneia o ambiente
             clean_env = os.environ.copy()
             for var in ["_MEIPASS", "PYI_HOME_RET", "PYTHONHOME", "PYTHONPATH"]:
                 clean_env.pop(var, None)
 
-            # Remove o diretório _MEI atual do PATH para forçar a nova instância a criar/usar o seu próprio
             if hasattr(sys, "_MEIPASS"):
                 mei_path = getattr(sys, "_MEIPASS")
                 path_parts = clean_env.get("PATH", "").split(os.pathsep)
                 clean_env["PATH"] = os.pathsep.join([p for p in path_parts if p != mei_path])
 
-            with open(script_path, "w", encoding="utf-8") as f:
+            # Escrita em 'ansi' (latin-1) para máxima compatibilidade com CMD legível sem BOM
+            with open(script_path, "w", encoding="ansi") as f:
                 f.write(f"""@echo off
-setlocal
-chcp 65001 > nul
-
-rem Variáveis de controle
 set "PID={pid}"
 set "EXE_PATH={current_exe}"
 set "NEW_EXE={new_file_path}"
 set "EXE_DIR={exe_dir}"
 
-rem Limpa variáveis de ambiente do PyInstaller para evitar conflitos na nova instância
-set _MEIPASS=
-set PYI_HOME_RET=
-set PYTHONHOME=
-set PYTHONPATH=
-
-rem 1. Aguarda o processo principal ({pid}) encerrar completamente
+rem 1. Aguarda processo pai terminar (via PID)
 :loop
-"%SystemRoot%\\System32\\timeout.exe" /t 1 /nobreak > nul
+"%SystemRoot%\\System32\\ping.exe" 127.0.0.1 -n 2 > nul
 "%SystemRoot%\\System32\\tasklist.exe" /fi "pid eq %PID%" 2>nul | "%SystemRoot%\\System32\\find.exe" "%PID%" > nul
 if not errorlevel 1 goto loop
 
-rem 2. Folga extra para garantir que o Windows liberou o handle do arquivo
-"%SystemRoot%\\System32\\timeout.exe" /t 2 /nobreak > nul
+rem 2. Delay extra
+"%SystemRoot%\\System32\\ping.exe" 127.0.0.1 -n 2 > nul
 
-rem 3. Substitui o executável (com retry agressivo)
+rem 3. Substitui arquivo
 set "retry=0"
 :move_retry
 set /a "retry+=1"
-move /y "%NEW_EXE%" "%EXE_PATH%"
+move /y "%NEW_EXE%" "%EXE_PATH%" > nul 2>&1
 if errorlevel 1 (
     if %retry% geq 5 goto move_fail
-    "%SystemRoot%\\System32\\timeout.exe" /t 2 /nobreak > nul
+    "%SystemRoot%\\System32\\ping.exe" 127.0.0.1 -n 3 > nul
     goto move_retry
 )
 
-rem 4. Sucesso: Lança a nova versão e encerra
+rem 4. Finalização
 cd /d "%EXE_DIR%"
 start "" /D "%EXE_DIR%" "%EXE_PATH%"
 goto cleanup
 
 :move_fail
-echo Falha ao atualizar: O arquivo estava bloqueado ou nao foi encontrado. > "%TEMP%\\sic_update_error.log"
+echo Falha no move > "%TEMP%\\sic_update_fail.log"
 
 :cleanup
-endlocal
 (goto) 2>nul & del "%~f0"
 """)
 
-            # DETACHED_PROCESS desacopla o .bat do Python que esta morrendo
-            DETACHED_PROCESS = 0x00000008
+            # Configurações para ocultar janela de forma agressiva no Windows
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0 # SW_HIDE
+
+            # DETACHED_PROCESS + CREATE_NO_WINDOW + startupinfo (SW_HIDE)
+            # Rodamos via cmd /c explicitamente para maior controle
             subprocess.Popen(
-                [script_path],
-                shell=True,
-                creationflags=DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+                ["cmd.exe", "/c", script_path],
+                creationflags=0x00000008 | 0x08000000, # DETACHED_PROCESS | CREATE_NO_WINDOW
+                startupinfo=startupinfo,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
                 close_fds=True,
                 env=clean_env
             )
