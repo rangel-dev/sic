@@ -26,8 +26,8 @@ from src.ui.styles.qss_light import LIGHT_STYLESHEET
 # View modules will be imported lazily in _load_page to drastically improve application startup time.
 
 from src.core.version import VERSION, APP_NAME
-from src.core.update_service import UpdateService
-from src.workers.worker_update import UpdateWorker
+# UpdateService e UpdateWorker são importados lazily dentro dos métodos que os usam,
+# para evitar que o módulo `requests` seja carregado no startup (custo: 1–3 s).
 
 
 # ─── Navigation button ────────────────────────────────────────────────────────
@@ -260,6 +260,7 @@ class MainWindow(QMainWindow):
 
     # ── Updates ───────────────────────────────────────────────────────────
     def _check_for_updates(self):
+        from src.workers.worker_update import UpdateWorker  # lazy — evita import do requests no startup
         self._update_worker = UpdateWorker()
         self._update_worker.update_found.connect(self._on_update_found)
         self._update_worker.start()
@@ -290,9 +291,10 @@ class MainWindow(QMainWindow):
             import threading
             def run_update():
                 try:
+                    from src.core.update_service import UpdateService  # lazy
                     UpdateService.download_and_install(self._update_url)
                 except Exception as e:
-                    # Thread errors are hard to show directly in QMessageBox without signals, 
+                    # Thread errors are hard to show directly in QMessageBox without signals,
                     # but the main process exits on success anyway.
                     print(f"Update background thread failed: {e}")
             
@@ -325,14 +327,19 @@ class MainWindow(QMainWindow):
         # 3. Scale QSS (Regex replacement of all 'px' values)
         # We scale based on ratio to 13px (original base)
         ratio = base_size / 13.0
-        
-        def scale_px(match):
-            val = int(match.group(1))
-            if val <= 1: return f"{val}px" # Don't scale 1px borders
-            return f"{int(val * ratio)}px"
-        
-        scaled_qss = re.sub(r'(\d+)px', scale_px, raw_qss)
-        app.setStyleSheet(scaled_qss)
+
+        if ratio == 1.0:
+            # Sem escalonamento necessário — aplica direto, evita ~500 ms de regex
+            # (caso padrão: todos os usuários que não alteraram o tamanho de fonte)
+            app.setStyleSheet(raw_qss)
+        else:
+            def scale_px(match):
+                val = int(match.group(1))
+                if val <= 1: return f"{val}px"  # Don't scale 1px borders
+                return f"{int(val * ratio)}px"
+
+            scaled_qss = re.sub(r'(\d+)px', scale_px, raw_qss)
+            app.setStyleSheet(scaled_qss)
         
         # 4. Update Status Bar
         mode = "Escuro" if theme == "dark" else "Claro"

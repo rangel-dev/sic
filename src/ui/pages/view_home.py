@@ -3,7 +3,7 @@ Executive Nexus Dashboard — Home View
 Modern, data-driven landing page for SIC.
 """
 from datetime import datetime
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtWidgets import (
     QHBoxLayout, 
     QLabel, 
@@ -23,7 +23,8 @@ class HomeView(QWidget):
         super().__init__(parent)
         self.window = parent # MainWindow
         self._setup_ui()
-        self.refresh_stats()
+        # Adiar a query ao banco para depois da janela ser pintada (evita bloqueio pré-render)
+        QTimer.singleShot(50, self.refresh_stats)
 
     def _setup_ui(self):
         root = QVBoxLayout(self)

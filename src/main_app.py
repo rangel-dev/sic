@@ -7,8 +7,8 @@ import sys
 import platform
 
 from PySide6.QtCore import Qt, QSettings
-from PySide6.QtGui import QFont, QIcon
-from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QFont, QIcon, QPixmap
+from PySide6.QtWidgets import QApplication, QSplashScreen
 
 from src.core.version import VERSION, APP_NAME
 from src.ui.styles.qss_dark  import DARK_STYLESHEET
@@ -64,10 +64,24 @@ def main():
     else:
         app.setStyleSheet(LIGHT_STYLESHEET)
 
+    # ── Splash Screen ─────────────────────────────────────────────────────
+    splash_pixmap = QPixmap(icon_path).scaled(
+        256, 256, Qt.KeepAspectRatio, Qt.SmoothTransformation
+    )
+    splash = QSplashScreen(splash_pixmap, Qt.WindowStaysOnTopHint)
+    splash.showMessage(
+        f"Carregando {APP_NAME}...",
+        Qt.AlignBottom | Qt.AlignHCenter,
+        Qt.white
+    )
+    splash.show()
+    app.processEvents()  # força o Qt a pintar o splash antes do bloqueio
+
     # ── Launch ────────────────────────────────────────────────────────────
     window = MainWindow()
     window.setWindowIcon(QIcon(icon_path))
     window.show()
+    splash.finish(window)  # descarta o splash quando a janela aparecer
 
     sys.exit(app.exec())
 
