@@ -163,74 +163,50 @@ class UpdateService:
         
         if is_windows:
             import shutil
-            script_path = os.path.join(tempfile.gettempdir(), "sic_update.bat")
+            # Usaremos um VBScript para garantir silêncio absoluto e robustez
+            vbs_path = os.path.join(tempfile.gettempdir(), "sic_updater.vbs")
             exe_dir = os.path.dirname(current_exe)
+            exe_name = os.path.basename(current_exe)
             pid = os.getpid()
 
-            # Saneia o ambiente
             clean_env = os.environ.copy()
             for var in ["_MEIPASS", "PYI_HOME_RET", "PYTHONHOME", "PYTHONPATH"]:
                 clean_env.pop(var, None)
 
-            if hasattr(sys, "_MEIPASS"):
-                mei_path = getattr(sys, "_MEIPASS")
-                path_parts = clean_env.get("PATH", "").split(os.pathsep)
-                clean_env["PATH"] = os.pathsep.join([p for p in path_parts if p != mei_path])
+            # O Script VBScript é a forma mais robusta de rodar tarefas silenciosas no Windows
+            # que sobrevivem ao encerramento do processo pai.
+            with open(vbs_path, "w", encoding="ansi") as f:
+                f.write(f"""' SIC Ultimate Updater
+On Error Resume Next
+Set objShell = CreateObject("WScript.Shell")
+Set objFSO = CreateObject("Scripting.FileSystemObject")
 
-            # Escrita em 'ansi' (latin-1) para máxima compatibilidade com CMD legível sem BOM
-            with open(script_path, "w", encoding="ansi") as f:
-                f.write(f"""@echo off
-set "PID={pid}"
-set "EXE_PATH={current_exe}"
-set "NEW_EXE={new_file_path}"
-set "EXE_DIR={exe_dir}"
+' 1. Aguarda o processo pai ({pid}) fechar
+Do While objShell.AppActivate({pid})
+    WScript.Sleep 1000
+Loop
 
-rem 1. Aguarda processo pai terminar (via PID)
-:loop
-"%SystemRoot%\\System32\\ping.exe" 127.0.0.1 -n 2 > nul
-"%SystemRoot%\\System32\\tasklist.exe" /fi "pid eq %PID%" 2>nul | "%SystemRoot%\\System32\\find.exe" "%PID%" > nul
-if not errorlevel 1 goto loop
+' 2. Por segurança, garante que não há outros SIC.exe travando o arquivo
+objShell.Run "taskkill /F /IM {exe_name} /T", 0, True
+WScript.Sleep 1000
 
-rem 2. Delay extra
-"%SystemRoot%\\System32\\ping.exe" 127.0.0.1 -n 2 > nul
+' 3. Usa ROBOCOPY para substituição robusta (melhor que MOVE)
+' /MOVE: move arquivos /IS: substitui mesmos arquivos /IT: substitui arquivos tweakados /W: wait /R: retry
+strCmd = "robocopy /MOVE /IS /IT /W:1 /R:3 """ & objFSO.GetParentFolderName("{new_file_path}") & """ """ & "{exe_dir}" & """ """ & "{exe_name}" & """"
+objShell.Run strCmd, 0, True
 
-rem 3. Substitui arquivo
-set "retry=0"
-:move_retry
-set /a "retry+=1"
-move /y "%NEW_EXE%" "%EXE_PATH%" > nul 2>&1
-if errorlevel 1 (
-    if %retry% geq 5 goto move_fail
-    "%SystemRoot%\\System32\\ping.exe" 127.0.0.1 -n 3 > nul
-    goto move_retry
-)
+' 4. Relança o aplicativo
+objShell.Run """{current_exe}""", 1, False
 
-rem 4. Finalização
-cd /d "%EXE_DIR%"
-start "" /D "%EXE_DIR%" "%EXE_PATH%"
-goto cleanup
-
-:move_fail
-echo Falha no move > "%TEMP%\\sic_update_fail.log"
-
-:cleanup
-(goto) 2>nul & del "%~f0"
+' 5. Auto-exclusão
+objFSO.DeleteFile WScript.ScriptFullName
 """)
 
-            # Configurações para ocultar janela de forma agressiva no Windows
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = 0 # SW_HIDE
-
-            # DETACHED_PROCESS + CREATE_NO_WINDOW + startupinfo (SW_HIDE)
-            # Rodamos via cmd /c explicitamente para maior controle
+            # Lança o VBScript de forma totalmente independente
+            # wscript.exe roda o script sem console
             subprocess.Popen(
-                ["cmd.exe", "/c", script_path],
-                creationflags=0x00000008 | 0x08000000, # DETACHED_PROCESS | CREATE_NO_WINDOW
-                startupinfo=startupinfo,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                stdin=subprocess.DEVNULL,
+                ["wscript.exe", vbs_path],
+                creationflags=0x00000008, # DETACHED_PROCESS
                 close_fds=True,
                 env=clean_env
             )
