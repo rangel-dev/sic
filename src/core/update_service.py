@@ -162,53 +162,56 @@ class UpdateService:
         is_windows = platform.system().lower() == "windows"
         
         if is_windows:
-            import shutil
-            # Usaremos um VBScript para garantir silêncio absoluto e robustez
-            vbs_path = os.path.join(tempfile.gettempdir(), "sic_updater.vbs")
+            script_path = os.path.join(tempfile.gettempdir(), "sic_update.bat")
             exe_dir = os.path.dirname(current_exe)
-            exe_name = os.path.basename(current_exe)
-            pid = os.getpid()
 
-            clean_env = os.environ.copy()
-            for var in ["_MEIPASS", "PYI_HOME_RET", "PYTHONHOME", "PYTHONPATH"]:
-                clean_env.pop(var, None)
+            # Escreve o .bat em UTF-8 para suportar caminhos com acentos
+            with open(script_path, "w", encoding="utf-8") as f:
+                f.write(f"""@echo off
+chcp 65001 > nul 2>&1
 
-            # O Script VBScript é a forma mais robusta de rodar tarefas silenciosas no Windows
-            # que sobrevivem ao encerramento do processo pai.
-            with open(vbs_path, "w", encoding="ansi") as f:
-                f.write(f"""' SIC Ultimate Updater
-On Error Resume Next
-Set objShell = CreateObject("WScript.Shell")
-Set objFSO = CreateObject("Scripting.FileSystemObject")
+rem Aguarda o SIC.exe original fechar completamente
+:wait_loop
+timeout /t 1 /nobreak > nul
+tasklist /fi "imagename eq SIC.exe" 2>nul | find /i "SIC.exe" > nul
+if not errorlevel 1 goto wait_loop
 
-' 1. Aguarda o processo pai ({pid}) fechar
-Do While objShell.AppActivate({pid})
-    WScript.Sleep 1000
-Loop
+rem Aguarda 2s extra para o _MEI temp cleanup do PyInstaller
+timeout /t 2 /nobreak > nul
 
-' 2. Por segurança, garante que não há outros SIC.exe travando o arquivo
-objShell.Run "taskkill /F /IM {exe_name} /T", 0, True
-WScript.Sleep 1000
+rem Substitui o executavel (com retry)
+move /y "{new_file_path}" "{current_exe}"
+if errorlevel 1 (
+    timeout /t 2 /nobreak > nul
+    move /y "{new_file_path}" "{current_exe}"
+)
 
-' 3. Usa ROBOCOPY para substituição robusta (melhor que MOVE)
-' /MOVE: move arquivos /IS: substitui mesmos arquivos /IT: substitui arquivos tweakados /W: wait /R: retry
-strCmd = "robocopy /MOVE /IS /IT /W:1 /R:3 """ & objFSO.GetParentFolderName("{new_file_path}") & """ """ & "{exe_dir}" & """ """ & "{exe_name}" & """"
-objShell.Run strCmd, 0, True
+rem Aguarda 3s para o Windows comprometer o arquivo no disco
+timeout /t 3 /nobreak > nul
 
-' 4. Relança o aplicativo
-objShell.Run """{current_exe}""", 1, False
+rem Limpa variaveis de ambiente que apontam para diretorios temporarios antigos
+rem Isto evita que o novo SIC.exe procure python311.dll num _MEI que nao existe mais
+set _MEIPASS=
+set PYI_HOME_RET=
+set PYTHONHOME=
+set PYTHONPATH=
 
-' 5. Auto-exclusão
-objFSO.DeleteFile WScript.ScriptFullName
+rem Muda para o diretorio do exe e lanca de la
+cd /d "{exe_dir}"
+start "" /B /D "{exe_dir}" "{current_exe}"
+
+rem Auto-delete do script
+(goto) 2>nul & del "%~f0"
 """)
 
-            # Lança o VBScript de forma totalmente independente
-            # wscript.exe roda o script sem console
+            # DETACHED_PROCESS (0x08) desacopla totalmente do Python que esta morrendo.
+            # CreateNoWindow evita console visivel.
+            DETACHED_PROCESS = 0x00000008
             subprocess.Popen(
-                ["wscript.exe", vbs_path],
-                creationflags=0x00000008, # DETACHED_PROCESS
+                [script_path],
+                shell=True,
+                creationflags=DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
                 close_fds=True,
-                env=clean_env
             )
         else:
             # Mac Shell Swap
