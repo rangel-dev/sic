@@ -4,6 +4,7 @@ Sidebar navigation (QVBoxLayout of NavButtons) + QStackedWidget for views.
 """
 from __future__ import annotations
 import re
+from typing import Optional
 
 from PySide6.QtCore import Qt, QSize, QSettings
 from PySide6.QtGui import QFont
@@ -49,8 +50,13 @@ class NavButton(QPushButton):
 
 # ─── Main Window ──────────────────────────────────────────────────────────────
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, progress_callback=None):
         super().__init__()
+        self._progress = progress_callback
+        def report(val, msg):
+            if self._progress: self._progress(val, msg)
+
+        report(0, "Inicializando interface...")
         self.setWindowTitle(f"{APP_NAME}  v{VERSION}")
         self.setMinimumSize(1280, 800)
         self.resize(1460, 900)
@@ -59,14 +65,19 @@ class MainWindow(QMainWindow):
         self._pages: list[QWidget] = []
         self._update_url: Optional[str] = None
 
+        report(20, "Construindo layout base...")
         self._build_ui()
+        
+        report(60, "Aplicando identidade visual...")
         self.apply_theme_and_font()
 
         # Start on home
+        report(80, "Carregando Dashboard...")
         self._switch(0)
 
         # Check for updates in background
         self._check_for_updates()
+        report(100, "Pronto")
 
     # ── Build ─────────────────────────────────────────────────────────────
     def _build_ui(self):
@@ -77,6 +88,8 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
 
         layout.addWidget(self._build_sidebar())
+        
+        if self._progress: self._progress(40, "Preparando módulos...")
 
         self._stack = QStackedWidget()
         self._stack.setObjectName("content_area")
