@@ -96,8 +96,19 @@ class UpdateService:
                 shutil.rmtree(extract_dir)
             os.makedirs(extract_dir)
 
-            with zipfile.ZipFile(target_zip_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_dir)
+            if platform.system().lower() == "darwin":
+                # No macOS, o módulo `zipfile` do Python NÃO preserva o bit de
+                # execução (+x) nem symlinks. Isso quebra a extração do .app:
+                # o binário `Contents/MacOS/SIC` fica sem permissão de execução
+                # e o `open` falha silenciosamente. Usar o `unzip` do sistema,
+                # que preserva permissões Unix e symlinks corretamente.
+                subprocess.run(
+                    ["unzip", "-o", "-q", target_zip_path, "-d", extract_dir],
+                    check=True,
+                )
+            else:
+                with zipfile.ZipFile(target_zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_dir)
                 
             # Find the extracted executable/app
             is_windows = platform.system().lower() == "windows"
@@ -117,7 +128,19 @@ class UpdateService:
                         if name.endswith(".app"):
                             new_file_path = os.path.join(root, name)
                             break
-                            
+
+                # Segurança extra: garante +x no binário principal (caso unzip
+                # não tenha preservado) e remove atributo de quarentena para
+                # evitar que o Gatekeeper bloqueie o app atualizado.
+                if new_file_path:
+                    binary = os.path.join(new_file_path, "Contents", "MacOS", "SIC")
+                    if os.path.exists(binary):
+                        os.chmod(binary, 0o755)
+                    subprocess.run(
+                        ["xattr", "-dr", "com.apple.quarantine", new_file_path],
+                        check=False,
+                    )
+
             if not new_file_path:
                 print("Failed to find executable in extracted update.")
                 return
@@ -170,9 +193,21 @@ del "%~f0"
             script_path = os.path.join(tempfile.gettempdir(), "sic_update.sh")
             with open(script_path, "w") as f:
                 f.write(f"""#!/bin/bash
+# Aguarda o processo principal encerrar completamente
 sleep 2
+
+# Remove o app antigo (se existir) e move o novo para o lugar
 rm -rf "{app_root}"
 mv -f "{new_file_path}" "{app_root}"
+
+# Garante permissões de execução no binário interno (caso perdido na extração)
+chmod -R u+rwX "{app_root}"
+chmod +x "{app_root}/Contents/MacOS/SIC" 2>/dev/null
+
+# Remove atributo de quarentena para evitar bloqueio do Gatekeeper
+xattr -dr com.apple.quarantine "{app_root}" 2>/dev/null
+
+# Abre o app atualizado
 open "{app_root}"
 rm -- "$0"
 """)
