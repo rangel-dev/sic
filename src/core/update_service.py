@@ -165,6 +165,7 @@ class UpdateService:
         if is_windows:
             script_path = os.path.join(tempfile.gettempdir(), "sic_update.bat")
             exe_dir = os.path.dirname(current_exe)
+            exe_name = os.path.basename(current_exe)
             # Escreve o .bat em UTF-8 e declara chcp 65001 dentro dele, para que
             # caminhos com acentos (ex: "Área de Trabalho") não sejam corrompidos
             # pela codepage OEM padrão do cmd.exe.
@@ -175,7 +176,7 @@ chcp 65001 > nul
 rem Aguarda o processo principal (bootloader + filho Python) encerrar
 :loop
 timeout /t 1 /nobreak > nul
-tasklist /fi "imagename eq SIC.exe" 2>nul | find /i "SIC.exe" > nul
+tasklist /fi "imagename eq {exe_name}" 2>nul | find /i "{exe_name}" > nul
 if not errorlevel 1 goto loop
 
 rem Aguarda o cleanup do diretorio temporario _MEI do PyInstaller
@@ -206,7 +207,7 @@ rem Auto-delete
             # exibindo "failed to load python dll / modulo nao encontrado".
             DETACHED_PROCESS = 0x00000008
             subprocess.Popen(
-                [script_path],
+                script_path,
                 shell=True,
                 creationflags=DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
                 close_fds=True,
@@ -235,7 +236,7 @@ mv -f "{new_file_path}" "{app_root}"
 
 # Garante permissões de execução no binário interno (caso perdido na extração)
 chmod -R u+rwX "{app_root}"
-chmod +x "{app_root}/Contents/MacOS/SIC" 2>/dev/null
+chmod +x "{app_root}/Contents/MacOS/"* 2>/dev/null
 
 # Remove atributo de quarentena para evitar bloqueio do Gatekeeper
 xattr -dr com.apple.quarantine "{app_root}" 2>/dev/null
