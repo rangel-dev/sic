@@ -162,54 +162,101 @@ class UpdateService:
         is_windows = platform.system().lower() == "windows"
         
         if is_windows:
-            script_path = os.path.join(tempfile.gettempdir(), "sic_update.bat")
+            # Abandonamos o .bat em favor de PowerShell. O .bat tinha problemas
+            # com pipes (tasklist|find) quando combinado com DETACHED_PROCESS,
+            # encoding de paths com acentos e parsing frágil. PowerShell resolve
+            # todos esses problemas: Unicode nativo, Get-Process em vez de pipe,
+            # Start-Process com detachment correto.
+            ps_path = os.path.join(tempfile.gettempdir(), "sic_update.ps1")
             exe_dir = os.path.dirname(current_exe)
+            current_pid = os.getpid()
 
-            # Escreve em ANSI (cp1252), não UTF-8. O cmd.exe lê .bat como ANSI.
-            # O `chcp 65001` muda a página de código para UTF-8 se necessário.
-            with open(script_path, "w", encoding="cp1252") as f:
-                f.write(f"""@echo off
+            # Escapa apenas a aspa simples (único char especial em strings PS com aspas simples)
+            def ps_escape(s):
+                return s.replace("'", "''")
 
-rem Aguarda o SIC.exe original fechar completamente
-:wait_loop
-timeout /t 1 /nobreak > nul
-tasklist /fi "imagename eq SIC.exe" 2>nul | find /i "SIC.exe" > nul
-if not errorlevel 1 goto wait_loop
+            ps_new_file = ps_escape(new_file_path)
+            ps_current = ps_escape(current_exe)
+            ps_exe_dir = ps_escape(exe_dir)
 
-rem Aguarda 2s extra para o _MEI temp cleanup do PyInstaller
-timeout /t 2 /nobreak > nul
+            with open(ps_path, "w", encoding="utf-8-sig") as f:
+                f.write(f"""# SIC Update Script
+$ErrorActionPreference = 'SilentlyContinue'
 
-rem Substitui o executavel (com retry)
-move /y "{new_file_path}" "{current_exe}"
-if errorlevel 1 (
-    timeout /t 2 /nobreak > nul
-    move /y "{new_file_path}" "{current_exe}"
-)
+# 1. Aguarda o processo original (PID {current_pid}) encerrar completamente
+$timeout = 30
+while ($timeout -gt 0) {{
+    $proc = Get-Process -Id {current_pid} -ErrorAction SilentlyContinue
+    if (-not $proc) {{ break }}
+    Start-Sleep -Seconds 1
+    $timeout--
+}}
 
-rem Aguarda 3s para o Windows comprometer o arquivo no disco
-timeout /t 3 /nobreak > nul
+# 2. Aguarda qualquer SIC.exe remanescente fechar (bootloader parent do PyInstaller)
+$timeout = 15
+while ($timeout -gt 0) {{
+    $procs = Get-Process -Name 'SIC' -ErrorAction SilentlyContinue
+    if (-not $procs) {{ break }}
+    Start-Sleep -Seconds 1
+    $timeout--
+}}
 
-rem Limpa variaveis de ambiente que apontam para diretorios temporarios antigos
-rem Isto evita que o novo SIC.exe procure python311.dll num _MEI que nao existe mais
-set _MEIPASS=
-set PYI_HOME_RET=
-set PYTHONHOME=
-set PYTHONPATH=
+# 3. Aguarda cleanup do _MEI temp dir do PyInstaller
+Start-Sleep -Seconds 2
 
-rem Muda para o diretorio do exe e lanca de la
-cd /d "{exe_dir}"
-start "" /B /D "{exe_dir}" "{current_exe}"
+# 4. Substitui o executavel com retry
+$retries = 3
+while ($retries -gt 0) {{
+    try {{
+        Move-Item -Path '{ps_new_file}' -Destination '{ps_current}' -Force -ErrorAction Stop
+        break
+    }} catch {{
+        Start-Sleep -Seconds 2
+        $retries--
+    }}
+}}
 
-rem Auto-delete do script
-(goto) 2>nul & del "%~f0"
+# 5. Aguarda Windows comprometer o arquivo no disco
+Start-Sleep -Seconds 2
+
+# 6. Lança o novo SIC.exe num processo totalmente independente.
+#    Start-Process cria um processo corretamente desacoplado, sem herdar
+#    variaveis _MEIPASS/PYTHONHOME/PYTHONPATH que apontariam para o _MEI
+#    antigo (causa do erro "failed to load python dll").
+# Limpa variaveis do PyInstaller do proprio escopo do PowerShell antes
+# de lancar, para que o novo SIC.exe nao as herde e procure python311.dll
+# num _MEI antigo que ja foi deletado.
+Remove-Item Env:\_MEIPASS -ErrorAction SilentlyContinue
+Remove-Item Env:\_PYI_APPLICATION_HOME_DIR -ErrorAction SilentlyContinue
+Remove-Item Env:\PYTHONHOME -ErrorAction SilentlyContinue
+Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
+
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = '{ps_current}'
+$psi.WorkingDirectory = '{ps_exe_dir}'
+$psi.UseShellExecute = $false
+# UseShellExecute=$false permite manipular EnvironmentVariables.
+# EnvironmentVariables e uma copia do env do PowerShell, ja limpo acima.
+[System.Diagnostics.Process]::Start($psi) | Out-Null
+
+# 7. Auto-delete
+Start-Sleep -Seconds 1
+Remove-Item -Path $MyInvocation.MyCommand.Path -Force
 """)
 
-            # DETACHED_PROCESS (0x08) desacopla totalmente do Python que esta morrendo.
-            # CreateNoWindow evita console visivel.
+            # Lança o PowerShell totalmente desacoplado (DETACHED_PROCESS + CREATE_NO_WINDOW).
+            # -WindowStyle Hidden garante que nenhuma janela apareça.
+            # -ExecutionPolicy Bypass permite rodar o script sem configuração prévia.
             DETACHED_PROCESS = 0x00000008
             subprocess.Popen(
-                [script_path],
-                shell=True,
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-WindowStyle", "Hidden",
+                    "-ExecutionPolicy", "Bypass",
+                    "-File", ps_path,
+                ],
                 creationflags=DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
                 close_fds=True,
             )
