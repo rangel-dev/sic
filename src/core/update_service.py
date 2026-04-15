@@ -165,10 +165,10 @@ class UpdateService:
             script_path = os.path.join(tempfile.gettempdir(), "sic_update.bat")
             exe_dir = os.path.dirname(current_exe)
 
-            # Escreve o .bat em UTF-8 para suportar caminhos com acentos
-            with open(script_path, "w", encoding="utf-8") as f:
+            # Escreve em ANSI (cp1252), não UTF-8. O cmd.exe lê .bat como ANSI.
+            # O `chcp 65001` muda a página de código para UTF-8 se necessário.
+            with open(script_path, "w", encoding="cp1252") as f:
                 f.write(f"""@echo off
-chcp 65001 > nul 2>&1
 
 rem Aguarda o SIC.exe original fechar completamente
 :wait_loop
