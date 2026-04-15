@@ -115,12 +115,15 @@ class UpdateService:
             new_file_path = None
             
             if is_windows:
-                # Look for SIC.exe
+                # Look for SIC.exe (break em loop interno não sai do outer,
+                # então usamos flag para encerrar o os.walk assim que encontrar)
                 for root, _, files in os.walk(extract_dir):
                     for name in files:
                         if name.lower().endswith(".exe"):
                             new_file_path = os.path.join(root, name)
                             break
+                    if new_file_path:
+                        break
             else:
                 # Look for SIC.app on Mac
                 for root, dirs, _ in os.walk(extract_dir):
@@ -179,69 +182,120 @@ class UpdateService:
             ps_current = ps_escape(current_exe)
             ps_exe_dir = ps_escape(exe_dir)
 
+            log_path = os.path.join(tempfile.gettempdir(), "sic_update.log")
+            ps_log = ps_escape(log_path)
+
             with open(ps_path, "w", encoding="utf-8-sig") as f:
                 f.write(f"""# SIC Update Script
-$ErrorActionPreference = 'SilentlyContinue'
+# IMPORTANTE: NAO use SilentlyContinue global. Erros em Move-Item / Start-Process
+# eram mascarados e o update falhava sem explicacao. Agora logamos tudo.
+$ErrorActionPreference = 'Continue'
 
-# 1. Aguarda o processo original (PID {current_pid}) encerrar completamente
-$timeout = 30
-while ($timeout -gt 0) {{
-    $proc = Get-Process -Id {current_pid} -ErrorAction SilentlyContinue
-    if (-not $proc) {{ break }}
-    Start-Sleep -Seconds 1
-    $timeout--
-}}
+# Captura tudo (stdout, erros, warnings) num log que o usuario pode abrir
+# caso o update falhe: %TEMP%\\sic_update.log
+Start-Transcript -Path '{ps_log}' -Force | Out-Null
 
-# 2. Aguarda qualquer SIC.exe remanescente fechar (bootloader parent do PyInstaller)
-$timeout = 15
-while ($timeout -gt 0) {{
-    $procs = Get-Process -Name 'SIC' -ErrorAction SilentlyContinue
-    if (-not $procs) {{ break }}
-    Start-Sleep -Seconds 1
-    $timeout--
-}}
+try {{
+    Write-Host "=== SIC Update Script iniciado $(Get-Date) ==="
+    Write-Host "PID origem: {current_pid}"
+    Write-Host "Novo arquivo: {ps_new_file}"
+    Write-Host "Destino: {ps_current}"
 
-# 3. Aguarda cleanup do _MEI temp dir do PyInstaller
-Start-Sleep -Seconds 2
-
-# 4. Substitui o executavel com retry
-$retries = 3
-while ($retries -gt 0) {{
-    try {{
-        Move-Item -Path '{ps_new_file}' -Destination '{ps_current}' -Force -ErrorAction Stop
-        break
-    }} catch {{
-        Start-Sleep -Seconds 2
-        $retries--
+    # 1. Aguarda o processo original (PID {current_pid}) encerrar completamente
+    $timeout = 30
+    while ($timeout -gt 0) {{
+        $proc = Get-Process -Id {current_pid} -ErrorAction SilentlyContinue
+        if (-not $proc) {{ break }}
+        Start-Sleep -Seconds 1
+        $timeout--
     }}
+    Write-Host "PID {current_pid} encerrado (aguardou $(30 - $timeout)s)"
+
+    # 2. Aguarda qualquer SIC.exe remanescente fechar (bootloader parent do PyInstaller)
+    $timeout = 15
+    while ($timeout -gt 0) {{
+        $procs = Get-Process -Name 'SIC' -ErrorAction SilentlyContinue
+        if (-not $procs) {{ break }}
+        Start-Sleep -Seconds 1
+        $timeout--
+    }}
+    Write-Host "SIC.exe remanescente encerrado (aguardou $(15 - $timeout)s)"
+
+    # 3. Aguarda cleanup do _MEI temp dir do PyInstaller
+    Start-Sleep -Seconds 2
+
+    # 4. Remove Mark of the Web (Zone.Identifier) do novo .exe.
+    #    Arquivos baixados da internet ficam marcados como "Untrusted" e o
+    #    SmartScreen/Defender pode bloquear execucao silenciosamente.
+    try {{
+        Unblock-File -Path '{ps_new_file}' -ErrorAction Stop
+        Write-Host "Unblock-File OK"
+    }} catch {{
+        Write-Host "Unblock-File falhou (nao-fatal): $_"
+    }}
+
+    # 5. Valida que os paths existem antes de tentar mover
+    if (-not (Test-Path -Path '{ps_new_file}')) {{
+        throw "Novo arquivo nao existe: {ps_new_file}"
+    }}
+    $destDir = Split-Path -Path '{ps_current}' -Parent
+    if (-not (Test-Path -Path $destDir)) {{
+        throw "Diretorio de destino nao existe: $destDir"
+    }}
+
+    # 6. Substitui o executavel com retry explicito e log de cada tentativa
+    $moved = $false
+    for ($i = 1; $i -le 5; $i++) {{
+        try {{
+            Move-Item -Path '{ps_new_file}' -Destination '{ps_current}' -Force -ErrorAction Stop
+            $moved = $true
+            Write-Host "Move-Item OK na tentativa $i"
+            break
+        }} catch {{
+            Write-Host "Move-Item tentativa $i falhou: $_"
+            Start-Sleep -Seconds 2
+        }}
+    }}
+    if (-not $moved) {{
+        throw "Falha ao mover o novo executavel apos 5 tentativas. Provavel causa: SIC.exe ainda aberto, ou falta de permissao (verifique se o SIC esta instalado em Program Files)."
+    }}
+
+    # 7. Aguarda Windows comprometer o arquivo no disco
+    Start-Sleep -Seconds 2
+
+    # 8. Limpa variaveis do PyInstaller do proprio escopo do PowerShell
+    #    antes de lancar o novo processo. Sem isso, o novo SIC.exe herda
+    #    _MEIPASS apontando para um _MEI antigo ja deletado e falha com
+    #    "failed to load python dll".
+    Remove-Item Env:\\_MEIPASS -ErrorAction SilentlyContinue
+    Remove-Item Env:\\_PYI_APPLICATION_HOME_DIR -ErrorAction SilentlyContinue
+    Remove-Item Env:\\PYTHONHOME -ErrorAction SilentlyContinue
+    Remove-Item Env:\\PYTHONPATH -ErrorAction SilentlyContinue
+
+    # 9. Lanca o novo SIC.exe. Start-Process e mais robusto que [Process]::Start
+    #    e garante detachment correto do PowerShell que esta morrendo.
+    Start-Process -FilePath '{ps_current}' -WorkingDirectory '{ps_exe_dir}' -ErrorAction Stop
+    Write-Host "Start-Process OK — novo SIC.exe lancado"
+
+}} catch {{
+    Write-Host "ERRO FATAL: $_"
+    Write-Host $_.ScriptStackTrace
+    # Mostra MessageBox para o usuario ver (caso contrario ele pensaria que
+    # o app simplesmente fechou). Funciona mesmo com -WindowStyle Hidden.
+    Add-Type -AssemblyName PresentationFramework -ErrorAction SilentlyContinue
+    [System.Windows.MessageBox]::Show(
+        "Falha ao atualizar o SIC:`n`n$_`n`nVeja o log completo em:`n{ps_log}",
+        "SIC — Erro na Atualizacao",
+        'OK',
+        'Error'
+    ) | Out-Null
+}} finally {{
+    Stop-Transcript | Out-Null
 }}
 
-# 5. Aguarda Windows comprometer o arquivo no disco
-Start-Sleep -Seconds 2
-
-# 6. Lança o novo SIC.exe num processo totalmente independente.
-#    Start-Process cria um processo corretamente desacoplado, sem herdar
-#    variaveis _MEIPASS/PYTHONHOME/PYTHONPATH que apontariam para o _MEI
-#    antigo (causa do erro "failed to load python dll").
-# Limpa variaveis do PyInstaller do proprio escopo do PowerShell antes
-# de lancar, para que o novo SIC.exe nao as herde e procure python311.dll
-# num _MEI antigo que ja foi deletado.
-Remove-Item Env:\_MEIPASS -ErrorAction SilentlyContinue
-Remove-Item Env:\_PYI_APPLICATION_HOME_DIR -ErrorAction SilentlyContinue
-Remove-Item Env:\PYTHONHOME -ErrorAction SilentlyContinue
-Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
-
-$psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = '{ps_current}'
-$psi.WorkingDirectory = '{ps_exe_dir}'
-$psi.UseShellExecute = $false
-# UseShellExecute=$false permite manipular EnvironmentVariables.
-# EnvironmentVariables e uma copia do env do PowerShell, ja limpo acima.
-[System.Diagnostics.Process]::Start($psi) | Out-Null
-
-# 7. Auto-delete
+# Auto-delete do script (nao do log — usuario pode precisar)
 Start-Sleep -Seconds 1
-Remove-Item -Path $MyInvocation.MyCommand.Path -Force
+Remove-Item -Path $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
 """)
 
             # Lança o PowerShell totalmente desacoplado (DETACHED_PROCESS + CREATE_NO_WINDOW).
