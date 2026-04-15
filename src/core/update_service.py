@@ -34,12 +34,12 @@ class UpdateService:
                 download_url = None
                 for asset in assets:
                     name = asset.get("name", "").lower()
-                    # Look for Windows .exe or .zip for Windows
-                    if system == "windows" and (".exe" in name or ".zip" in name):
+                    # Match platform by name prefix before checking extension,
+                    # so SIC_Mac.zip is never picked on Windows and vice-versa.
+                    if system == "windows" and "windows" in name and (".exe" in name or ".zip" in name):
                         download_url = asset.get("browser_download_url")
                         break
-                    # Look for Mac .app, .dmg, or .zip for Mac
-                    elif system == "darwin" and (".dmg" in name or ".zip" in name or ".app" in name):
+                    elif system == "darwin" and ("mac" in name or "darwin" in name or "macos" in name) and (".dmg" in name or ".zip" in name or ".app" in name):
                         download_url = asset.get("browser_download_url")
                         break
                 
@@ -172,4 +172,9 @@ rm -- "$0"
             os.chmod(script_path, 0o755)
             subprocess.Popen(["/bin/bash", script_path], start_new_session=True)
 
-        sys.exit(0)
+        # os._exit() is required here because this method runs inside a background
+        # thread. sys.exit() only raises SystemExit in the calling thread, so the
+        # Qt main loop keeps running and the update script waits forever.
+        # os._exit() terminates the entire process immediately, allowing the
+        # bootstrap script to proceed with the file swap.
+        os._exit(0)
