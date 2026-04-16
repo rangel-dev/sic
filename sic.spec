@@ -55,12 +55,21 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+splash = Splash(
+    'assets/splash_bg.png',
+    binaries=a.binaries,
+    datas=a.datas,
+    text_pos=None,
+    text_size=12,
+    minify_script=True,
+    always_on_top=True,
+)
+
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
+    splash,
+    splash.binaries,
     [],
     name='SIC',
     debug=False,
@@ -76,6 +85,17 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon='assets/icons/app.ico'
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='SIC',
 )
 
 # For Mac, we still want the .app bundle wrapper

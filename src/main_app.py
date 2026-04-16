@@ -131,6 +131,14 @@ def main():
 
     splash = PremiumSplash(splash_pixmap, APP_NAME, VERSION)
     splash.show()
+    
+    # Fecha o splash nativo do PyInstaller assim que o Splash do Qt assume.
+    try:
+        import pyi_splash
+        pyi_splash.close()
+    except ImportError:
+        pass
+
     app.processEvents()
 
     # ── Launch ────────────────────────────────────────────────────────────
