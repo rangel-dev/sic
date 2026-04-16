@@ -107,11 +107,9 @@ QMainWindow {
     background-color: #1e293b;
     border: none;
     border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.30);
 }
 
 #card:hover {
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.40);
 }
 
 #card_flat {
@@ -815,23 +813,19 @@ QSplitter::handle:vertical {
     background-color: #1e293b;
     border: none;
     border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.30);
 }
 
 #kpi_card:hover {
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.40);
 }
 
 #nexus_card {
     background-color: #1e293b;
     border: none;
     border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.30);
 }
 
 #nexus_card:hover {
     background-color: #1e293b;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.40);
 }
 
 #nexus_greeting {
