@@ -129,9 +129,34 @@ class UpdateService:
 
         # 1. Download to temp
         temp_dir = tempfile.gettempdir()
+
+        # Windows pode retornar o path no formato 8.3 curto (ex: MARCOS~1.RAN).
+        # O PowerShell não resolve short names corretamente em todos os sistemas
+        # (Windows 10/11 com short names desativados), fazendo o script PS ser
+        # encontrado em path inválido e sair em <1s com exit code=0 sem executar.
+        # GetLongPathNameW converte C:\Users\MARCOS~1.RAN\... → C:\Users\marcos.rangel\...
+        if platform.system().lower() == "windows":
+            try:
+                import ctypes
+                buf = ctypes.create_unicode_buffer(32768)
+                if ctypes.windll.kernel32.GetLongPathNameW(temp_dir, buf, len(buf)):
+                    temp_dir_long = buf.value
+                    _log(f"Temp dir (short): {temp_dir}")
+                    _log(f"Temp dir (long):  {temp_dir_long}")
+                    temp_dir = temp_dir_long
+                else:
+                    _log(f"GetLongPathNameW retornou 0 — mantendo path original: {temp_dir}")
+            except Exception as e:
+                _log(f"GetLongPathNameW falhou (não-fatal, mantendo path original): {e}")
+
+        # Atualiza também o PYTHON_LOG_PATH para usar o long path
+        global PYTHON_LOG_PATH
+        if platform.system().lower() == "windows" and "~" in PYTHON_LOG_PATH:
+            PYTHON_LOG_PATH = os.path.join(temp_dir, "sic_update_python.log")
+
         filename = download_url.split("/")[-1]
         target_zip_path = os.path.join(temp_dir, filename)
-        _log(f"Temp dir: {temp_dir}")
+        _log(f"Temp dir final: {temp_dir}")
         _log(f"Target zip: {target_zip_path}")
 
         try:
@@ -259,36 +284,55 @@ class UpdateService:
             # encoding de paths com acentos e parsing frágil. PowerShell resolve
             # todos esses problemas: Unicode nativo, Get-Process em vez de pipe,
             # Start-Process com detachment correto.
-            ps_path = os.path.join(tempfile.gettempdir(), "sic_update.ps1")
-            exe_dir = os.path.dirname(current_exe)
+
+            # Resolve o long path do temp dir para evitar MARCOS~1.RAN
+            # (short names 8.3 podem não ser reconhecidos pelo PowerShell)
+            tmp = tempfile.gettempdir()
+            try:
+                import ctypes
+                buf = ctypes.create_unicode_buffer(32768)
+                if ctypes.windll.kernel32.GetLongPathNameW(tmp, buf, len(buf)):
+                    tmp = buf.value
+            except Exception:
+                pass
+
+            ps_path  = os.path.join(tmp, "sic_update.ps1")
+            log_path = os.path.join(tmp, "sic_update.log")
+            exe_dir  = os.path.dirname(current_exe)
             current_pid = os.getpid()
+
+            _log(f"  temp_dir (PS): {tmp}")
 
             # Escapa apenas a aspa simples (único char especial em strings PS com aspas simples)
             def ps_escape(s):
                 return s.replace("'", "''")
 
             ps_new_file = ps_escape(new_file_path)
-            ps_current = ps_escape(current_exe)
-            ps_exe_dir = ps_escape(exe_dir)
-
-            log_path = os.path.join(tempfile.gettempdir(), "sic_update.log")
-            ps_log = ps_escape(log_path)
+            ps_current  = ps_escape(current_exe)
+            ps_exe_dir  = ps_escape(exe_dir)
+            ps_log      = ps_escape(log_path)
 
             with open(ps_path, "w", encoding="utf-8-sig") as f:
                 f.write(f"""# SIC Update Script
-# IMPORTANTE: NAO use SilentlyContinue global. Erros em Move-Item / Start-Process
-# eram mascarados e o update falhava sem explicacao. Agora logamos tudo.
 $ErrorActionPreference = 'Continue'
 
-# Captura tudo (stdout, erros, warnings) num log que o usuario pode abrir
-# caso o update falhe: %TEMP%\\sic_update.log
-Start-Transcript -Path '{ps_log}' -Force | Out-Null
+# Logging manual via Add-Content — mais confiavel que Start-Transcript
+# em ambientes onde o cmdlet falha silenciosamente.
+$LOG = '{ps_log}'
+function Log($msg) {{
+    $line = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $msg"
+    Add-Content -Path $LOG -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue
+}}
+
+# Primeira acao: confirma que o script chegou a ser executado.
+# Se este arquivo existir, o PS rodou o script. Se nao existir, o path
+# do .ps1 nao foi encontrado ou o PS foi bloqueado antes de comecar.
+Log "=== SIC Update Script iniciado. PS v$($PSVersionTable.PSVersion) ==="
+Log "PID origem: {current_pid}"
+Log "Novo arquivo: {ps_new_file}"
+Log "Destino: {ps_current}"
 
 try {{
-    Write-Host "=== SIC Update Script iniciado $(Get-Date) ==="
-    Write-Host "PID origem: {current_pid}"
-    Write-Host "Novo arquivo: {ps_new_file}"
-    Write-Host "Destino: {ps_current}"
 
     # 1. Aguarda o processo original (PID {current_pid}) encerrar completamente
     $timeout = 30
@@ -298,7 +342,7 @@ try {{
         Start-Sleep -Seconds 1
         $timeout--
     }}
-    Write-Host "PID {current_pid} encerrado (aguardou $(30 - $timeout)s)"
+    Log "PID {current_pid} encerrado (aguardou $(30 - $timeout)s)"
 
     # 2. Aguarda qualquer SIC.exe remanescente fechar (bootloader parent do PyInstaller)
     $timeout = 15
@@ -308,7 +352,7 @@ try {{
         Start-Sleep -Seconds 1
         $timeout--
     }}
-    Write-Host "SIC.exe remanescente encerrado (aguardou $(15 - $timeout)s)"
+    Log "SIC.exe remanescente encerrado (aguardou $(15 - $timeout)s)"
 
     # 3. Aguarda cleanup do _MEI temp dir do PyInstaller
     Start-Sleep -Seconds 2
@@ -318,9 +362,9 @@ try {{
     #    SmartScreen/Defender pode bloquear execucao silenciosamente.
     try {{
         Unblock-File -Path '{ps_new_file}' -ErrorAction Stop
-        Write-Host "Unblock-File OK"
+        Log "Unblock-File OK"
     }} catch {{
-        Write-Host "Unblock-File falhou (nao-fatal): $_"
+        Log "Unblock-File falhou (nao-fatal): $_"
     }}
 
     # 5. Valida que os paths existem antes de tentar mover
@@ -331,68 +375,63 @@ try {{
     if (-not (Test-Path -Path $destDir)) {{
         throw "Diretorio de destino nao existe: $destDir"
     }}
+    Log "Validacao de paths OK"
 
-    # 6. Substitui o executavel com retry explicito e log de cada tentativa
+    # 6. Substitui o executavel com retry explicito
     $moved = $false
     for ($i = 1; $i -le 5; $i++) {{
         try {{
             Move-Item -Path '{ps_new_file}' -Destination '{ps_current}' -Force -ErrorAction Stop
             $moved = $true
-            Write-Host "Move-Item OK na tentativa $i"
+            Log "Move-Item OK na tentativa $i"
             break
         }} catch {{
-            Write-Host "Move-Item tentativa $i falhou: $_"
+            Log "Move-Item tentativa $i falhou: $_"
             Start-Sleep -Seconds 2
         }}
     }}
     if (-not $moved) {{
-        throw "Falha ao mover o novo executavel apos 5 tentativas. Provavel causa: SIC.exe ainda aberto, ou falta de permissao (verifique se o SIC esta instalado em Program Files)."
+        throw "Falha ao mover o executavel apos 5 tentativas. SIC.exe ainda aberto ou sem permissao de escrita."
     }}
 
     # 7. Aguarda Windows comprometer o arquivo no disco
     Start-Sleep -Seconds 2
 
-    # 8. Limpa variaveis do PyInstaller do proprio escopo do PowerShell
-    #    antes de lancar o novo processo. Sem isso, o novo SIC.exe herda
-    #    _MEIPASS apontando para um _MEI antigo ja deletado e falha com
-    #    "failed to load python dll".
+    # 8. Limpa variaveis do PyInstaller — sem isso o novo SIC.exe herda
+    #    _MEIPASS apontando para um _MEI antigo deletado → "failed to load python dll"
     Remove-Item Env:\\_MEIPASS -ErrorAction SilentlyContinue
     Remove-Item Env:\\_PYI_APPLICATION_HOME_DIR -ErrorAction SilentlyContinue
     Remove-Item Env:\\PYTHONHOME -ErrorAction SilentlyContinue
     Remove-Item Env:\\PYTHONPATH -ErrorAction SilentlyContinue
+    Log "Variaveis PyInstaller limpas"
 
-    # 9. Lanca o novo SIC.exe. Start-Process e mais robusto que [Process]::Start
-    #    e garante detachment correto do PowerShell que esta morrendo.
+    # 9. Lanca o novo SIC.exe
+    Log "Chamando Start-Process..."
     Start-Process -FilePath '{ps_current}' -WorkingDirectory '{ps_exe_dir}' -ErrorAction Stop
-    Write-Host "Start-Process OK — novo SIC.exe lancado"
+    Log "Start-Process OK — novo SIC.exe lancado"
 
 }} catch {{
-    Write-Host "ERRO FATAL: $_"
-    Write-Host $_.ScriptStackTrace
-    # Mostra MessageBox para o usuario ver (caso contrario ele pensaria que
-    # o app simplesmente fechou). Funciona mesmo com -WindowStyle Hidden.
+    Log "ERRO FATAL: $_"
+    Log "$($_.ScriptStackTrace)"
+    # Mostra MessageBox para o usuario ver
     Add-Type -AssemblyName PresentationFramework -ErrorAction SilentlyContinue
     [System.Windows.MessageBox]::Show(
-        "Falha ao atualizar o SIC:`n`n$_`n`nVeja o log completo em:`n{ps_log}",
+        "Falha ao atualizar o SIC:`n`n$_`n`nLog completo em:`n{ps_log}",
         "SIC — Erro na Atualizacao",
         'OK',
         'Error'
     ) | Out-Null
-}} finally {{
-    Stop-Transcript | Out-Null
 }}
 
-# Auto-delete do script (comentado durante diagnostico — mantemos para inspecao)
-# Start-Sleep -Seconds 1
-# Remove-Item -Path $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+Log "Script PS finalizado."
+# (script nao se auto-deleta para inspecao em caso de falha)
 """)
 
             _log(f"Script PS gravado em: {ps_path}")
             _log(f"  Tamanho do script: {os.path.getsize(ps_path):,} bytes")
 
-            # Salva uma CÓPIA do script para inspeção pós-mortem. O script
-            # original se auto-deleta ao final; esta cópia permanece.
-            copy_path = os.path.join(tempfile.gettempdir(), "sic_update_copy.ps1")
+            # Salva uma CÓPIA do script para inspeção pós-mortem.
+            copy_path = os.path.join(tmp, "sic_update_copy.ps1")
             try:
                 import shutil
                 shutil.copy2(ps_path, copy_path)
