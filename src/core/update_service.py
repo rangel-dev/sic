@@ -110,6 +110,7 @@ class UpdateService:
         """
         Downloads the file, extracts it (ZIP), and prepares the bootstrap restart.
         """
+        global PYTHON_LOG_PATH
         import zipfile
 
         # Começa um log novo para esta tentativa — apaga o anterior para não
@@ -150,7 +151,6 @@ class UpdateService:
                 _log(f"GetLongPathNameW falhou (não-fatal, mantendo path original): {e}")
 
         # Atualiza também o PYTHON_LOG_PATH para usar o long path
-        global PYTHON_LOG_PATH
         if platform.system().lower() == "windows" and "~" in PYTHON_LOG_PATH:
             PYTHON_LOG_PATH = os.path.join(temp_dir, "sic_update_python.log")
 
