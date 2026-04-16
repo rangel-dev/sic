@@ -21,7 +21,15 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=added_files,
-    hiddenimports=['pandas', 'openpyxl', 'lxml', 'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets'],
+    hiddenimports=[
+        'pandas', 'openpyxl', 'lxml',
+        'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets',
+        # Estes módulos são importados lazily (dentro de funções) para não
+        # bloquear o startup. O PyInstaller não os detecta pela análise
+        # estática — precisam ser declarados explicitamente aqui.
+        'src.core.update_service',
+        'src.workers.worker_update',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
