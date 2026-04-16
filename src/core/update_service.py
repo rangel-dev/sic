@@ -404,31 +404,23 @@ try {{
             if not os.path.exists(ps_exe):
                 _log(f"  powershell.exe não encontrado em {ps_exe}, caindo para nome simples")
                 ps_exe = "powershell.exe"
-            else:
-                _log(f"  powershell.exe: {ps_exe}")
-
-            # Lançamento via 'cmd /c start' com WindowStyle Hidden.
-            # Esta é a forma mais robusta de garantir que o PowerShell seja lançado de forma
-            # independente e consiga realizar o swap após este processo morrer.
+            # Lançamento via arquivo .bat intermediário + os.startfile().
+            # Esta é a técnica mais compatível no Windows para disparar um processo
+            # que deve sobreviver ao fechamento do pai sem ser bloqueado por políticas de segurança.
             try:
-                # Monta comando PowerShell para ser passado via CLI
-                # Usamos -Command para evitar restrições de ExecutionPolicy em arquivos .ps1
-                ps_cmd = f"& '{ps_path}'"
-                full_cmd = [
-                    "cmd.exe", "/c", "start", "/b", "powershell.exe",
-                    "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
-                    "-ExecutionPolicy", "Bypass", "-Command", ps_cmd
-                ]
-                
-                _log(f"Lançando PowerShell via cmd: {' '.join(full_cmd)}")
-                subprocess.Popen(
-                    full_cmd,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                    close_fds=True
-                )
-                _log("Popen concluído — aguardando encerramento do SIC.")
+                bat_path = os.path.join(tmp, "sic_launcher.bat")
+                with open(bat_path, "w", encoding="utf-8") as f:
+                    # O script bat chama o powershell e se fecha imediatamente.
+                    # Usamos -ExecutionPolicy Bypass -File para garantir que o script ps1 rode.
+                    f.write(f'@echo off\n')
+                    f.write(f'start /b powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{ps_path}"\n')
+                    f.write(f'exit\n')
+
+                _log(f"Lançando via .bat: {bat_path}")
+                os.startfile(bat_path)
+                _log("os.startfile concluído — aguardando encerramento do SIC.")
                 import time
-                time.sleep(1) # fôlego para o OS despachar o processo
+                time.sleep(1)
 
             except Exception as e:
                 _log(f"EXCEÇÃO ao lançar PowerShell: {e}")
