@@ -159,6 +159,24 @@ QMainWindow {
     color: #5a1a1a;
 }
 
+#dropzone[brand="natura"] {
+    border: 2px solid #FF8050;
+    background-color: #fff4f0;
+    color: #FF6B35;
+}
+
+#dropzone[brand="avon"] {
+    border: 2px solid #7B2FBE;
+    background-color: #f8f0ff;
+    color: #7B2FBE;
+}
+
+#dropzone[brand="ml"] {
+    border: 2px solid #2196F3;
+    background-color: #f0f7ff;
+    color: #1976D2;
+}
+
 /* ============================================================
    BUTTONS
    ============================================================ */

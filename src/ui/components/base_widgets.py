@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
 )
 
 
+from src.core.brand_detector import BrandDetector
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  DropZone
 # ─────────────────────────────────────────────────────────────────────────────
@@ -95,6 +97,7 @@ class DropZone(QFrame):
         self._icon_label.show()
         self._main_label.show()
         self.setProperty("state", "")
+        self.setProperty("brand", "")
         self._refresh_style()
 
     @property
@@ -144,18 +147,35 @@ class DropZone(QFrame):
     def _set_files(self, paths: list[str]) -> None:
         self._files = paths
         names = [Path(p).name for p in paths]
+        
+        # Smart Brand Detection
+        brand = "unknown"
+        brand_name = ""
+        if paths:
+            brand = BrandDetector.detect(paths[0])
+            brand_name = BrandDetector.get_brand_display_name(brand)
+
         if len(names) == 1:
             display = names[0]
+            if brand != "unknown":
+                display = f"[{brand_name}] {display}"
         else:
             display = f"{len(names)} arquivos: {', '.join(names[:2])}"
             if len(names) > 2:
                 display += f"  (+{len(names) - 2})"
 
+        status_icon = "✔"
+        if brand == "natura": status_icon = "🟧"
+        elif brand == "avon": status_icon = "🟪"
+        elif brand == "ml":   status_icon = "🟦"
+
         self._icon_label.hide()
         self._main_label.hide()
-        self._file_label.setText(f"✔  {display}")
+        self._file_label.setText(f"{status_icon}  {display}")
         self._file_label.show()
+        
         self.setProperty("state", "filled")
+        self.setProperty("brand", brand)
         self._refresh_style()
         self.files_selected.emit(self._files)
 
