@@ -65,7 +65,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1280, 800)
         self.resize(1460, 900)
         
-        self._nav_buttons: list[NavButton] = []
+        self._nav_buttons: dict[int, NavButton] = {}
         self._pages: list[QWidget] = []
         self._update_url: Optional[str] = None
 
@@ -162,7 +162,7 @@ class MainWindow(QMainWindow):
         for icon, label, idx in NAV_ITEMS:
             btn = NavButton(icon, label)
             btn.clicked.connect(lambda _checked, i=idx: self._switch(i))
-            self._nav_buttons.append(btn)
+            self._nav_buttons[idx] = btn
             layout.addWidget(btn)
 
         layout.addStretch()
@@ -175,7 +175,7 @@ class MainWindow(QMainWindow):
 
         btn_cfg = NavButton("⚙", "Configurações")
         btn_cfg.clicked.connect(lambda: self._switch(6))
-        self._nav_buttons.append(btn_cfg)
+        self._nav_buttons[6] = btn_cfg
         layout.addWidget(btn_cfg)
 
         # ── Theme Toggle ──────────────────────────────────────────────────
@@ -266,8 +266,8 @@ class MainWindow(QMainWindow):
         self._load_page(index)
         self._stack.setCurrentIndex(index)
 
-        # Update button states (manual exclusive group — sidebar has no auto-exclusive)
-        for i, btn in enumerate(self._nav_buttons):
+        # Update button states (manual exclusive group)
+        for i, btn in self._nav_buttons.items():
             btn.setChecked(i == index)
 
         NAMES = ["Início", "Gerador", "Sync", "Auditor",
