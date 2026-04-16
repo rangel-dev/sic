@@ -8,7 +8,7 @@ import platform
 
 from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QFont, QIcon, QPixmap
-from PySide6.QtWidgets import QApplication, QSplashScreen, QProgressBar, QLabel
+from PySide6.QtWidgets import QApplication, QSplashScreen, QProgressBar, QLabel, QFrame
 
 from src.core.version import VERSION, APP_NAME
 from src.ui.styles.qss_dark  import DARK_STYLESHEET
