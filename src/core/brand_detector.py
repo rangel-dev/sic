@@ -70,34 +70,41 @@ class BrandDetector:
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 # Read entire file to ensure we catch all markers
-                content = f.read().lower()
+                content = f.read()
 
             # Heuristic: Pricebook files are typically larger (>10KB) and contain all 3 brands
             # Catalog files are smaller and usually single-brand
             file_size = os.path.getsize(path)
             is_likely_pricebook = file_size > 10240  # >10KB
 
+            # Convert to lowercase for pattern matching
+            content_lower = content.lower()
+
             if is_likely_pricebook:
                 # PRICEBOOK MODE: Match pricebook header patterns
                 # Natura: br-natura-brazil-list-prices | br-natura-brazil-sale-prices
-                if re.search(r"br-natura-brazil-(list|sale)-prices", content):
+                if re.search(r"br-natura-brazil-(list|sale)-prices", content_lower):
                     brands.add("natura")
                 # Avon: brl-avon-brazil-list-prices | brl-avon-brazil-sale-prices
-                if re.search(r"brl-avon-brazil-(list|sale)-prices", content):
+                if re.search(r"brl-avon-brazil-(list|sale)-prices", content_lower):
                     brands.add("avon")
                 # CB/Minha Loja: br-cb-brazil-list-prices | br-cb-brazil-sale-prices
-                if re.search(r"br-cb-brazil-(list|sale)-prices", content):
+                if re.search(r"br-cb-brazil-(list|sale)-prices", content_lower):
                     brands.add("ml")
             else:
-                # CATALOG MODE: Match catalog-id patterns (NOT pricebook-id)
-                # Natura: natura-br-storefront-catalog OR just natura-br
-                if re.search(r"natura-br", content):
+                # CATALOG MODE: Match only catalog-id in first 5KB (header section)
+                # Don't search entire file to avoid false positives from product data
+                header_section = content_lower[:5120]  # First 5KB
+
+                # Look for specific catalog-id patterns in header
+                # Natura: catalog-id="*natura*-br*"
+                if re.search(r'catalog-id=["\']?[^"\']*natura[^"\']*-br', header_section):
                     brands.add("natura")
-                # Avon: avon-br-storefront-catalog OR just avon-br
-                if re.search(r"avon-br", content):
+                # Avon: catalog-id="*avon*-br*"
+                if re.search(r'catalog-id=["\']?[^"\']*avon[^"\']*-br', header_section):
                     brands.add("avon")
-                # CB/Minha Loja: cb-br-storefront-catalog OR just cb-br OR cbbrazil
-                if re.search(r"cb-br|cbbrazil", content):
+                # CB: catalog-id="*cb*-br*" or "cbbrazil*"
+                if re.search(r'catalog-id=["\']?[^"\']*cb[^"\']*-br|cbbrazil', header_section):
                     brands.add("ml")
 
         except Exception as e:
