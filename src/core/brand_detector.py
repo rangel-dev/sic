@@ -65,46 +65,46 @@ class BrandDetector:
 
     @staticmethod
     def _detect_xml_set(path: str) -> set[str]:
-        """Peeks into an XML to find brand markers via pricebook/catalog IDs."""
+        """
+        Detects brands in an XML file by reading its opening tag.
+
+        Strategy:
+        - Read first 1KB (enough to find the root element and its attributes)
+        - If root tag has catalog-id  → it's a catalog file  → detect by catalog-id value
+        - If root tag has pricebook-id → it's a pricebook file → detect by pricebook-id values
+        """
         brands = set()
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                # Read entire file to ensure we catch all markers
-                content = f.read()
+                # 1KB is enough to read the opening tag regardless of file size
+                header = f.read(1024).lower()
 
-            # Heuristic: Pricebook files are typically larger (>10KB) and contain all 3 brands
-            # Catalog files are smaller and usually single-brand
-            file_size = os.path.getsize(path)
-            is_likely_pricebook = file_size > 10240  # >10KB
-
-            # Convert to lowercase for pattern matching
-            content_lower = content.lower()
-
-            if is_likely_pricebook:
-                # PRICEBOOK MODE: Match pricebook header patterns
-                # Natura: br-natura-brazil-list-prices | br-natura-brazil-sale-prices
-                if re.search(r"br-natura-brazil-(list|sale)-prices", content_lower):
+            # --- CATALOG detection ---
+            # <catalog ... catalog-id="natura-br-storefront-catalog" ...>
+            catalog_id_match = re.search(r'catalog-id=["\']([^"\']+)["\']', header)
+            if catalog_id_match:
+                cid = catalog_id_match.group(1)
+                if "natura" in cid:
                     brands.add("natura")
-                # Avon: brl-avon-brazil-list-prices | brl-avon-brazil-sale-prices
-                if re.search(r"brl-avon-brazil-(list|sale)-prices", content_lower):
+                if "avon" in cid:
                     brands.add("avon")
-                # CB/Minha Loja: br-cb-brazil-list-prices | br-cb-brazil-sale-prices
-                if re.search(r"br-cb-brazil-(list|sale)-prices", content_lower):
+                if "cb" in cid:
                     brands.add("ml")
-            else:
-                # CATALOG MODE: Match catalog-id attribute in opening <catalog> tag
-                # Pattern: <catalog ... catalog-id="natura-br-storefront-catalog" ...>
-                # Search only first 500 chars to find the opening tag
-                opening_tag = content_lower[:500]
+                return brands  # catalog-id found → done, no need to keep searching
 
-                # Natura: catalog-id contains "natura-br"
-                if re.search(r'catalog-id=["\']natura-br', opening_tag):
+            # --- PRICEBOOK detection ---
+            # Pricebook doesn't have catalog-id in root tag.
+            # It has multiple <header pricebook-id="..."> entries — need full file scan.
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read().lower()
+
+            for m in re.finditer(r'pricebook-id=["\']([^"\']+)["\']', content):
+                pid = m.group(1)
+                if "natura" in pid:
                     brands.add("natura")
-                # Avon: catalog-id contains "avon-br"
-                if re.search(r'catalog-id=["\']avon-br', opening_tag):
+                if "avon" in pid:
                     brands.add("avon")
-                # CB: catalog-id contains "cb-br" or "cbbrazil"
-                if re.search(r'catalog-id=["\'](?:cb-br|cbbrazil)', opening_tag):
+                if "cb" in pid:
                     brands.add("ml")
 
         except Exception as e:
