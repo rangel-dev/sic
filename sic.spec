@@ -2,7 +2,7 @@
 
 import sys
 import os
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
@@ -16,20 +16,33 @@ added_files = [
     ('README.md', '.'),
 ]
 
+# Coleta TODOS os submódulos do nosso pacote `src` recursivamente.
+# Isso é a única forma 100% confiável de garantir que cada arquivo .py
+# em src/ vai parar dentro do .exe — independente de imports lazy,
+# namespace packages, ou caprichos do analisador estático do PyInstaller.
+# A causa raiz dos ModuleNotFoundError em runtime era o PyInstaller
+# silenciosamente pulando módulos como src.core.update_service.
+src_submodules = (
+    collect_submodules('src')
+    + collect_submodules('src.core')
+    + collect_submodules('src.workers')
+    + collect_submodules('src.ui')
+    + collect_submodules('src.ui.pages')
+    + collect_submodules('src.ui.components')
+    + collect_submodules('src.ui.styles')
+)
+
 a = Analysis(
     [entry_point],
-    pathex=[],
+    # pathex precisa apontar para a raiz do projeto para que os imports
+    # absolutos como `from src.core.X import Y` resolvam durante a análise.
+    pathex=[os.path.abspath('.')],
     binaries=[],
     datas=added_files,
     hiddenimports=[
         'pandas', 'openpyxl', 'lxml',
         'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets',
-        # Estes módulos são importados lazily (dentro de funções) para não
-        # bloquear o startup. O PyInstaller não os detecta pela análise
-        # estática — precisam ser declarados explicitamente aqui.
-        'src.core.update_service',
-        'src.workers.worker_update',
-    ],
+    ] + src_submodules,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
