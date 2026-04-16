@@ -29,49 +29,70 @@ def resource_path(relative_path):
 class PremiumSplash(QSplashScreen):
     """Modern splash screen with progress bar and status updates."""
     def __init__(self, pixmap, app_name, version):
+        # Enable high DPI for the pixmap
+        # If the image is large (e.g. 2x), Qt will handle the scaling
         super().__init__(pixmap, Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
-        self.setFixedSize(pixmap.size())
         
-        # Progress bar - positioned at the bottom
+        # Determine logical size for positioning elements
+        # pixmap.size() returns pixels; we need points for setGeometry
+        dpr = self.devicePixelRatio()
+        w = pixmap.width() / dpr
+        h = pixmap.height() / dpr
+        
+        # Bottom Overlay (Glassmorphism effect)
+        self.overlay = QFrame(self)
+        self.overlay.setGeometry(0, h - 80, w, 80)
+        self.overlay.setStyleSheet("""
+            QFrame {
+                background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                                                stop:0 rgba(0,0,0,0), stop:1 rgba(0,0,0,0.6));
+                border-bottom-left-radius: 12px;
+                border-bottom-right-radius: 12px;
+            }
+        """)
+
+        # Progress bar - positioned at the bottom, sleek design
         self.progress = QProgressBar(self)
-        self.progress.setGeometry(40, pixmap.height() - 50, pixmap.width() - 80, 6)
+        self.progress.setGeometry(40, h - 35, w - 80, 4)
         self.progress.setStyleSheet("""
             QProgressBar {
-                background-color: rgba(255, 255, 255, 20);
+                background-color: rgba(255, 255, 255, 0.1);
                 border: none;
-                border-radius: 3px;
+                border-radius: 2px;
                 text-align: center;
                 color: transparent;
             }
             QProgressBar::chunk {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
                                           stop:0 #FF6B35, stop:1 #7B2FBE);
-                border-radius: 3px;
+                border-radius: 2px;
             }
         """)
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         
         # Status Label
-        self.status_lbl = QLabel(self)
-        self.status_lbl.setGeometry(40, pixmap.height() - 80, pixmap.width() - 80, 20)
+        self.status_lbl = QLabel("Iniciando SIC...", self)
+        self.status_lbl.setGeometry(44, h - 60, w - 88, 20)
         self.status_lbl.setStyleSheet("""
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 11px;
-            font-weight: 500;
-            letter-spacing: 0.5px;
+            QLabel {
+                color: rgba(255, 255, 255, 0.9);
+                font-size: 12px;
+                font-weight: 500;
+                letter-spacing: 0.4px;
+            }
         """)
-        self.status_lbl.setText(f"Iniciando {app_name}...")
 
         # Version Label
         self.ver_lbl = QLabel(f"v{version}", self)
-        self.ver_lbl.setGeometry(pixmap.width() - 100, 20, 80, 20)
-        self.ver_lbl.setStyleSheet("color: rgba(255, 255, 255, 0.4); font-size: 10px; font-weight: 600;")
+        self.ver_lbl.setGeometry(w - 100, 20, 80, 20)
+        self.ver_lbl.setStyleSheet("color: rgba(255, 255, 255, 0.4); font-size: 11px; font-weight: 600;")
         self.ver_lbl.setAlignment(Qt.AlignRight)
 
     def update_progress(self, value, message):
         self.progress.setValue(value)
         self.status_lbl.setText(message)
+        # Force UI update
         QApplication.instance().processEvents()
 
 
@@ -120,13 +141,16 @@ def main():
     else:
         splash_pixmap = QPixmap(icon_path)
 
-    # Escalonamento removido para manter sincronia perfeita com o splash nativo do EXE
-    # O redimensionamento causava um 'pulo' visual entre o splash nativo e o do Qt.
+    # Note: No PySide6 splash scaling here to prevent "jumps" between
+    # native bootloader and Qt. PremiumSplash handles logical DPI in its __init__.
 
     splash = PremiumSplash(splash_pixmap, APP_NAME, VERSION)
     splash.show()
     
-    # Fecha o splash nativo do PyInstaller assim que o Splash do Qt assume.
+    # Force the display before closing native splash to ensure a smooth transition
+    app.processEvents()
+
+    # Fecha o splash nativo do PyInstaller ASSIM QUE o Splash do Qt está visível
     try:
         import pyi_splash
         pyi_splash.close()
@@ -136,14 +160,13 @@ def main():
     app.processEvents()
 
     # ── Launch ────────────────────────────────────────────────────────────
-    splash.update_progress(10, "Preparando ambiente...")
+    splash.update_progress(10, "Carregando módulos de segurança...")
     app.processEvents()
     
     def on_progress(val, msg):
         # Mapeia 0-100 da MainWindow para 15-95 no Splash
         mapped_val = 15 + int(val * 0.8)
         splash.update_progress(mapped_val, msg)
-        app.processEvents()
 
     window = MainWindow(progress_callback=on_progress)
     window.setWindowIcon(QIcon(icon_path))

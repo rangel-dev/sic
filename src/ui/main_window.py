@@ -60,7 +60,7 @@ class MainWindow(QMainWindow):
         def report(val, msg):
             if self._progress: self._progress(val, msg)
 
-        report(0, "Inicializando interface...")
+        report(0, "O programa está abrindo...")
         self.setWindowTitle(f"{APP_NAME}  v{VERSION}")
         self.setMinimumSize(1280, 800)
         self.resize(1460, 900)
@@ -69,14 +69,14 @@ class MainWindow(QMainWindow):
         self._pages: list[QWidget] = []
         self._update_url: Optional[str] = None
 
-        report(20, "Construindo layout base...")
+        report(20, "Carregando componentes do sistema...")
         self._build_ui()
         
-        report(60, "Aplicando identidade visual...")
+        report(60, "Sincronizando preferências...")
         self.apply_theme_and_font()
 
         # Start on home
-        report(80, "Carregando Dashboard...")
+        report(85, "Abrindo Dashboard...")
         self._switch(0)
 
         # Check for updates in background
@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self._build_sidebar())
         
-        if self._progress: self._progress(40, "Preparando módulos...")
+        if self._progress: self._progress(45, "Otimizando recursos...")
 
         self._stack = QStackedWidget()
         self._stack.setObjectName("content_area")
