@@ -3,12 +3,11 @@
 #define AppPublisher "RangelDev"
 #define AppURL "https://github.com/rangel-dev/sic"
 #define AppExeName "SIC.exe"
-#define AppVersion GetEnv('APP_VERSION')
 
 [Setup]
 AppId={{8C3A7B1E-7D4F-4E9A-B2C1-6E5D4F3A2B1C}
 AppName={#AppName}
-AppVersion={#AppVersion}
+AppVersion={#MyAppVersion}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}
