@@ -6,20 +6,15 @@ on:
       - main
       - dev
     tags:
-      - 'v*' # Mantém suporte para tags manuais se desejar
-
+      - 'v*'
 
 permissions:
-  contents: write # Essential to allow the bot to create releases
+  contents: write
 
 jobs:
   build:
-    name: Build for ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, macos-latest]
+    name: Build for Windows
+    runs-on: windows-latest
 
     steps:
       - name: Checkout code
@@ -29,7 +24,6 @@ jobs:
         id: get_version
         shell: bash
         run: |
-          # Extrai a versão do version.py
           VERSION=$(python -c "import os; print(open('src/core/version.py').read().split('VERSION = \"')[1].split('\"')[0])")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "tag=v$VERSION" >> $GITHUB_OUTPUT
@@ -45,28 +39,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
-          pip list
 
       - name: Build with PyInstaller
         run: |
           pyinstaller sic.spec
-          ls -R dist/
 
-      - name: Archive Production Artifact (Windows)
-        if: matrix.os == 'windows-latest'
+      - name: Create Installer (Inno Setup)
         run: |
           iscc "/DMyAppVersion=${{ env.VERSION }}" sic.iss
-          cd dist
-          compress-archive -Path SIC.exe -DestinationPath SIC_Windows.zip
         shell: pwsh
-
-      - name: Archive Production Artifact (Mac)
-        if: matrix.os == 'macos-latest'
-        run: |
-          cd dist
-          chmod +x SIC.app/Contents/MacOS/SIC
-          zip -r SIC_Mac.zip SIC.app
-
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
@@ -76,9 +57,6 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            dist/SIC_Windows.zip
-            dist/SIC_Mac.zip
             dist/SIC_Setup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
