@@ -160,8 +160,14 @@ class UpdateService:
                     "/FORCECLOSEAPPLICATIONS"
                 ]
                 
-                # Usamos subprocess.Popen totalmente destacado para o instalador assumir
-                subprocess.Popen(args, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.DETACHED_PROCESS)
+                # Usamos um comando de shell com DETACHED_PROCESS para garantir
+                # que o instalador seja lançado de forma independente e o SIC possa fechar.
+                cmd = f'"{target_path}" /VERYSILENT /SUPPRESSMSGBOXES /FORCECLOSEAPPLICATIONS'
+                subprocess.Popen(
+                    cmd, 
+                    shell=True, 
+                    creationflags=subprocess.DETACHED_PROCESS
+                )
                 
                 _log("Instalador lançado. Encerrando o app para permitir substituição.")
                 os._exit(0)
