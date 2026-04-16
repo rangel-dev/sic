@@ -43,6 +43,9 @@ jobs:
       - name: Archive Production Artifact (Windows)
         if: matrix.os == 'windows-latest'
         run: |
+          # Define a versão para o Inno Setup usar
+          $env:APP_VERSION = $env:VERSION
+          iscc sic.iss
           cd dist
           compress-archive -Path SIC.exe -DestinationPath SIC_Windows.zip
         shell: pwsh
@@ -73,6 +76,7 @@ jobs:
           files: |
             dist/SIC_Windows.zip
             dist/SIC_Mac.zip
+            dist/SIC_Setup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
