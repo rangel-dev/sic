@@ -23,55 +23,72 @@ QMainWindow {
 }
 
 /* ============================================================
-   SIDEBAR
+   TOP NAVIGATION BAR
    ============================================================ */
-#sidebar {
+#top_nav_bar {
     background-color: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+#logo_container {
     border-right: 1px solid #e5e7eb;
+}
+
+#settings_container {
+    border-left: 1px solid #e5e7eb;
+}
+
+#tabs_container {
+    background-color: #ffffff;
 }
 
 #logo_label {
     color: #1a1a1a;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
 }
 
-#version_label {
-    color: #b0b0b0;
-    font-size: 10px;
-}
-
-#label_section {
-    color: #b0b0b0;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.8px;
-}
-
-/* Navigation buttons */
-#nav_button {
+/* Navigation buttons (top tabs) */
+#tab_button {
     background-color: transparent;
     color: #404040;
     border: none;
     border-bottom: 2px solid transparent;
     border-radius: 0px;
-    padding: 10px 16px;
-    text-align: left;
+    padding: 8px 16px;
+    text-align: center;
     font-size: 13px;
     font-weight: 400;
 }
 
-#nav_button:hover {
+#tab_button:hover {
     background-color: #f5f5f5;
     color: #1a1a1a;
     border-bottom-color: #d0d0d0;
 }
 
-#nav_button:checked {
+#tab_button:checked {
     background-color: transparent;
     color: #3b82f6;
     font-weight: 600;
     border-bottom: 2px solid #3b82f6;
+}
+
+/* Theme toggle button */
+#theme_toggle_btn {
+    background-color: transparent;
+    color: #404040;
+    border: none;
+    border-radius: 6px;
+    font-size: 18px;
+}
+
+#theme_toggle_btn:hover {
+    background-color: #f5f5f5;
+}
+
+#theme_toggle_btn:pressed {
+    background-color: #efefef;
 }
 
 /* ============================================================

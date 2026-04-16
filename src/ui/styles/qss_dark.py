@@ -23,55 +23,72 @@ QMainWindow {
 }
 
 /* ============================================================
-   SIDEBAR
+   TOP NAVIGATION BAR
    ============================================================ */
-#sidebar {
+#top_nav_bar {
     background-color: #1e293b;
+    border-bottom: 1px solid #334155;
+}
+
+#logo_container {
     border-right: 1px solid #334155;
+}
+
+#settings_container {
+    border-left: 1px solid #334155;
+}
+
+#tabs_container {
+    background-color: #1e293b;
 }
 
 #logo_label {
     color: #f1f5f9;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
 }
 
-#version_label {
-    color: #64748b;
-    font-size: 10px;
-}
-
-#label_section {
-    color: #64748b;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.8px;
-}
-
-/* Navigation buttons */
-#nav_button {
+/* Navigation buttons (top tabs) */
+#tab_button {
     background-color: transparent;
     color: #94a3b8;
     border: none;
     border-bottom: 2px solid transparent;
     border-radius: 0px;
-    padding: 10px 16px;
-    text-align: left;
+    padding: 8px 16px;
+    text-align: center;
     font-size: 13px;
     font-weight: 400;
 }
 
-#nav_button:hover {
+#tab_button:hover {
     background-color: #334155;
     color: #e2e8f0;
     border-bottom-color: #475569;
 }
 
-#nav_button:checked {
+#tab_button:checked {
     background-color: transparent;
     color: #60a5fa;
     font-weight: 600;
     border-bottom: 2px solid #60a5fa;
+}
+
+/* Theme toggle button */
+#theme_toggle_btn {
+    background-color: transparent;
+    color: #94a3b8;
+    border: none;
+    border-radius: 6px;
+    font-size: 18px;
+}
+
+#theme_toggle_btn:hover {
+    background-color: #334155;
+}
+
+#theme_toggle_btn:pressed {
+    background-color: #475569;
 }
 
 /* ============================================================

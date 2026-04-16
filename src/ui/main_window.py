@@ -1,6 +1,6 @@
 """
 MainWindow – Pricing Master Suite
-Sidebar navigation (QVBoxLayout of NavButtons) + QStackedWidget for views.
+Top tab bar navigation + QStackedWidget for views.
 """
 from __future__ import annotations
 import re
@@ -87,12 +87,13 @@ class MainWindow(QMainWindow):
     def _build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-        layout = QHBoxLayout(central)
+        layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        layout.addWidget(self._build_sidebar())
-        
+        # Top navigation bar
+        layout.addWidget(self._build_top_nav_bar())
+
         if self._progress: self._progress(45, "Otimizando recursos...")
 
         self._stack = QStackedWidget()
@@ -104,51 +105,40 @@ class MainWindow(QMainWindow):
         sb = self.statusBar()
         sb.showMessage(f"Pronto  —  {APP_NAME} v{VERSION}")
 
-    def _build_sidebar(self) -> QFrame:
-        sidebar = QFrame()
-        sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(226)
+    def _build_top_nav_bar(self) -> QWidget:
+        """Build horizontal top navigation bar with logo, tabs, and settings."""
+        top_bar = QWidget()
+        top_bar.setObjectName("top_nav_bar")
+        top_bar.setFixedHeight(56)
 
-        layout = QVBoxLayout(sidebar)
+        layout = QHBoxLayout(top_bar)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # ── Logo block ────────────────────────────────────────────────────
-        logo_widget = QWidget()
-        logo_layout = QVBoxLayout(logo_widget)
-        logo_layout.setContentsMargins(18, 22, 16, 16)
-        logo_layout.setSpacing(3)
+        # ── Logo section (left) ────────────────────────────────────────────
+        logo_container = QWidget()
+        logo_container.setObjectName("logo_container")
+        logo_layout = QHBoxLayout(logo_container)
+        logo_layout.setContentsMargins(12, 0, 12, 0)
+        logo_layout.setSpacing(6)
 
         title_lbl = QLabel("⬡  SIC")
         title_lbl.setObjectName("logo_label")
         font = QFont()
-        font.setPointSize(16)
+        font.setPointSize(14)
         font.setWeight(QFont.Bold)
         title_lbl.setFont(font)
         logo_layout.addWidget(title_lbl)
 
-        ver_lbl = QLabel(f"{APP_NAME}  v{VERSION}")
-        ver_lbl.setObjectName("version_label")
-        logo_layout.addWidget(ver_lbl)
+        layout.addWidget(logo_container)
 
-        layout.addWidget(logo_widget)
+        # ── Navigation tabs (center) ───────────────────────────────────────
+        tabs_container = QWidget()
+        tabs_container.setObjectName("tabs_container")
+        tabs_layout = QHBoxLayout(tabs_container)
+        tabs_layout.setContentsMargins(0, 0, 0, 0)
+        tabs_layout.setSpacing(0)
 
-        # Divider
-        div = QFrame()
-        div.setObjectName("divider")
-        div.setFrameShape(QFrame.HLine)
-        div.setFixedHeight(1)
-        layout.addWidget(div)
-
-        layout.addSpacing(8)
-
-        # ── Nav section label ─────────────────────────────────────────────
-        nav_lbl = QLabel("  MÓDULOS")
-        nav_lbl.setObjectName("label_section")
-        nav_lbl.setContentsMargins(18, 6, 0, 4)
-        layout.addWidget(nav_lbl)
-
-        # ── Nav items ─────────────────────────────────────────────────────
         NAV_ITEMS = [
             ("⌂",  "Início",      0),
             ("⊕",  "Gerador",     1),
@@ -161,51 +151,50 @@ class MainWindow(QMainWindow):
 
         for icon, label, idx in NAV_ITEMS:
             btn = NavButton(icon, label)
+            btn.setFixedHeight(56)
+            btn.setObjectName("tab_button")
             btn.clicked.connect(lambda _checked, i=idx: self._switch(i))
             self._nav_buttons[idx] = btn
-            layout.addWidget(btn)
+            tabs_layout.addWidget(btn)
 
-        layout.addStretch()
+        layout.addWidget(tabs_container, 1)  # Expand horizontally
 
-        # ── Settings section ──────────────────────────────────────────────
-        cfg_lbl = QLabel("  SISTEMA")
-        cfg_lbl.setObjectName("label_section")
-        cfg_lbl.setContentsMargins(18, 6, 0, 4)
-        layout.addWidget(cfg_lbl)
+        # ── Settings section (right) ───────────────────────────────────────
+        settings_container = QWidget()
+        settings_container.setObjectName("settings_container")
+        settings_layout = QHBoxLayout(settings_container)
+        settings_layout.setContentsMargins(12, 0, 12, 0)
+        settings_layout.setSpacing(8)
 
+        # Settings button
         btn_cfg = NavButton("⚙", "Configurações")
+        btn_cfg.setFixedHeight(56)
+        btn_cfg.setObjectName("tab_button")
+        btn_cfg.setFixedWidth(160)
         btn_cfg.clicked.connect(lambda: self._switch(6))
         self._nav_buttons[6] = btn_cfg
-        layout.addWidget(btn_cfg)
+        settings_layout.addWidget(btn_cfg)
 
-        # ── Theme Toggle ──────────────────────────────────────────────────
-        layout.addSpacing(12)
-        self._btn_theme = QPushButton("  ◑   Mudar Tema")
-        self._btn_theme.setObjectName("nav_button") # Reuse style but not NavButton logic
-        self._btn_theme.setFixedHeight(40)
+        # Theme toggle
+        self._btn_theme = QPushButton("◑")
+        self._btn_theme.setObjectName("theme_toggle_btn")
+        self._btn_theme.setFixedSize(40, 40)
         self._btn_theme.setCursor(Qt.PointingHandCursor)
         self._btn_theme.clicked.connect(self._toggle_theme)
-        layout.addWidget(self._btn_theme)
+        settings_layout.addWidget(self._btn_theme)
 
-        # ── Update Notification Footer (Hidden by default) ────────────────
-        layout.addStretch()
-        self._btn_update = QPushButton("⚡  Atualização Disponível")
-        self._btn_update.setObjectName("btn_primary") # Use primary color to grab attention
-        self._btn_update.setFixedHeight(34)
-        self._btn_update.setContentsMargins(10, 0, 10, 0)
+        # Update button (hidden by default)
+        self._btn_update = QPushButton("⚡  Atualização")
+        self._btn_update.setObjectName("btn_primary")
+        self._btn_update.setFixedHeight(36)
         self._btn_update.setCursor(Qt.PointingHandCursor)
         self._btn_update.clicked.connect(self._on_update_clicked)
         self._btn_update.hide()
-        
-        # Wrapped for padding
-        self._update_container = QWidget()
-        up_layout = QVBoxLayout(self._update_container)
-        up_layout.setContentsMargins(15, 10, 15, 15)
-        up_layout.addWidget(self._btn_update)
-        self._update_container.hide()
-        layout.addWidget(self._update_container)
+        settings_layout.addWidget(self._btn_update)
 
-        return sidebar
+        layout.addWidget(settings_container)
+
+        return top_bar
 
     def _build_pages(self):
         self._pages = [None] * 8
