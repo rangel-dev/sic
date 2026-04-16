@@ -2,6 +2,9 @@
 #define AppName "SIC"
 #define AppPublisher "RangelDev"
 #define AppURL "https://github.com/rangel-dev/sic"
+#ifndef MyAppVersion
+  #define MyAppVersion "0.0.0"
+#endif
 #define AppExeName "SIC.exe"
 
 [Setup]

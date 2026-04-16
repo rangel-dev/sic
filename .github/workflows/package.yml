@@ -24,6 +24,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Extract version
+        id: get_version
+        shell: bash
+        run: |
+          # Extrai a versão do version.py
+          VERSION=$(python -c "import os; print(open('src/core/version.py').read().split('VERSION = \"')[1].split('\"')[0])")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -43,7 +52,7 @@ jobs:
       - name: Archive Production Artifact (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          iscc /DMyAppVersion=${{ env.VERSION }} sic.iss
+          iscc "/DMyAppVersion=${{ env.VERSION }}" sic.iss
           cd dist
           compress-archive -Path SIC.exe -DestinationPath SIC_Windows.zip
         shell: pwsh
@@ -55,14 +64,6 @@ jobs:
           chmod +x SIC.app/Contents/MacOS/SIC
           zip -r SIC_Mac.zip SIC.app
 
-      - name: Extract version
-        id: get_version
-        shell: bash
-        run: |
-          # Extrai a versão do version.py
-          VERSION=$(python -c 'import sys; sys.path.append("src"); from core.version import VERSION; print(VERSION)')
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
