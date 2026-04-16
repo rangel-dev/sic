@@ -47,6 +47,22 @@ def _show_error_box(title: str, msg: str):
         pass
 
 
+def _show_info_box(title: str, msg: str):
+    """
+    Mostra MessageBox de INFORMAÇÃO nativa do Windows.
+    """
+    if platform.system().lower() != "windows":
+        return
+    try:
+        import ctypes
+        MB_OK = 0x00000000
+        MB_ICONINFORMATION = 0x00000040
+        MB_TOPMOST = 0x00040000
+        ctypes.windll.user32.MessageBoxW(0, msg, title, MB_OK | MB_ICONINFORMATION | MB_TOPMOST)
+    except Exception:
+        pass
+
+
 class UpdateService:
     @staticmethod
     def get_latest_release() -> Tuple[Optional[str], Optional[str]]:
@@ -169,7 +185,14 @@ class UpdateService:
                     creationflags=subprocess.DETACHED_PROCESS
                 )
                 
-                _log("Instalador lançado. Encerrando o app para permitir substituição.")
+                
+                _log("Instalador lançado. Notificando usuário e encerrando.")
+                _show_info_box(
+                    f"Atualização do {APP_NAME}",
+                    f"O {APP_NAME} foi atualizado com sucesso!\n\n"
+                    "Para concluir, o programa será encerrado agora.\n"
+                    "Por favor, abra-o novamente em instantes para utilizar a nova versão."
+                )
                 os._exit(0)
                 
             elif is_windows and filename.lower().endswith(".zip"):
