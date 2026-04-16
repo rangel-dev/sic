@@ -92,19 +92,19 @@ class BrandDetector:
                 if re.search(r"br-cb-brazil-(list|sale)-prices", content_lower):
                     brands.add("ml")
             else:
-                # CATALOG MODE: Match only catalog-id in first 5KB (header section)
-                # Don't search entire file to avoid false positives from product data
-                header_section = content_lower[:5120]  # First 5KB
+                # CATALOG MODE: Match catalog-id attribute in opening <catalog> tag
+                # Pattern: <catalog ... catalog-id="natura-br-storefront-catalog" ...>
+                # Search only first 500 chars to find the opening tag
+                opening_tag = content_lower[:500]
 
-                # Look for specific catalog-id patterns in header
-                # Natura: catalog-id="*natura*-br*"
-                if re.search(r'catalog-id=["\']?[^"\']*natura[^"\']*-br', header_section):
+                # Natura: catalog-id contains "natura-br"
+                if re.search(r'catalog-id=["\']natura-br', opening_tag):
                     brands.add("natura")
-                # Avon: catalog-id="*avon*-br*"
-                if re.search(r'catalog-id=["\']?[^"\']*avon[^"\']*-br', header_section):
+                # Avon: catalog-id contains "avon-br"
+                if re.search(r'catalog-id=["\']avon-br', opening_tag):
                     brands.add("avon")
-                # CB: catalog-id="*cb*-br*" or "cbbrazil*"
-                if re.search(r'catalog-id=["\']?[^"\']*cb[^"\']*-br|cbbrazil', header_section):
+                # CB: catalog-id contains "cb-br" or "cbbrazil"
+                if re.search(r'catalog-id=["\'](?:cb-br|cbbrazil)', opening_tag):
                     brands.add("ml")
 
         except Exception as e:
