@@ -122,17 +122,23 @@ QMainWindow {
    ============================================================ */
 #card {
     background-color: #ffffff;
-    border: none;
+    border: 1px solid #e5e7eb;
     border-radius: 8px;
+    padding: 2px;
 }
 
 #card:hover {
+    border-color: #d0d0d0;
 }
 
 #card_flat {
     background-color: #ffffff;
     border: 1px solid #e5e7eb;
     border-radius: 8px;
+}
+
+#card_flat:hover {
+    border-color: #d0d0d0;
 }
 
 #error_card {
@@ -222,16 +228,22 @@ QPushButton {
     font-size: 13px;
     font-weight: 500;
     min-height: 32px;
+    outline: none;
 }
 
 QPushButton:hover {
     background-color: #f5f5f5;
-    border-color: #b0b0b0;
+    border-color: #a0a0a0;
     color: #1a1a1a;
 }
 
 QPushButton:pressed {
     background-color: #ebebeb;
+    border-color: #808080;
+}
+
+QPushButton:focus {
+    border-color: #3b82f6;
 }
 
 QPushButton:disabled {
@@ -248,6 +260,7 @@ QPushButton:disabled {
     font-size: 13px;
     min-height: 38px;
     border-radius: 6px;
+    outline: none;
 }
 
 #btn_primary:hover {
@@ -256,6 +269,11 @@ QPushButton:disabled {
 
 #btn_primary:pressed {
     background-color: #1e40af;
+}
+
+#btn_primary:focus {
+    border: 2px solid #93c5fd;
+    background-color: #3b82f6;
 }
 
 #btn_primary:disabled {
@@ -286,7 +304,11 @@ QPushButton:disabled {
 
 #btn_secondary:hover {
     background-color: #ebebeb;
-    border-color: #b0b0b0;
+    border-color: #a0a0a0;
+}
+
+#btn_secondary:focus {
+    border-color: #3b82f6;
 }
 
 #btn_ghost {
@@ -299,7 +321,11 @@ QPushButton:disabled {
 #btn_ghost:hover {
     background-color: #f5f5f5;
     color: #404040;
-    border-color: #b0b0b0;
+    border-color: #a0a0a0;
+}
+
+#btn_ghost:focus {
+    border-color: #3b82f6;
 }
 
 #btn_danger {
@@ -395,13 +421,15 @@ QLineEdit {
     color: #1a1a1a;
     border: 1px solid #d0d0d0;
     border-radius: 6px;
-    padding: 8px 12px;
+    padding: 10px 12px;
     selection-background-color: #dbeafe;
     min-height: 32px;
+    outline: none;
 }
 
 QLineEdit:focus {
-    border-color: #3b82f6;
+    border: 2px solid #3b82f6;
+    padding: 9px 11px;
 }
 
 QLineEdit:disabled {
@@ -417,10 +445,12 @@ QTextEdit, QPlainTextEdit {
     border-radius: 6px;
     padding: 10px 12px;
     selection-background-color: #dbeafe;
+    outline: none;
 }
 
 QTextEdit:focus, QPlainTextEdit:focus {
-    border-color: #3b82f6;
+    border: 2px solid #3b82f6;
+    padding: 9px 11px;
 }
 
 /* ============================================================
