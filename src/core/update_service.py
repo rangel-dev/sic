@@ -302,8 +302,9 @@ class UpdateService:
             current_pid = os.getpid()
 
             _log(f"  temp_dir (PS): {tmp}")
+            _log(f"  log_path (PS): {log_path}")
 
-            # Escapa apenas a aspa simples (único char especial em strings PS com aspas simples)
+            # Escapa aspas para o PowerShell
             def ps_escape(s):
                 return s.replace("'", "''")
 
@@ -312,120 +313,77 @@ class UpdateService:
             ps_exe_dir  = ps_escape(exe_dir)
             ps_log      = ps_escape(log_path)
 
-            with open(ps_path, "w", encoding="utf-8-sig") as f:
-                f.write(f"""# SIC Update Script
+            script_content = f"""# SIC Update Script
 $ErrorActionPreference = 'Continue'
-
-# Logging manual via Add-Content — mais confiavel que Start-Transcript
-# em ambientes onde o cmdlet falha silenciosamente.
 $LOG = '{ps_log}'
+
 function Log($msg) {{
     $line = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $msg"
-    Add-Content -Path $LOG -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue
+    try {{
+        Add-Content -Path $LOG -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue
+    }} catch {{}}
 }}
 
-# Primeira acao: confirma que o script chegou a ser executado.
-# Se este arquivo existir, o PS rodou o script. Se nao existir, o path
-# do .ps1 nao foi encontrado ou o PS foi bloqueado antes de comecar.
-Log "=== SIC Update Script iniciado. PS v$($PSVersionTable.PSVersion) ==="
+Log "=== SIC Update Script iniciado ==="
 Log "PID origem: {current_pid}"
-Log "Novo arquivo: {ps_new_file}"
+Log "Novo: {ps_new_file}"
 Log "Destino: {ps_current}"
 
 try {{
-
-    # 1. Aguarda o processo original (PID {current_pid}) encerrar completamente
-    $timeout = 30
+    # 1. Espera o SIC fechar
+    Log "Aguardando encerramento do PID {current_pid}..."
+    $timeout = 20
     while ($timeout -gt 0) {{
         $proc = Get-Process -Id {current_pid} -ErrorAction SilentlyContinue
         if (-not $proc) {{ break }}
         Start-Sleep -Seconds 1
         $timeout--
     }}
-    Log "PID {current_pid} encerrado (aguardou $(30 - $timeout)s)"
 
-    # 2. Aguarda qualquer SIC.exe remanescente fechar (bootloader parent do PyInstaller)
-    $timeout = 15
-    while ($timeout -gt 0) {{
-        $procs = Get-Process -Name 'SIC' -ErrorAction SilentlyContinue
-        if (-not $procs) {{ break }}
-        Start-Sleep -Seconds 1
-        $timeout--
-    }}
-    Log "SIC.exe remanescente encerrado (aguardou $(15 - $timeout)s)"
-
-    # 3. Aguarda cleanup do _MEI temp dir do PyInstaller
+    # 2. Mata processos SIC.exe remanescentes
+    Log "Limpando processos SIC remanescentes..."
+    Get-Process -Name 'SIC' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 
-    # 4. Remove Mark of the Web (Zone.Identifier) do novo .exe.
-    #    Arquivos baixados da internet ficam marcados como "Untrusted" e o
-    #    SmartScreen/Defender pode bloquear execucao silenciosamente.
-    try {{
-        Unblock-File -Path '{ps_new_file}' -ErrorAction Stop
-        Log "Unblock-File OK"
-    }} catch {{
-        Log "Unblock-File falhou (nao-fatal): $_"
-    }}
+    # 3. Unblock do arquivo baixado (SmartScreen)
+    Log "Unblocking file..."
+    Unblock-File -Path '{ps_new_file}' -ErrorAction SilentlyContinue
 
-    # 5. Valida que os paths existem antes de tentar mover
-    if (-not (Test-Path -Path '{ps_new_file}')) {{
-        throw "Novo arquivo nao existe: {ps_new_file}"
-    }}
-    $destDir = Split-Path -Path '{ps_current}' -Parent
-    if (-not (Test-Path -Path $destDir)) {{
-        throw "Diretorio de destino nao existe: $destDir"
-    }}
-    Log "Validacao de paths OK"
-
-    # 6. Substitui o executavel com retry explicito
-    $moved = $false
-    for ($i = 1; $i -le 5; $i++) {{
+    # 4. Substituição (com retry)
+    Log "Iniciando Move-Item..."
+    $success = $false
+    for ($i=1; $i -le 5; $i++) {{
         try {{
             Move-Item -Path '{ps_new_file}' -Destination '{ps_current}' -Force -ErrorAction Stop
-            $moved = $true
-            Log "Move-Item OK na tentativa $i"
+            $success = $true
+            Log "Sucesso na tentativa $i"
             break
         }} catch {{
-            Log "Move-Item tentativa $i falhou: $_"
+            Log "Falha na tentativa $i: $($_.Exception.Message)"
             Start-Sleep -Seconds 2
         }}
     }}
-    if (-not $moved) {{
-        throw "Falha ao mover o executavel apos 5 tentativas. SIC.exe ainda aberto ou sem permissao de escrita."
-    }}
 
-    # 7. Aguarda Windows comprometer o arquivo no disco
-    Start-Sleep -Seconds 2
+    if (-not $success) {{ throw "Nao foi possivel substituir o executavel." }}
 
-    # 8. Limpa variaveis do PyInstaller — sem isso o novo SIC.exe herda
-    #    _MEIPASS apontando para um _MEI antigo deletado → "failed to load python dll"
-    Remove-Item Env:\\_MEIPASS -ErrorAction SilentlyContinue
-    Remove-Item Env:\\_PYI_APPLICATION_HOME_DIR -ErrorAction SilentlyContinue
-    Remove-Item Env:\\PYTHONHOME -ErrorAction SilentlyContinue
-    Remove-Item Env:\\PYTHONPATH -ErrorAction SilentlyContinue
-    Log "Variaveis PyInstaller limpas"
+    # 5. Limpa ambiente PyInstaller
+    Log "Limpando variaveis de ambiente..."
+    [Environment]::SetEnvironmentVariable('_MEIPASS', $null, 'Process')
+    [Environment]::SetEnvironmentVariable('_PYI_APPLICATION_HOME_DIR', $null, 'Process')
 
-    # 9. Lanca o novo SIC.exe
-    Log "Chamando Start-Process..."
-    Start-Process -FilePath '{ps_current}' -WorkingDirectory '{ps_exe_dir}' -ErrorAction Stop
-    Log "Start-Process OK — novo SIC.exe lancado"
+    # 6. Reinicia
+    Log "Reiniciando app..."
+    Start-Process -FilePath '{ps_current}' -WorkingDirectory '{ps_exe_dir}'
+    Log "Script concluido com sucesso."
 
 }} catch {{
-    Log "ERRO FATAL: $_"
-    Log "$($_.ScriptStackTrace)"
-    # Mostra MessageBox para o usuario ver
-    Add-Type -AssemblyName PresentationFramework -ErrorAction SilentlyContinue
-    [System.Windows.MessageBox]::Show(
-        "Falha ao atualizar o SIC:`n`n$_`n`nLog completo em:`n{ps_log}",
-        "SIC — Erro na Atualizacao",
-        'OK',
-        'Error'
-    ) | Out-Null
+    Log "ERRO: $($_.Exception.Message)"
+    [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
+    [System.Windows.Forms.MessageBox]::Show("Erro na atualizacao do SIC:`n`n$($_.Exception.Message)`n`nConsulte: $LOG", "SIC Update Error")
 }}
-
-Log "Script PS finalizado."
-# (script nao se auto-deleta para inspecao em caso de falha)
-""")
+"""
+            with open(ps_path, "w", encoding="utf-8-sig") as f:
+                f.write(script_content)
 
             _log(f"Script PS gravado em: {ps_path}")
             _log(f"  Tamanho do script: {os.path.getsize(ps_path):,} bytes")
@@ -449,42 +407,28 @@ Log "Script PS finalizado."
             else:
                 _log(f"  powershell.exe: {ps_exe}")
 
-            # Lança o PowerShell totalmente desacoplado (DETACHED_PROCESS + CREATE_NO_WINDOW).
-            # -WindowStyle Hidden garante que nenhuma janela apareça.
-            # -ExecutionPolicy Bypass permite rodar o script sem configuração prévia.
-            DETACHED_PROCESS = 0x00000008
+            # Lançamento via 'cmd /c start' com WindowStyle Hidden.
+            # Esta é a forma mais robusta de garantir que o PowerShell seja lançado de forma
+            # independente e consiga realizar o swap após este processo morrer.
             try:
-                proc = subprocess.Popen(
-                    [
-                        ps_exe,
-                        "-NoProfile",
-                        "-NonInteractive",
-                        "-WindowStyle", "Hidden",
-                        "-ExecutionPolicy", "Bypass",
-                        "-File", ps_path,
-                    ],
-                    creationflags=DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
-                    close_fds=True,
+                # Monta comando PowerShell para ser passado via CLI
+                # Usamos -Command para evitar restrições de ExecutionPolicy em arquivos .ps1
+                ps_cmd = f"& '{ps_path}'"
+                full_cmd = [
+                    "cmd.exe", "/c", "start", "/b", "powershell.exe",
+                    "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
+                    "-ExecutionPolicy", "Bypass", "-Command", ps_cmd
+                ]
+                
+                _log(f"Lançando PowerShell via cmd: {' '.join(full_cmd)}")
+                subprocess.Popen(
+                    full_cmd,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    close_fds=True
                 )
-                _log(f"Popen OK — PowerShell PID={proc.pid}")
-
-                # Espera 2s e checa se o PS já morreu (indica falha imediata,
-                # ex: ExecutionPolicy bloqueada, script malformado, AppLocker).
+                _log("Popen concluído — aguardando encerramento do SIC.")
                 import time
-                time.sleep(2)
-                rc = proc.poll()
-                if rc is not None and rc != 0:
-                    _log(f"  ⚠️ PowerShell já saiu com exit code={rc} — algo deu errado imediatamente.")
-                    _show_error_box(
-                        "SIC — Erro na Atualização",
-                        f"PowerShell terminou imediatamente com erro (código {rc}).\n\n"
-                        f"Verifique os logs em:\n{PYTHON_LOG_PATH}\n\n"
-                        f"E a cópia do script em:\n{copy_path}"
-                    )
-                elif rc == 0:
-                    _log("  PowerShell saiu com exit code=0 (provavelmente um launcher shim) — prosseguindo.")
-                else:
-                    _log("  PowerShell ainda rodando após 2s — OK, deixando prosseguir")
+                time.sleep(1) # fôlego para o OS despachar o processo
 
             except Exception as e:
                 _log(f"EXCEÇÃO ao lançar PowerShell: {e}")
