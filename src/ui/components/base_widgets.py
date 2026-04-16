@@ -181,15 +181,15 @@ class DropZone(QFrame):
                 display = filename
             status_icon = brand_emoji
         else:
-            # Multiple files: show each with brand label
+            # Multiple files: show brand names only (no filenames)
             display_lines = [f"✔ {len(file_brands)} arquivos:"]
 
             # Group files by brand for cleaner display
             files_by_brand = self._group_files_by_brand(file_brands)
 
             for brand_name, brand_emoji, filenames in files_by_brand:
-                for fname in filenames:
-                    display_lines.append(f"  {brand_emoji}  {brand_name} — {fname}")
+                # Show only brand emoji + name (no filenames - they're just noise)
+                display_lines.append(f"  {brand_emoji}  {brand_name}")
 
             display = "\n".join(display_lines)
             status_icon = "✔"
