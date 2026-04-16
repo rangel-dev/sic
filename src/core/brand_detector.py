@@ -90,14 +90,15 @@ class BrandDetector:
                     brands.add("ml")
             else:
                 # CATALOG MODE: Use strict catalog-specific patterns only
-                # Natura: catalog-id pattern (avoid SKU false positives)
-                if re.search(r"br-natura-brazil|natura-br[^a-z]", content):
+                # Look for catalog-id or pricebook-id patterns (NOT SKU patterns)
+                # Natura: br-natura-brazil | natura-br
+                if re.search(r"br-natura-brazil[^a-z]|natura-br[-\s]", content):
                     brands.add("natura")
-                # Avon: catalog-id pattern
-                if re.search(r"brl-avon-brazil|avon-br[^a-z]", content):
+                # Avon: brl-avon-brazil | br-avon-brazil | avon-br
+                if re.search(r"brl-avon-brazil[^a-z]|br-avon-brazil[^a-z]|avon-br[-\s]", content):
                     brands.add("avon")
-                # CB/Minha Loja: catalog-id pattern
-                if re.search(r"br-cb-brazil|cbbrazil|cb-br[^a-z]", content):
+                # CB/Minha Loja: br-cb-brazil | cbbrazil | cb-br
+                if re.search(r"br-cb-brazil[^a-z]|cbbrazil[^a-z]|cb-br[-\s]|cb_br", content):
                     brands.add("ml")
 
         except Exception as e:
