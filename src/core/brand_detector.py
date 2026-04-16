@@ -78,27 +78,26 @@ class BrandDetector:
             is_likely_pricebook = file_size > 10240  # >10KB
 
             if is_likely_pricebook:
-                # PRICEBOOK MODE: Use broad patterns (includes SKU patterns)
-                # Natura: pricebook ID or SKU pattern
-                if re.search(r"br-natura-brazil|natbra", content):
+                # PRICEBOOK MODE: Match pricebook header patterns
+                # Natura: br-natura-brazil-list-prices | br-natura-brazil-sale-prices
+                if re.search(r"br-natura-brazil-(list|sale)-prices", content):
                     brands.add("natura")
-                # Avon: pricebook ID or SKU pattern
-                if re.search(r"brl-avon-brazil|br-avon-brazil|avnbra", content):
+                # Avon: brl-avon-brazil-list-prices | brl-avon-brazil-sale-prices
+                if re.search(r"brl-avon-brazil-(list|sale)-prices", content):
                     brands.add("avon")
-                # CB/Minha Loja: pricebook ID
-                if re.search(r"br-cb-brazil|cbbrazil", content):
+                # CB/Minha Loja: br-cb-brazil-list-prices | br-cb-brazil-sale-prices
+                if re.search(r"br-cb-brazil-(list|sale)-prices", content):
                     brands.add("ml")
             else:
-                # CATALOG MODE: Use strict catalog-specific patterns only
-                # Look for catalog-id or pricebook-id patterns (NOT SKU patterns)
-                # Natura: br-natura-brazil | natura-br
-                if re.search(r"br-natura-brazil[^a-z]|natura-br[-\s]", content):
+                # CATALOG MODE: Match catalog-id patterns (NOT pricebook-id)
+                # Natura: natura-br-storefront-catalog
+                if re.search(r"natura-br-storefront-catalog", content):
                     brands.add("natura")
-                # Avon: brl-avon-brazil | br-avon-brazil | avon-br
-                if re.search(r"brl-avon-brazil[^a-z]|br-avon-brazil[^a-z]|avon-br[-\s]", content):
+                # Avon: avon-br-storefront-catalog
+                if re.search(r"avon-br-storefront-catalog", content):
                     brands.add("avon")
-                # CB/Minha Loja: br-cb-brazil | cbbrazil | cb-br
-                if re.search(r"br-cb-brazil[^a-z]|cbbrazil[^a-z]|cb-br[-\s]|cb_br", content):
+                # CB/Minha Loja: cb-br-storefront-catalog
+                if re.search(r"cb-br-storefront-catalog", content):
                     brands.add("ml")
 
         except Exception as e:
