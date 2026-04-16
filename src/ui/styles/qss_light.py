@@ -177,6 +177,18 @@ QMainWindow {
     color: #1976D2;
 }
 
+#dropzone[brand="all"] {
+    border: 2px solid #00c853;
+    background-color: #e8f5e9;
+    color: #1b5e20;
+}
+
+#dropzone[brand*="_"] {
+    border: 2px solid #9e9e9e;
+    background-color: #f5f5f5;
+    color: #616161;
+}
+
 /* ============================================================
    BUTTONS
    ============================================================ */

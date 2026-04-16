@@ -7,13 +7,21 @@ SectionHeader – page title + subtitle block
 StatRow       – horizontal key/value stat pill
 Divider       – thin horizontal separator line
 """
+
 from __future__ import annotations
 
 import os
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QMimeData, QPropertyAnimation, QSequentialAnimationGroup, Property
+from PySide6.QtCore import (
+    Qt,
+    Signal,
+    QMimeData,
+    QPropertyAnimation,
+    QSequentialAnimationGroup,
+    Property,
+)
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QMouseEvent, QColor, QPainter
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -28,6 +36,7 @@ from PySide6.QtWidgets import (
 
 
 from src.core.brand_detector import BrandDetector
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  DropZone
@@ -44,7 +53,7 @@ class DropZone(QFrame):
     multiple     : whether to allow selecting multiple files
     """
 
-    files_selected = Signal(list)   # list[str] of absolute paths
+    files_selected = Signal(list)  # list[str] of absolute paths
 
     def __init__(
         self,
@@ -55,7 +64,7 @@ class DropZone(QFrame):
     ):
         super().__init__(parent)
         self._extensions = extensions
-        self._multiple   = multiple
+        self._multiple = multiple
         self._files: list[str] = []
 
         self.setObjectName("dropzone")
@@ -146,38 +155,123 @@ class DropZone(QFrame):
     # ── State management ──────────────────────────────────────────────────
     def _set_files(self, paths: list[str]) -> None:
         self._files = paths
-        names = [Path(p).name for p in paths]
-        
-        # Smart Brand Detection
-        brand = "unknown"
-        brand_name = ""
-        if paths:
-            brand = BrandDetector.detect(paths[0])
-            brand_name = BrandDetector.get_brand_display_name(brand)
 
-        if len(names) == 1:
-            display = names[0]
-            if brand != "unknown":
-                display = f"[{brand_name}] {display}"
+        # Build per-file brand information
+        file_brands = []  # list of (filename, brand_set, display_str)
+        for path in paths:
+            filename = Path(path).name
+            brands = BrandDetector.detect_single(path)
+            file_brands.append((filename, brands))
+
+        # Determine overall brand property for QSS styling
+        all_brands = set()
+        for _, brands in file_brands:
+            all_brands.update(brands)
+        brand_property = BrandDetector.get_brand_qss_state(all_brands)
+
+        # Build display text
+        if len(file_brands) == 1:
+            # Single file: show with brand(s)
+            filename, brands = file_brands[0]
+            brand_name = BrandDetector.get_combined_display_name(brands)
+            brand_emoji = self._get_brand_emoji(brands)
+            if brand_name != "Desconhecida":
+                display = f"[{brand_name}] {filename}"
+            else:
+                display = filename
+            status_icon = brand_emoji
         else:
-            display = f"{len(names)} arquivos: {', '.join(names[:2])}"
-            if len(names) > 2:
-                display += f"  (+{len(names) - 2})"
+            # Multiple files: show each with brand label
+            display_lines = [f"✔ {len(file_brands)} arquivos:"]
 
-        status_icon = "✔"
-        if brand == "natura": status_icon = "🟧"
-        elif brand == "avon": status_icon = "🟪"
-        elif brand == "ml":   status_icon = "🟦"
+            # Group files by brand for cleaner display
+            files_by_brand = self._group_files_by_brand(file_brands)
+
+            for brand_name, brand_emoji, filenames in files_by_brand:
+                for fname in filenames:
+                    display_lines.append(f"  {brand_emoji}  {brand_name} — {fname}")
+
+            display = "\n".join(display_lines)
+            status_icon = "✔"
 
         self._icon_label.hide()
         self._main_label.hide()
         self._file_label.setText(f"{status_icon}  {display}")
+        self._file_label.setWordWrap(True)
         self._file_label.show()
-        
+
         self.setProperty("state", "filled")
-        self.setProperty("brand", brand)
+        self.setProperty("brand", brand_property)
         self._refresh_style()
         self.files_selected.emit(self._files)
+
+    def _get_brand_emoji(self, brands: set[str]) -> str:
+        """Maps brand set to emoji icon."""
+        if not brands or brands == {"unknown"}:
+            return "❓"
+
+        # Single brand
+        if len(brands) == 1:
+            brand = list(brands)[0]
+            if brand == "natura":
+                return "🟧"
+            elif brand == "avon":
+                return "🟪"
+            elif brand == "ml":
+                return "🟦"
+
+        # Multiple brands
+        return "🟦🟧🟪"  # Show all three colors
+
+    def _group_files_by_brand(
+        self, file_brands: list[tuple[str, set[str]]]
+    ) -> list[tuple[str, str, list[str]]]:
+        """
+        Groups files by their detected brand(s).
+
+        Returns
+        -------
+        list of (brand_name, brand_emoji, filenames)
+        """
+        # Map each file to its primary brand
+        natura_files = []
+        avon_files = []
+        ml_files = []
+        mixed_files = []
+
+        for filename, brands in file_brands:
+            brands_clean = brands - {"unknown"}
+
+            if len(brands_clean) == 0:
+                mixed_files.append((filename, "❓"))
+            elif len(brands_clean) == 1:
+                brand = list(brands_clean)[0]
+                if brand == "natura":
+                    natura_files.append(filename)
+                elif brand == "avon":
+                    avon_files.append(filename)
+                elif brand == "ml":
+                    ml_files.append(filename)
+            else:
+                # Multiple brands in single file
+                brand_name = BrandDetector.get_combined_display_name(brands_clean)
+                mixed_files.append((filename, brand_name))
+
+        result = []
+        if natura_files:
+            result.append(("Natura", "🟧", natura_files))
+        if avon_files:
+            result.append(("Avon", "🟪", avon_files))
+        if ml_files:
+            result.append(("Minha Loja", "🟦", ml_files))
+        if mixed_files:
+            for fname, label in mixed_files:
+                if label == "❓":
+                    result.append(("Desconhecido", "❓", [fname]))
+                else:
+                    result.append((label, "🟦🟧🟪", [fname]))
+
+        return result
 
     def set_error(self, message: str) -> None:
         self._file_label.setText(f"⚠  {message}")
@@ -218,7 +312,7 @@ class ErrorCard(QFrame):
         parent: Optional[QWidget] = None,
     ):
         super().__init__(parent)
-        self._code   = code
+        self._code = code
         self._active = False
 
         self.setObjectName("error_card")
@@ -368,7 +462,9 @@ class StatPill(QFrame):
 
         self._val_lbl = QLabel(value)
         self._val_lbl.setObjectName("label_stat_value")
-        self._val_lbl.setStyleSheet(f"font-size:22px;font-weight:700;background:transparent;")
+        self._val_lbl.setStyleSheet(
+            f"font-size:22px;font-weight:700;background:transparent;"
+        )
         layout.addWidget(self._val_lbl)
 
         lbl = QLabel(label.upper())
@@ -392,7 +488,7 @@ class PulseStatus(QWidget):
         self.setFixedSize(20, 20)
         self._color = QColor(color)
         self._opacity = 1.0
-        
+
         self.anim = QPropertyAnimation(self, b"opacity")
         self.anim.setDuration(1200)
         self.anim.setStartValue(1.0)
@@ -401,10 +497,13 @@ class PulseStatus(QWidget):
         self.anim.setLoopCount(-1)
         self.anim.start()
 
-    def get_opacity(self): return self._opacity
-    def set_opacity(self, v): 
+    def get_opacity(self):
+        return self._opacity
+
+    def set_opacity(self, v):
         self._opacity = v
         self.update()
+
     opacity = Property(float, get_opacity, set_opacity)
 
     def paintEvent(self, event):
@@ -423,12 +522,14 @@ class PulseStatus(QWidget):
 class NexusCard(QFrame):
     clicked = Signal()
 
-    def __init__(self, icon: str, title: str, desc: str, color_top: str = "#FF8050", parent=None):
+    def __init__(
+        self, icon: str, title: str, desc: str, color_top: str = "#FF8050", parent=None
+    ):
         super().__init__(parent)
         self.setObjectName("nexus_card")
         self.setCursor(Qt.PointingHandCursor)
         self.setMinimumHeight(140)
-        
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(8)
@@ -441,18 +542,24 @@ class NexusCard(QFrame):
         """)
 
         self._icon_lbl = QLabel(icon)
-        self._icon_lbl.setStyleSheet(f"font-size: 28px; color: {color_top}; background: transparent;")
+        self._icon_lbl.setStyleSheet(
+            f"font-size: 28px; color: {color_top}; background: transparent;"
+        )
         layout.addWidget(self._icon_lbl)
 
         self._title_lbl = QLabel(title)
-        self._title_lbl.setStyleSheet("font-size: 16px; font-weight: 700; background: transparent;")
+        self._title_lbl.setStyleSheet(
+            "font-size: 16px; font-weight: 700; background: transparent;"
+        )
         layout.addWidget(self._title_lbl)
 
         self._desc_lbl = QLabel(desc)
-        self._desc_lbl.setStyleSheet("font-size: 12px; color: #888; background: transparent;")
+        self._desc_lbl.setStyleSheet(
+            "font-size: 12px; color: #888; background: transparent;"
+        )
         self._desc_lbl.setWordWrap(True)
         layout.addWidget(self._desc_lbl)
-        
+
         layout.addStretch()
 
     def mousePressEvent(self, event):
@@ -468,7 +575,7 @@ class KpiWidget(QFrame):
         super().__init__(parent)
         self.setObjectName("kpi_card")
         self.setMinimumWidth(180)
-        
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(12)
@@ -479,15 +586,19 @@ class KpiWidget(QFrame):
 
         txt_container = QVBoxLayout()
         txt_container.setSpacing(0)
-        
+
         self.val_lbl = QLabel(value)
-        self.val_lbl.setStyleSheet("font-size: 20px; font-weight: 800; background: transparent;")
+        self.val_lbl.setStyleSheet(
+            "font-size: 20px; font-weight: 800; background: transparent;"
+        )
         txt_container.addWidget(self.val_lbl)
 
         lbl = QLabel(label.upper())
-        lbl.setStyleSheet("font-size: 10px; font-weight: 600; color: #777; background: transparent;")
+        lbl.setStyleSheet(
+            "font-size: 10px; font-weight: 600; color: #777; background: transparent;"
+        )
         txt_container.addWidget(lbl)
-        
+
         layout.addLayout(txt_container)
         layout.addStretch()
 
