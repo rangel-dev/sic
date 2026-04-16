@@ -69,28 +69,37 @@ class BrandDetector:
         brands = set()
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                # Read first 32KB — enough to capture all pricebook/catalog headers
-                content = f.read(32768).lower()
+                # Read entire file to ensure we catch all markers
+                content = f.read().lower()
 
-                # Natura: multiple patterns
-                # - br-natura-brazil (pricebook)
-                # - natura-br (catalog-id)
-                if re.search(r"br-natura-brazil|natura-br", content):
+            # Heuristic: Pricebook files are typically larger (>10KB) and contain all 3 brands
+            # Catalog files are smaller and usually single-brand
+            file_size = os.path.getsize(path)
+            is_likely_pricebook = file_size > 10240  # >10KB
+
+            if is_likely_pricebook:
+                # PRICEBOOK MODE: Use broad patterns (includes SKU patterns)
+                # Natura: pricebook ID or SKU pattern
+                if re.search(r"br-natura-brazil|natbra", content):
                     brands.add("natura")
-
-                # Avon: multiple patterns
-                # - brl-avon-brazil (pricebook)
-                # - br-avon-brazil (alternate)
-                # - avon-br (catalog-id)
-                if re.search(r"brl-avon-brazil|br-avon-brazil|avon-br", content):
+                # Avon: pricebook ID or SKU pattern
+                if re.search(r"brl-avon-brazil|br-avon-brazil|avnbra", content):
                     brands.add("avon")
-
-                # CB/Minha Loja: multiple patterns
-                # - br-cb-brazil (pricebook)
-                # - cbbrazil (catalog-id)
-                # - cb-br (alternate)
-                if re.search(r"br-cb-brazil|cbbrazil|cb-br|cb_br", content):
+                # CB/Minha Loja: pricebook ID
+                if re.search(r"br-cb-brazil|cbbrazil", content):
                     brands.add("ml")
+            else:
+                # CATALOG MODE: Use strict catalog-specific patterns only
+                # Natura: catalog-id pattern (avoid SKU false positives)
+                if re.search(r"br-natura-brazil|natura-br[^a-z]", content):
+                    brands.add("natura")
+                # Avon: catalog-id pattern
+                if re.search(r"brl-avon-brazil|avon-br[^a-z]", content):
+                    brands.add("avon")
+                # CB/Minha Loja: catalog-id pattern
+                if re.search(r"br-cb-brazil|cbbrazil|cb-br[^a-z]", content):
+                    brands.add("ml")
+
         except Exception as e:
             import sys
             print(f"Warning: XML detection failed for {path}: {e}", file=sys.stderr)
