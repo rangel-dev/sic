@@ -69,8 +69,8 @@ exe = EXE(
     pyz,
     a.scripts,
     splash,
-    splash.binaries,
     [],
+    exclude_binaries=True,
     name='SIC',
     debug=False,
     bootloader_ignore_signals=False,
@@ -89,6 +89,7 @@ exe = EXE(
 
 coll = COLLECT(
     exe,
+    splash.binaries,
     a.binaries,
     a.zipfiles,
     a.datas,
