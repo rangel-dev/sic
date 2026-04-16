@@ -120,14 +120,8 @@ def main():
     else:
         splash_pixmap = QPixmap(icon_path)
 
-    # Escalonamento dinâmico baseado na resolução do monitor primário
-    primary_screen = app.primaryScreen()
-    if primary_screen:
-        screen_geo = primary_screen.geometry()
-        # Escala para ~30% da largura da tela, com limites seguros (450px a 800px)
-        scaling_ratio = 0.3
-        target_w = max(450, min(int(screen_geo.width() * scaling_ratio), 800))
-        splash_pixmap = splash_pixmap.scaledToWidth(target_w, Qt.SmoothTransformation)
+    # Escalonamento removido para manter sincronia perfeita com o splash nativo do EXE
+    # O redimensionamento causava um 'pulo' visual entre o splash nativo e o do Qt.
 
     splash = PremiumSplash(splash_pixmap, APP_NAME, VERSION)
     splash.show()
