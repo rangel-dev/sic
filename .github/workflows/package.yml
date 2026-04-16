@@ -3,8 +3,8 @@ name: Build and Release SIC
 on:
   push:
     branches:
-        - main
-        - dev
+      - main
+      - dev
     tags:
       - 'v*' # Mantém suporte para tags manuais se desejar
 
