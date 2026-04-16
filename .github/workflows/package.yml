@@ -17,6 +17,7 @@ jobs:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
 
@@ -44,10 +45,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
+          pip list
 
       - name: Build with PyInstaller
         run: |
           pyinstaller sic.spec
+          ls -R dist/
 
       - name: Archive Production Artifact (Windows)
         if: matrix.os == 'windows-latest'
