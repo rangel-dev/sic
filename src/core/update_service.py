@@ -164,59 +164,84 @@ class UpdateService:
             
             if is_windows and filename.lower().endswith(".exe"):
                 # ── Windows Update Guardian (PowerShell) ──────────────────
-                _log("Gerando Script Guardião em PowerShell...")
+                _log("Gerando Script Guardião em PowerShell (Superior)...")
                 
                 ps_script_path = os.path.join(temp_dir, "sic_update_guardian.ps1")
+                ps_log_path = os.path.join(temp_dir, "sic_update_ps.log")
                 
                 # Escapa aspas para o PowerShell
                 escaped_target = target_path.replace('"', '`"')
+                escaped_log = ps_log_path.replace('"', '`"')
                 
-                # Script PowerShell que mostra UI, espera instalador e avisa ao fim.
+                # Script PowerShell robusto com log e tratamento de erro
                 ps_content = f"""
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
+$ErrorActionPreference = "Stop"
+$log = "{escaped_log}"
+function Log($m) {{ "[" + (Get-Date -Format "HH:mm:ss") + "] $m" | Out-File -FilePath $log -Append -Encoding utf8 }}
 
-$appName = "{APP_NAME}"
-$installer = "{escaped_target}"
+try {{
+    Log "--- Iniciando Monitor de Atualização ---"
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
 
-$form = New-Object Windows.Forms.Form
-$form.Text = "Atualização do $appName"
-$form.Size = New-Object Drawing.Size(420, 160)
-$form.StartPosition = "CenterScreen"
-$form.FormBorderStyle = "FixedDialog"
-$form.MaximizeBox = $false
-$form.MinimizeBox = $false
-$form.TopMost = $true
+    $appName = "{APP_NAME}"
+    $installer = "{escaped_target}"
 
-$label = New-Object Windows.Forms.Label
-$label.Location = New-Object Drawing.Point(20, 30)
-$label.Size = New-Object Drawing.Size(380, 50)
-$label.Text = "O $appName está sendo atualizado para uma nova versão.`nPor favor, aguarde a conclusão da barra de progresso..."
-$label.TextAlign = "MiddleCenter"
-$label.Font = New-Object Drawing.Font("Segoe UI", 10)
-$form.Controls.Add($label)
+    Log "Aguardando encerramento total do SIC..."
+    Start-Sleep -Seconds 3 # Tempo para o processo pai morrer totalmente
 
-$form.Show()
-$form.Refresh()
+    $form = New-Object Windows.Forms.Form
+    $form.Text = "Atualização do $appName"
+    $form.Size = New-Object Drawing.Size(420, 160)
+    $form.StartPosition = "CenterScreen"
+    $form.FormBorderStyle = "FixedDialog"
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $false
+    $form.TopMost = $true
 
-# Lança o instalador em modo SILENT (mostra apenas a barra de progresso do Inno Setup)
-# O script espera o instalador terminar (-Wait)
-Start-Process -FilePath $installer -ArgumentList "/SILENT /SUPPRESSMSGBOXES /FORCECLOSEAPPLICATIONS" -Wait
+    $label = New-Object Windows.Forms.Label
+    $label.Location = New-Object Drawing.Point(20, 30)
+    $label.Size = New-Object Drawing.Size(380, 50)
+    $label.Text = "O $appName está sendo atualizado para uma nova versão.`nPor favor, aguarde a conclusão da barra de progresso..."
+    $label.TextAlign = "MiddleCenter"
+    $label.Font = New-Object Drawing.Font("Segoe UI", 10)
+    $form.Controls.Add($label)
 
-$form.Hide()
+    $form.Show()
+    $form.Refresh()
 
-# Mensagem Final de Confirmação
-[Windows.Forms.MessageBox]::Show("A atualização foi concluída com sucesso!`n`nVocê já pode abrir o $appName agora.", "SIC — Atualização Concluída", [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Information)
+    if (Test-Path $installer) {{
+        Log "Lançando instalador: $installer"
+        # Lança o instalador em modo SILENT e ESPERA terminar
+        $p = Start-Process -FilePath $installer -ArgumentList "/SILENT /SUPPRESSMSGBOXES /FORCECLOSEAPPLICATIONS" -PassThru -Wait
+        Log "Instalador finalizado com código: $($p.ExitCode)"
+    }} else {{
+        throw "Instalador não encontrado em: $installer"
+    }}
 
-$form.Close()
+    $form.Hide()
+    Log "Notificando sucesso."
+    [Windows.Forms.MessageBox]::Show("A atualização foi concluída com sucesso!`n`nVocê já pode abrir o $appName agora.", "SIC — Atualização Concluída", [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Information)
+    $form.Close()
+
+}} catch {{
+    $err = $_.Exception.Message
+    Log "ERRO CRÍTICO: $err"
+    [Windows.Forms.MessageBox]::Show("Ocorreu um erro durante a atualização:`n`n$err`n`nConsulte o log em: $log", "SIC — Erro de Atualização", [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Error)
+}} finally {{
+    Log "--- Fim do Script ---"
+}}
 """
                 try:
-                    with open(ps_script_path, "w", encoding="utf-8") as f:
+                    # Usamos 'utf-8-sig' para que o PowerShell 5.1 identifique corretmente 
+                    # arquivos com acentos (BOM) no caminho.
+                    with open(ps_script_path, "w", encoding="utf-8-sig") as f:
                         f.write(ps_content)
                     
                     _log(f"Script salvo em {ps_script_path}. Lançando via powershell.exe...")
                     
-                    # Lança o PowerShell como processo destacado para sobreviver ao fechamento do SIC
+                    # Lança o PowerShell como processo destacado
+                    # Removido Hidden para o usuário ver se houver erro fatal de console (opcional, mas ajuda no debug)
                     cmd = f'powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "{ps_script_path}"'
                     subprocess.Popen(
                         cmd,
@@ -228,7 +253,6 @@ $form.Close()
                     os._exit(0)
                 except Exception as ex:
                     _log(f"Erro ao lançar Guardião: {ex}")
-                    # Fallback para o modo antigo caso o PS falhe
                     subprocess.Popen(f'"{target_path}" /SILENT', shell=True)
                     os._exit(0)
                 
