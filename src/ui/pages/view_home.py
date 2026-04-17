@@ -20,6 +20,17 @@ from src.ui.components.base_widgets import Divider, PulseStatus, KpiWidget, Nexu
 from src.core.history_engine import HistoryEngine
 from src.core.version import VERSION
 
+# Mapa de módulo → (ícone, índice de navegação, cor do card)
+_MODULE_NAV = {
+    "Gerador":    ("⊕", 1, "#FF8050"),
+    "Sync":       ("↕", 2, "#FF8050"),
+    "Auditor":    ("✓", 3, "#BB88FF"),
+    "Volumetria": ("◎", 4, "#BB88FF"),
+    "Cadastro":   ("≡", 5, "#60a5fa"),
+    "Menus CB":   ("≈", 8, "#42a5f5"),
+    "Histórico":  ("◔", 7, "#888888"),
+}
+
 class HomeView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -82,7 +93,31 @@ class HomeView(QWidget):
         kpi_row.addStretch()
         
         self.main_layout.addLayout(kpi_row)
-        self.main_layout.addSpacing(40)
+        self.main_layout.addSpacing(32)
+
+        # ─── ACESSOS RECENTES ──────────────────────────────────────────────────────
+        recent_header = QHBoxLayout()
+        recent_title = QLabel("ACESSOS RECENTES")
+        recent_title.setStyleSheet(
+            "font-size: 11px; font-weight: 700; color: #555; letter-spacing: 1.5px;"
+        )
+        recent_header.addWidget(recent_title)
+        recent_header.addStretch()
+        self.main_layout.addLayout(recent_header)
+        self.main_layout.addSpacing(12)
+
+        # Container widget para recentes (QGridLayout igual ao nexus_grid)
+        self.recent_container = QWidget()
+        self.recent_grid = QGridLayout(self.recent_container)
+        self.recent_grid.setSpacing(20)
+        self.recent_grid.setContentsMargins(0, 0, 0, 0)
+
+        self.recent_placeholder = QLabel("Nenhum módulo utilizado ainda. Execute uma operação para ver seus atalhos aqui.")
+        self.recent_placeholder.setStyleSheet("color: #888; font-size: 12px;")
+        self.recent_grid.addWidget(self.recent_placeholder, 0, 0)
+
+        self.main_layout.addWidget(self.recent_container)
+        self.main_layout.addSpacing(32)
 
         # ─── NEXUS CENTER (Action Cards) ──────────────────────────────────────
         nexus_label = QLabel("NEXUS DE OPERAÇÕES")
@@ -144,10 +179,41 @@ class HomeView(QWidget):
         try:
             entries = HistoryEngine.get_entries()
             self.kpi_total.set_value(len(entries))
-            
-            # Update activity feed (last 3)
-            # Clear previous
-            for i in reversed(range(self.activity_container.count())): 
+
+            # ── Acessos Recentes: últimos 3 módulos distintos ──────────────────
+            # Clear grid preservando o placeholder
+            while self.recent_grid.count():
+                item = self.recent_grid.takeAt(0)
+                if item and item.widget() and item.widget() is not self.recent_placeholder:
+                    item.widget().deleteLater()
+
+            seen: set[str] = set()
+            recent_modules: list[dict] = []
+            for entry in entries:
+                mod = entry["module"]
+                if mod not in seen and mod in _MODULE_NAV:
+                    seen.add(mod)
+                    recent_modules.append(entry)
+                if len(recent_modules) == 3:
+                    break
+
+            if recent_modules:
+                for col, entry in enumerate(recent_modules):
+                    mod = entry["module"]
+                    icon, nav_idx, color = _MODULE_NAV.get(mod, ("◈", 0, "#888888"))
+                    try:
+                        dt = datetime.fromisoformat(entry["timestamp"])
+                        when = dt.strftime("%d/%m  %H:%M")
+                    except Exception:
+                        when = entry["timestamp"][:16]
+                    card = NexusCard(icon, mod, f"Última vez: {when}", color)
+                    card.clicked.connect(lambda i=nav_idx: self.window._switch(i))
+                    self.recent_grid.addWidget(card, 0, col)
+            else:
+                self.recent_grid.addWidget(self.recent_placeholder, 0, 0)
+
+            # ── Atividade Recente (últimas 3 entradas) ─────────────────────────
+            for i in reversed(range(self.activity_container.count())):
                 self.activity_container.itemAt(i).widget().setParent(None)
 
             for entry in entries[:3]:
@@ -155,29 +221,28 @@ class HomeView(QWidget):
                 row.setObjectName("card_flat")
                 row_layout = QHBoxLayout(row)
                 row_layout.setContentsMargins(15, 10, 15, 10)
-                
+
                 mod_lbl = QLabel(f"<b>{entry['module']}</b>")
                 mod_lbl.setFixedWidth(80)
                 row_layout.addWidget(mod_lbl)
-                
+
                 act_lbl = QLabel(entry['action'])
                 row_layout.addWidget(act_lbl, 1)
-                
-                # Format Date: DD/MM/YYYY
+
                 try:
                     dt = datetime.fromisoformat(entry['timestamp'])
                     date_str = dt.strftime("%d/%m/%Y")
-                except:
+                except Exception:
                     date_str = entry['timestamp'].split('T')[0]
 
                 date_lbl = QLabel(date_str)
                 date_lbl.setStyleSheet("color: #666; font-size: 11px;")
                 row_layout.addWidget(date_lbl)
-                
+
                 self.activity_container.addWidget(row)
+
         except Exception as e:
             print(f"Error refreshing dashboard: {e}")
 
     def refresh_theme(self):
         self.refresh_stats()
-
