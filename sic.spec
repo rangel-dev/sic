@@ -55,20 +55,10 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-splash = Splash(
-    'assets/splash_bg.png',
-    binaries=a.binaries,
-    datas=a.datas,
-    text_pos=None,
-    text_size=12,
-    minify_script=True,
-    always_on_top=True,
-)
 
 exe = EXE(
     pyz,
     a.scripts,
-    splash,
     [],
     exclude_binaries=True,
     name='SIC',
@@ -89,7 +79,6 @@ exe = EXE(
 
 coll = COLLECT(
     exe,
-    splash.binaries,
     a.binaries,
     a.zipfiles,
     a.datas,
