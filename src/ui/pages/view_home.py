@@ -12,7 +12,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout, 
     QWidget,
     QGridLayout,
-    QSpacerItem
+    QSpacerItem,
+    QFrame,
+    QPushButton
 )
 from src.ui.components.base_widgets import Divider, PulseStatus, KpiWidget, NexusCard
 from src.core.history_engine import HistoryEngine
@@ -179,4 +181,3 @@ class HomeView(QWidget):
     def refresh_theme(self):
         self.refresh_stats()
 
-from PySide6.QtWidgets import QFrame, QPushButton
