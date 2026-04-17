@@ -176,7 +176,7 @@ class MainWindow(QMainWindow):
         settings_layout.addWidget(btn_cfg)
 
         # Theme toggle
-        self._btn_theme = QPushButton("◑")
+        self._btn_theme = QPushButton()
         self._btn_theme.setObjectName("theme_toggle_btn")
         self._btn_theme.setFixedSize(40, 40)
         self._btn_theme.setCursor(Qt.PointingHandCursor)
@@ -344,8 +344,12 @@ class MainWindow(QMainWindow):
             scaled_qss = re.sub(r'(\d+)px', scale_px, raw_qss)
             app.setStyleSheet(scaled_qss)
         
-        # 4. Update Status Bar
+        # 4. Update Button Icon and Status Bar
         mode = "Escuro" if theme == "dark" else "Claro"
+        icon = "☼" if theme == "dark" else "☾"
+        self._btn_theme.setText(icon)
+        self._btn_theme.setToolTip(f"Mudar para tema {'claro' if theme == 'dark' else 'escuro'}")
+        
         self.statusBar().showMessage(f"Tema: {mode} | Fonte: {base_size}px")
 
         # 5. Refresh all pages that support it
