@@ -163,37 +163,74 @@ class UpdateService:
             is_windows = platform.system().lower() == "windows"
             
             if is_windows and filename.lower().endswith(".exe"):
-                # ── Windows Installer (Inno Setup) ──────────────────────────
-                _log("Lançando instalador silent...")
-                # Flags do Inno Setup:
-                # /VERYSILENT: Interface mínima
-                # /SUPPRESSMSGBOXES: Sem diálogos
-                # /FORCECLOSEAPPLICATIONS: Fecha o SIC se estiver aberto
-                args = [
-                    target_path, 
-                    "/VERYSILENT", 
-                    "/SUPPRESSMSGBOXES", 
-                    "/FORCECLOSEAPPLICATIONS"
-                ]
+                # ── Windows Update Guardian (PowerShell) ──────────────────
+                _log("Gerando Script Guardião em PowerShell...")
                 
-                # Usamos um comando de shell com DETACHED_PROCESS para garantir
-                # que o instalador seja lançado de forma independente e o SIC possa fechar.
-                cmd = f'"{target_path}" /VERYSILENT /SUPPRESSMSGBOXES /FORCECLOSEAPPLICATIONS'
-                subprocess.Popen(
-                    cmd, 
-                    shell=True, 
-                    creationflags=subprocess.DETACHED_PROCESS
-                )
+                ps_script_path = os.path.join(temp_dir, "sic_update_guardian.ps1")
                 
+                # Escapa aspas para o PowerShell
+                escaped_target = target_path.replace('"', '`"')
                 
-                _log("Instalador lançado. Notificando usuário e encerrando.")
-                _show_info_box(
-                    f"Atualização do {APP_NAME}",
-                    f"O {APP_NAME} foi atualizado com sucesso!\n\n"
-                    "Para concluir, o programa será encerrado agora.\n"
-                    "Por favor, abra-o novamente em instantes para utilizar a nova versão."
-                )
-                os._exit(0)
+                # Script PowerShell que mostra UI, espera instalador e avisa ao fim.
+                ps_content = f"""
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$appName = "{APP_NAME}"
+$installer = "{escaped_target}"
+
+$form = New-Object Windows.Forms.Form
+$form.Text = "Atualização do $appName"
+$form.Size = New-Object Drawing.Size(420, 160)
+$form.StartPosition = "CenterScreen"
+$form.FormBorderStyle = "FixedDialog"
+$form.MaximizeBox = $false
+$form.MinimizeBox = $false
+$form.TopMost = $true
+
+$label = New-Object Windows.Forms.Label
+$label.Location = New-Object Drawing.Point(20, 30)
+$label.Size = New-Object Drawing.Size(380, 50)
+$label.Text = "O $appName está sendo atualizado para uma nova versão.`nPor favor, aguarde a conclusão da barra de progresso..."
+$label.TextAlign = "MiddleCenter"
+$label.Font = New-Object Drawing.Font("Segoe UI", 10)
+$form.Controls.Add($label)
+
+$form.Show()
+$form.Refresh()
+
+# Lança o instalador em modo SILENT (mostra apenas a barra de progresso do Inno Setup)
+# O script espera o instalador terminar (-Wait)
+Start-Process -FilePath $installer -ArgumentList "/SILENT /SUPPRESSMSGBOXES /FORCECLOSEAPPLICATIONS" -Wait
+
+$form.Hide()
+
+# Mensagem Final de Confirmação
+[Windows.Forms.MessageBox]::Show("A atualização foi concluída com sucesso!`n`nVocê já pode abrir o $appName agora.", "SIC — Atualização Concluída", [Windows.Forms.MessageBoxButtons]::OK, [Windows.Forms.MessageBoxIcon]::Information)
+
+$form.Close()
+"""
+                try:
+                    with open(ps_script_path, "w", encoding="utf-8") as f:
+                        f.write(ps_content)
+                    
+                    _log(f"Script salvo em {ps_script_path}. Lançando via powershell.exe...")
+                    
+                    # Lança o PowerShell como processo destacado para sobreviver ao fechamento do SIC
+                    cmd = f'powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "{ps_script_path}"'
+                    subprocess.Popen(
+                        cmd,
+                        shell=True,
+                        creationflags=subprocess.DETACHED_PROCESS
+                    )
+                    
+                    _log("Guardião lançado. Encerrando SIC.")
+                    os._exit(0)
+                except Exception as ex:
+                    _log(f"Erro ao lançar Guardião: {ex}")
+                    # Fallback para o modo antigo caso o PS falhe
+                    subprocess.Popen(f'"{target_path}" /SILENT', shell=True)
+                    os._exit(0)
                 
             elif is_windows and filename.lower().endswith(".zip"):
                 # ── Legacy ZIP logic (Fallback) ────────────────────────────
