@@ -273,7 +273,6 @@ class MainWindow(QMainWindow):
     def _on_update_found(self, tag: str, url: str):
         self._update_url = url
         self._btn_update.setText(f"⚡ Baixar {tag}")
-        self._update_container.show()
         self._btn_update.show()
         self.statusBar().showMessage(f"Uma nova versão está disponível: {tag}!")
 
