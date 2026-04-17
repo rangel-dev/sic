@@ -29,15 +29,21 @@ def resource_path(relative_path):
 class PremiumSplash(QSplashScreen):
     """Modern splash screen with progress bar and status updates."""
     def __init__(self, pixmap, app_name, version):
-        # Enable high DPI for the pixmap
-        # If the image is large (e.g. 2x), Qt will handle the scaling
+        # Enable high DPI handling for the pixmap
+        # By setting the Device Pixel Ratio, we ensure the pixmap is treated
+        # as a High-DPI image rather than a massive physical-pixel image.
+        dpr = QApplication.instance().devicePixelRatio()
+        pixmap.setDevicePixelRatio(dpr)
+        
         super().__init__(pixmap, Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
         
-        # Determine logical size for positioning elements
-        # pixmap.size() returns pixels; we need points for setGeometry
-        dpr = self.devicePixelRatio()
-        w = pixmap.width() / dpr
-        h = pixmap.height() / dpr
+        # Consistent logical size
+        logical_size = pixmap.deviceIndependentSize()
+        w = logical_size.width()
+        h = logical_size.height()
+        
+        # Lock the size to prevent jumps
+        self.setFixedSize(w, h)
         
         # Bottom Overlay (Glassmorphism effect)
         self.overlay = QFrame(self)
@@ -141,11 +147,14 @@ def main():
     else:
         splash_pixmap = QPixmap(icon_path)
 
-    # Note: No PySide6 splash scaling here to prevent "jumps" between
-    # native bootloader and Qt. PremiumSplash handles logical DPI in its __init__.
-
+    # Note: We pass the pixmap to PremiumSplash which will handle the DPI
+    # to maintain a consistent size that matches the native bootloader.
     splash = PremiumSplash(splash_pixmap, APP_NAME, VERSION)
     splash.show()
+    
+    # Force a painter update to ensure the Qt splash is visible
+    # BEFORE we close the native bootloader splash.
+    app.processEvents()
     
     # Force the display before closing native splash to ensure a smooth transition
     app.processEvents()
