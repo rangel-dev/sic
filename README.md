@@ -1,6 +1,6 @@
 # 🏢 SIC — Sistema de Inteligência Corporativa
 
-[![Version](https://img.shields.io/badge/version-0.2.3.3-blue.svg)](#)
+[![Version](https://img.shields.io/badge/version-1.0.1-brightgreen.svg)](#)
 [![Python](https://img.shields.io/badge/python-3.8+-green.svg)](#)
 [![PySide6](https://img.shields.io/badge/pyside6-6.x-blue.svg)](#)
 [![License](https://img.shields.io/badge/license-Proprietary-red.svg)](#)
@@ -167,7 +167,7 @@ Versão Estável/
 ### DevOps
 - **Git** — Versionamento
 - **GitHub API** — Auto-update
-- **Semantic Versioning** — Versionamento (v0.2.3.3)
+- **Semantic Versioning** — Versionamento (v1.0.1)
 
 ---
 
@@ -179,8 +179,10 @@ Versão Estável/
 | **PROJETO.md** | Explicação completa do projeto |
 | **MANUAL.md** | Como usar cada módulo (passo-a-passo) |
 | **JORNADA.md** | Histórico de desenvolvimento (fases) |
+| **FLUXO_TRABALHO.md** | Como desenvolver e lançar versões (Git Flow) |
 
 👉 **Leia [PROJETO.md](PROJETO.md) para entender melhor o sistema.**  
+👉 **Leia [FLUXO_TRABALHO.md](FLUXO_TRABALHO.md) para saber como contribuir e lançar versões.**  
 👉 **Leia [MANUAL.md](MANUAL.md) para saber como usar cada funcionalidade.**
 
 ---
