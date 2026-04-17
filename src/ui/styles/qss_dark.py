@@ -79,8 +79,10 @@ QMainWindow {
     background-color: transparent;
     color: #94a3b8;
     border: none;
-    border-radius: 6px;
-    font-size: 18px;
+    border-radius: 20px;
+    font-size: 20px;
+    padding: 0px;
+    margin: 0px;
 }
 
 #theme_toggle_btn:hover {

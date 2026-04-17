@@ -346,7 +346,7 @@ class MainWindow(QMainWindow):
         
         # 4. Update Button Icon and Status Bar
         mode = "Escuro" if theme == "dark" else "Claro"
-        icon = "☼" if theme == "dark" else "☾"
+        icon = "☀" if theme == "dark" else "☾"
         self._btn_theme.setText(icon)
         self._btn_theme.setToolTip(f"Mudar para tema {'claro' if theme == 'dark' else 'escuro'}")
         
