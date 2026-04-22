@@ -14,6 +14,10 @@ entry_point = 'main.py'
 added_files = [
     ('assets', 'assets'),
     ('README.md', '.'),
+    # Bundle o cacert.pem do certifi para que requests consiga validar TLS
+    # mesmo em máquinas com store de CA desatualizado. Sem isto, o updater
+    # quebra com "unable to get local issuer certificate" em builds congelados.
+    *collect_data_files('certifi'),
 ]
 
 # Coleta TODOS os submódulos do nosso pacote `src` recursivamente.
@@ -42,6 +46,7 @@ a = Analysis(
     hiddenimports=[
         'pandas', 'openpyxl', 'lxml',
         'PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets',
+        'certifi', 'truststore',
     ] + src_submodules,
     hookspath=[],
     hooksconfig={},
