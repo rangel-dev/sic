@@ -52,6 +52,10 @@ def _http_get(url: str, **kwargs) -> requests.Response:
     (comum em redes corporativas que interpõem proxy/CA própria via GPO),
     re-tenta uma vez usando o store nativo do Windows via `truststore`,
     que é o caminho oficial e seguro para esses ambientes.
+
+    Esta função **não** faz fallback para PowerShell — isso é responsabilidade
+    de `_download_to_file()`, que precisa gravar o corpo em disco. Aqui o
+    consumidor recebe um `requests.Response` normal (usado pelo JSON da API).
     """
     ca = _ca_bundle()
     if ca:
@@ -74,6 +78,86 @@ def _http_get(url: str, **kwargs) -> requests.Response:
         except Exception as retry_err:
             _log(f"Retry com truststore também falhou: {retry_err}")
             raise ssl_err
+
+
+def _download_via_powershell(url: str, out_path: str, timeout: int = 300) -> bool:
+    """
+    Último recurso quando Python não consegue estabelecer TLS: usa
+    `Invoke-WebRequest` do PowerShell, que roda em cima de WinINET+SChannel
+    nativo do Windows. Diferente do Python, isso respeita o proxy configurado
+    no sistema (inclusive PAC files distribuídos por GPO) e valida contra o
+    mesmo store que o Edge/Chrome usam.
+
+    Retorna True se o arquivo foi salvo com sucesso, False caso contrário.
+    """
+    if platform.system().lower() != "windows":
+        return False
+    _log(f"Tentando download via PowerShell Invoke-WebRequest: {url}")
+    try:
+        # -UseBasicParsing evita dependência do IE (obsoleto no Win11).
+        # [Net.ServicePointManager]::SecurityProtocol força TLS 1.2+ em
+        # Windows antigos (Win7/Server 2012) que defaultam para TLS 1.0.
+        ps = (
+            "$ErrorActionPreference='Stop';"
+            "[Net.ServicePointManager]::SecurityProtocol="
+            "[Net.ServicePointManager]::SecurityProtocol -bor "
+            "[Net.SecurityProtocolType]::Tls12 -bor "
+            "[Net.SecurityProtocolType]::Tls11;"
+            "[System.Net.WebRequest]::DefaultWebProxy.Credentials="
+            "[System.Net.CredentialCache]::DefaultNetworkCredentials;"
+            f"Invoke-WebRequest -UseBasicParsing -Uri '{url}' "
+            f"-OutFile '{out_path}'"
+        )
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if result.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+            _log(f"Download via PowerShell OK ({os.path.getsize(out_path)} bytes).")
+            return True
+        _log(f"PowerShell IWR falhou — rc={result.returncode}, stderr={result.stderr[:500]}")
+        return False
+    except Exception as e:
+        _log(f"Exceção ao rodar PowerShell IWR: {e}")
+        return False
+
+
+def _download_to_file(url: str, out_path: str) -> None:
+    """
+    Baixa `url` para `out_path` em cascata de três estratégias:
+      1. requests + certifi
+      2. requests + truststore (Windows SChannel)
+      3. PowerShell Invoke-WebRequest (WinINET + proxy do sistema)
+
+    Lança a última exceção vista se todas as três falharem.
+    """
+    last_exc: Optional[BaseException] = None
+    # Tentativas 1 e 2 são feitas dentro de _http_get via fallback truststore.
+    try:
+        _log(f"[camada 1/3] Baixando via requests: {url}")
+        resp = _http_get(url, stream=True)
+        resp.raise_for_status()
+        with open(out_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        _log("Download via requests OK.")
+        return
+    except Exception as e:
+        last_exc = e
+        _log(f"[camada 1-2] requests/truststore falhou: {type(e).__name__}: {e}")
+
+    # Camada 3: PowerShell IWR.
+    if _download_via_powershell(url, out_path):
+        return
+
+    # Todas falharam. Propaga a exceção mais informativa (da camada Python).
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("Download falhou em todas as estratégias.")
 
 
 class _TruststoreAdapter(requests.adapters.HTTPAdapter):
@@ -123,6 +207,35 @@ def _show_info_box(title: str, msg: str):
         ctypes.windll.user32.MessageBoxW(0, msg, title, MB_OK | MB_ICONINFORMATION | MB_TOPMOST)
     except Exception:
         pass
+
+
+def _ask_yes_no(title: str, msg: str) -> bool:
+    """
+    MessageBox Yes/No nativa. Retorna True se o usuário clicou Sim.
+    """
+    if platform.system().lower() != "windows":
+        return False
+    try:
+        import ctypes
+        MB_YESNO = 0x00000004
+        MB_ICONQUESTION = 0x00000020
+        MB_TOPMOST = 0x00040000
+        IDYES = 6
+        ret = ctypes.windll.user32.MessageBoxW(
+            0, msg, title, MB_YESNO | MB_ICONQUESTION | MB_TOPMOST
+        )
+        return ret == IDYES
+    except Exception:
+        return False
+
+
+def _open_in_browser(url: str) -> None:
+    """Abre a URL no navegador padrão."""
+    try:
+        import webbrowser
+        webbrowser.open(url)
+    except Exception as e:
+        _log(f"Falha ao abrir navegador: {e}")
 
 
 def _is_program_files_install() -> Optional[str]:
@@ -183,8 +296,12 @@ def _unblock_file(path: str):
 def _format_user_error(exc: BaseException) -> str:
     """
     Converte exceção técnica em mensagem acionável em português.
+    Inclui o nome da classe + trecho da mensagem ao final para que uma
+    screenshot do diálogo seja auto-diagnóstica (útil quando o usuário
+    não consegue enviar o arquivo de log).
     """
-    log_hint = f"\n\nDetalhes técnicos em: {PYTHON_LOG_PATH}"
+    tech = f"{type(exc).__name__}: {str(exc)[:250]}"
+    log_hint = f"\n\nDetalhes técnicos em: {PYTHON_LOG_PATH}\n[{tech}]"
     if isinstance(exc, requests.exceptions.SSLError):
         return (
             "Falha ao validar o certificado HTTPS do GitHub.\n\n"
@@ -206,6 +323,11 @@ def _format_user_error(exc: BaseException) -> str:
             "Feche antivírus/antimalware e tente novamente." + log_hint
         )
     return f"Ocorreu um erro durante a atualização:\n\n{exc}" + log_hint
+
+
+def _releases_page_url() -> str:
+    """URL da página de releases do projeto (fallback de download manual)."""
+    return f"https://github.com/{GITHUB_REPO}/releases/latest"
 
 
 class UpdateService:
@@ -323,12 +445,7 @@ class UpdateService:
 
         try:
             _log(f"Baixando para {target_path}...")
-            resp = _http_get(download_url, stream=True)
-            resp.raise_for_status()
-            with open(target_path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
+            _download_to_file(download_url, target_path)
             _log("Download concluído.")
 
             is_windows = platform.system().lower() == "windows"
@@ -503,6 +620,16 @@ try {{
             _log(f"Erro na instalação: {e}")
             _log(traceback.format_exc())
             _show_error_box(f"{APP_NAME} — Erro de Atualização", _format_user_error(e))
+            # Oferece escape manual: abrir a página de releases no browser.
+            # O browser usa pipeline TLS/proxy diferente do Python — costuma
+            # funcionar em ambientes corporativos onde o updater falha.
+            if _ask_yes_no(
+                f"{APP_NAME} — Baixar manualmente?",
+                "Deseja abrir a página de download do SIC no seu navegador?\n\n"
+                "Lá você pode baixar o instalador diretamente, dar duplo-clique "
+                "e instalar — sem precisar de administrador.",
+            ):
+                _open_in_browser(_releases_page_url())
 
     @staticmethod
     def _legacy_windows_swap(new_file_path: str):
