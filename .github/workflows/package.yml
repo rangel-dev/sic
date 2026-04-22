@@ -5,6 +5,16 @@ on:
     branches:
       - main
       - dev
+    paths-ignore:
+      - '**.md'
+      - 'DOCUMENTACAO.md'
+      - 'JORNADA.md'
+      - 'README.md'
+      - 'PROJETO.md'
+      - 'MANUAL.md'
+      - 'FLUXO_TRABALHO.md'
+      - 'history.db'
+      - '.gitignore'
     tags:
       - 'v*'
 

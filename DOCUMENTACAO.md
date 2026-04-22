@@ -17,7 +17,10 @@ Se você é **novo no SIC**, siga esta ordem:
 3. Leia README.md (10 minutos)
    "Como instalar e começar"
        ↓
-4. Leia MANUAL.md (quando usar)
+4. Leia FLUXO_TRABALHO.md (5 minutos)
+   "Como desenvolver e lançar versões"
+       ↓
+5. Leia MANUAL.md (quando usar)
    "Como usar cada funcionalidade"
        ↓
 5. Consulte JORNADA.md (se interessado)
@@ -174,6 +177,11 @@ DOCUMENTACAO.md (você está aqui)
     │   ├─ Stack Técnico
     │   ├─ Troubleshooting
     │   └─ Desenvolvimento
+    │
+    ├─→ FLUXO_TRABALHO.md
+    │   ├─ Branches (main/dev)
+    │   ├─ Versionamento
+    │   └─ Ciclo de Lançamento
     │
     ├─→ MANUAL.md
     │   ├─ Primeiros Passos

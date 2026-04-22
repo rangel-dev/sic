@@ -52,7 +52,7 @@ O SIC é um sistema completo de inteligência de dados que integra múltiplos m�
 - Sistema de auto-update automático
 - Verificação de novas versões em tempo real
 - Interface de atualização integrada
-- Versionamento semântico (v0.2.3.3)
+- Versionamento semântico (v1.0.1)
 
 ---
 
@@ -356,7 +356,7 @@ Versão Estável/
 
 ### Versionamento
 - Semântico: MAJOR.MINOR.PATCH.BUILD
-- Atual: v0.2.3.3
+- Atual: v1.0.1
 - Histórico em git tags
 - Release notes automáticos
 
@@ -383,7 +383,7 @@ Versão Estável/
 Desenvolvido como aplicação corporativa moderna com:
 - Interface: PySide6 (Qt para Python)
 - Design: Minimal & Clean corporate aesthetic
-- Versão: 0.2.3.3
+- Versão: 1.0.1
 - Status: Ativo e em manutenção
 
 ---
@@ -401,4 +401,4 @@ Desenvolvido como aplicação corporativa moderna com:
 ---
 
 *Última atualização: 2026-04-16*
-*Versão: 0.2.3.3*
+*Versão: 1.0.1*

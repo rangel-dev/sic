@@ -66,6 +66,7 @@ class DropZone(QFrame):
         self._extensions = extensions
         self._multiple = multiple
         self._files: list[str] = []
+        self._last_dir: str = ""  # Lembra a última pasta usada
 
         self.setObjectName("dropzone")
         self.setAcceptDrops(True)
@@ -99,10 +100,20 @@ class DropZone(QFrame):
         self._file_label.hide()
         layout.addWidget(self._file_label)
 
+        # Botão de limpar — só visível quando há arquivos selecionados
+        self._btn_clear = QPushButton("✕ Limpar seleção")
+        self._btn_clear.setObjectName("btn_ghost")
+        self._btn_clear.setFixedHeight(22)
+        self._btn_clear.setStyleSheet("font-size:10px; padding:0 6px;")
+        self._btn_clear.clicked.connect(self.clear)
+        self._btn_clear.hide()
+        layout.addWidget(self._btn_clear)
+
     # ── Public API ────────────────────────────────────────────────────────
     def clear(self) -> None:
         self._files = []
         self._file_label.hide()
+        self._btn_clear.hide()
         self._icon_label.show()
         self._main_label.show()
         self.setProperty("state", "")
@@ -123,18 +134,27 @@ class DropZone(QFrame):
             self._open_dialog()
 
     def _open_dialog(self) -> None:
+        start_dir = self._last_dir or ""
         if self._multiple:
             paths, _ = QFileDialog.getOpenFileNames(
-                self, "Selecionar arquivos", "", self._extensions
+                self, "Selecionar arquivos", start_dir, self._extensions
             )
         else:
             path, _ = QFileDialog.getOpenFileName(
-                self, "Selecionar arquivo", "", self._extensions
+                self, "Selecionar arquivo", start_dir, self._extensions
             )
             paths = [path] if path else []
 
         if paths:
-            self._set_files(paths)
+            # Lembra a última pasta usada
+            self._last_dir = str(Path(paths[0]).parent)
+            if self._multiple:
+                # Acumula: adiciona novos sem duplicar
+                existing = set(self._files)
+                new_paths = [p for p in paths if p not in existing]
+                self._set_files(self._files + new_paths)
+            else:
+                self._set_files(paths)
 
     # ── Drag-and-drop ─────────────────────────────────────────────────────
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
@@ -150,7 +170,13 @@ class DropZone(QFrame):
     def dropEvent(self, event: QDropEvent) -> None:
         paths = [u.toLocalFile() for u in event.mimeData().urls() if u.isLocalFile()]
         if paths:
-            self._set_files(paths if self._multiple else paths[:1])
+            if self._multiple:
+                # Acumula: adiciona novos sem duplicar
+                existing = set(self._files)
+                new_paths = [p for p in paths if p not in existing]
+                self._set_files(self._files + new_paths)
+            else:
+                self._set_files(paths[:1])
 
     # ── State management ──────────────────────────────────────────────────
     def _set_files(self, paths: list[str]) -> None:
@@ -199,6 +225,8 @@ class DropZone(QFrame):
         self._file_label.setText(f"{status_icon}  {display}")
         self._file_label.setWordWrap(True)
         self._file_label.show()
+        if self._multiple:
+            self._btn_clear.show()
 
         self.setProperty("state", "filled")
         self.setProperty("brand", brand_property)

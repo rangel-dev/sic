@@ -146,6 +146,7 @@ class MainWindow(QMainWindow):
             ("✓",  "Auditor",     3),
             ("◎",  "Volumetria",  4),
             ("≡",  "Cadastro",    5),
+            ("≈",  "Menus CB",    8),
             ("◔",  "Histórico",   7),
         ]
 
@@ -197,8 +198,8 @@ class MainWindow(QMainWindow):
         return top_bar
 
     def _build_pages(self):
-        self._pages = [None] * 8
-        for i in range(8):
+        self._pages = [None] * 9
+        for i in range(9):
             self._stack.addWidget(QWidget())  # Dummy placeholder
             
         # Pre-load only the Home view for immediate startup
@@ -241,6 +242,11 @@ class MainWindow(QMainWindow):
         elif index == 7:
             from src.ui.pages.view_history import HistoryView
             page = HistoryView(self)
+        elif index == 8:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            from src.ui.pages.view_menu_validator import MenuValidatorView
+            page = MenuValidatorView(self)
+            QApplication.restoreOverrideCursor()
         else:
             return
 
@@ -260,7 +266,7 @@ class MainWindow(QMainWindow):
             btn.setChecked(i == index)
 
         NAMES = ["Início", "Gerador", "Sync", "Auditor",
-                 "Volumetria", "Cadastro", "Configurações", "Histórico"]
+                 "Volumetria", "Cadastro", "Configurações", "Histórico", "Menus CB"]
         if 0 <= index < len(NAMES):
             self.statusBar().showMessage(f"Módulo ativo: {NAMES[index]}  |  v{VERSION}")
 
