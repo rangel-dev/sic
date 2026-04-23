@@ -238,6 +238,29 @@ class AuditorView(QWidget):
 
         diag_layout.addWidget(self._cards_container)
 
+        # Empty-state (no divergences) — celebratory message shown when the
+        # audit completes with zero errors. Hidden by default; toggled in
+        # `_refresh_cards` based on the result stats.
+        self._empty_state = QLabel()
+        self._empty_state.setObjectName("auditor_empty_state")
+        self._empty_state.setAlignment(Qt.AlignCenter)
+        self._empty_state.setWordWrap(True)
+        self._empty_state.setTextFormat(Qt.RichText)
+        self._empty_state.setText(
+            "<div style='padding:28px 20px;'>"
+            "<div style='font-size:42px;line-height:1;'>✅</div>"
+            "<div style='font-size:16px;font-weight:700;margin-top:12px;color:#22A06B;'>"
+            "Catálogo 100% íntegro"
+            "</div>"
+            "<div style='font-size:12px;margin-top:6px;color:#888;'>"
+            "Nenhuma divergência encontrada nas 12 regras de negócio.<br>"
+            "Pricebook, catálogos e planilhas estão alinhados."
+            "</div>"
+            "</div>"
+        )
+        self._empty_state.hide()
+        diag_layout.addWidget(self._empty_state)
+
         ai_header = QLabel("Diagnóstico Estratégico — IA")
         ai_header.setStyleSheet("font-size:11px;font-weight:700;color:#888;text-transform:uppercase;")
         diag_layout.addWidget(ai_header)
@@ -328,6 +351,7 @@ class AuditorView(QWidget):
         self._btn_webhook.setEnabled(False)
         self._table.setRowCount(0)
         self._ai_browser.clear()
+        self._empty_state.hide()
         self._progress_bar.setValue(0)
         self._progress_bar.show()
         self._status_lbl.show()
@@ -457,6 +481,11 @@ class AuditorView(QWidget):
             self._cards_grid.addWidget(card, row, col)
 
         self._cards_container.setVisible(len(visible_cards) > 0)
+
+        # Optimistic empty-state: only when the audit result has zero total
+        # divergences (not when filters merely hide everything).
+        total_errors = self._result.stats.get("total", 0)
+        self._empty_state.setVisible(total_errors == 0)
 
     def _refresh_table(self):
         if not self._result:
@@ -698,6 +727,7 @@ class AuditorView(QWidget):
         self._btn_natura.setChecked(False)
         self._btn_avon.setChecked(False)
         self._cards_container.hide()
+        self._empty_state.hide()
         for card in self._error_cards.values():
             card.hide()
             card.update_counts(0, 0, 0)
