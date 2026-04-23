@@ -5,7 +5,6 @@ __pycache__/
 AUDIT_REPORT.xlsx
 .claude/
 scratch/
-js/
-index.html
+
 
 history.db

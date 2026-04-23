@@ -572,6 +572,46 @@ class AuditorView(QWidget):
             QMessageBox.critical(self, "Erro ao Exportar", str(exc))
 
     # ── Webhook ───────────────────────────────────────────────────────────
+    def _compute_filtered_stats(self) -> dict:
+        """Rebuild the stats dict respecting active card filters and brand filter.
+
+        Mirrors the filter logic in `_refresh_table` so the webhook payload
+        matches exactly what the user sees on screen. Returns the same shape
+        as `AuditResult.stats` so `AiAgent.generate_gchat_report` works unchanged.
+        """
+        by_type: dict[str, dict] = {}
+        by_brand = {"natura": 0, "avon": 0}
+        total = 0
+
+        if not self._result:
+            return {"total": 0, "by_type": {}, "by_brand": by_brand}
+
+        errors = self._result.errors
+        codes = list(self._active_filters) if self._active_filters else list(errors.keys())
+
+        for code in codes:
+            df = errors.get(code)
+            if df is None or df.empty:
+                continue
+
+            if self._brand_filter != "all":
+                df = df[df["brand"].str.lower() == self._brand_filter.lower()]
+
+            if df.empty:
+                continue
+
+            brand_series = df["brand"].astype(str).str.lower()
+            nat = int((brand_series == "natura").sum())
+            avn = int((brand_series == "avon").sum())
+            tot = int(len(df))
+
+            by_type[code] = {"total": tot, "natura": nat, "avon": avn}
+            by_brand["natura"] += nat
+            by_brand["avon"]   += avn
+            total += tot
+
+        return {"total": total, "by_type": by_type, "by_brand": by_brand}
+
     def _send_webhook(self):
         if not self._result:
             return
@@ -584,10 +624,23 @@ class AuditorView(QWidget):
             return
 
         import requests
-        stats   = self._result.stats
+        stats   = self._compute_filtered_stats()
         total   = stats.get("total", 0)
         nat_err = stats.get("by_brand", {}).get("natura", 0)
         avn_err = stats.get("by_brand", {}).get("avon",   0)
+
+        if total == 0:
+            QMessageBox.information(
+                self, "Google Chat",
+                "Nenhum erro no recorte atual. Ajuste os filtros antes de enviar."
+            )
+            return
+
+        has_filter = bool(self._active_filters) or self._brand_filter != "all"
+        if has_filter:
+            subtitle = f"Recorte filtrado · {total} divergências"
+        else:
+            subtitle = f"{self._result.total_excel_skus} SKUs auditados"
 
         agent = AiAgent()
         plain_ai = agent.generate_gchat_report(
@@ -601,7 +654,7 @@ class AuditorView(QWidget):
                 {
                     "header": {
                         "title": "SIC — Relatório Estratégico",
-                        "subtitle": f"{self._result.total_excel_skus} SKUs auditados",
+                        "subtitle": subtitle,
                     },
                     "sections": [
                         {

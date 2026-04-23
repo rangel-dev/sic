@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QScrollArea,
     QSizePolicy,
     QPushButton,
     QStackedWidget,
@@ -99,7 +100,19 @@ class MainWindow(QMainWindow):
         self._stack = QStackedWidget()
         self._stack.setObjectName("content_area")
         self._build_pages()
-        layout.addWidget(self._stack)
+
+        # Wrap the stack in a QScrollArea so content that exceeds the window
+        # size in windowed mode (smaller monitors / non-maximized) becomes
+        # reachable via scrollbar. Fullscreen keeps working as before because
+        # the viewport grows enough to fit the content without triggering scroll.
+        self._stack_scroll = QScrollArea()
+        self._stack_scroll.setObjectName("stack_scroll")
+        self._stack_scroll.setWidget(self._stack)
+        self._stack_scroll.setWidgetResizable(True)
+        self._stack_scroll.setFrameShape(QFrame.NoFrame)
+        self._stack_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._stack_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        layout.addWidget(self._stack_scroll)
 
         # Status bar
         sb = self.statusBar()
