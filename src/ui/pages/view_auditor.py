@@ -629,10 +629,11 @@ class AuditorView(QWidget):
             if df.empty:
                 continue
 
-            brand_series = df["brand"].astype(str).str.lower()
+            df_unique = df.drop_duplicates(subset=["sku"])
+            brand_series = df_unique["brand"].astype(str).str.lower()
             nat = int((brand_series == "natura").sum())
             avn = int((brand_series == "avon").sum())
-            tot = int(len(df))
+            tot = int(len(df_unique))
 
             by_type[code] = {"total": tot, "natura": nat, "avon": avn}
             by_brand["natura"] += nat
