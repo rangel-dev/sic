@@ -27,9 +27,9 @@ MAX_FILE_AGE_SECONDS = 600
 
 # ─── Categorias proibidas para promoção (Conflito de Margem) ─────────────────
 PROHIBITED_CATEGORIES = {
-    "Natura": {"promocao-da-semana", "LISTA_01"},
+    "Natura": {"promocao-da-semana", "LISTA_01", "monte-seu-kit", "LISTA_02"},
     "Avon":   {"desconto-progressivo", "lista-01"},
-    "ML":     {"promocao-da-semana", "desconto-progressivo"},
+    "ML":     {"promocao-da-semana", "desconto-progressivo", "monte-seu-kit"},
 }
 
 # ─── Metadados de erro para a UI ─────────────────────────────────────────────
