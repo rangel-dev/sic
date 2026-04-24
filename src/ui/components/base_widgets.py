@@ -71,7 +71,8 @@ class DropZone(QFrame):
         self.setObjectName("dropzone")
         self.setAcceptDrops(True)
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(72)
+        self.setMinimumHeight(96)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 12, 16, 12)
@@ -207,15 +208,16 @@ class DropZone(QFrame):
                 display = filename
             status_icon = brand_emoji
         else:
-            # Multiple files: show brand names only (no filenames)
+            # Multiple files: show brand names and filenames
             display_lines = [f"✔ {len(file_brands)} arquivos:"]
 
             # Group files by brand for cleaner display
             files_by_brand = self._group_files_by_brand(file_brands)
 
             for brand_name, brand_emoji, filenames in files_by_brand:
-                # Show only brand emoji + name (no filenames - they're just noise)
-                display_lines.append(f"  {brand_emoji}  {brand_name}")
+                # Show brand emoji + name + filenames
+                joined_names = ", ".join(filenames)
+                display_lines.append(f"  {brand_emoji} {brand_name} ({joined_names})")
 
             display = "\n".join(display_lines)
             status_icon = "✔"
