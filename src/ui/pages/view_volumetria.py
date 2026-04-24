@@ -228,7 +228,10 @@ class VolumetriaView(QWidget):
                 "Vol. Catálogo", "Vol. OCR", "Match", "Status"]
         self._table = QTableWidget(0, len(cols))
         self._table.setHorizontalHeaderLabels(cols)
-        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        # Configure resize modes: all interactive, last column stretches
+        for col in range(len(cols) - 1):
+            self._table.horizontalHeader().setSectionResizeMode(col, QHeaderView.Interactive)
+        self._table.horizontalHeader().setSectionResizeMode(len(cols) - 1, QHeaderView.Stretch)
         self._table.setAlternatingRowColors(True)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)

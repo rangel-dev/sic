@@ -165,6 +165,9 @@ class AuditorView(QWidget):
         self._btn_all    = self._make_filter_pill("Todos",   "all",    True)
         self._btn_natura = self._make_filter_pill("Natura",  "natura", False)
         self._btn_avon   = self._make_filter_pill("Avon",    "avon",   False)
+        self._btn_all.setToolTip("Mostrar erros de todas as marcas")
+        self._btn_natura.setToolTip("Filtrar apenas erros da marca Natura")
+        self._btn_avon.setToolTip("Filtrar apenas erros da marca Avon")
         for b in (self._btn_all, self._btn_natura, self._btn_avon):
             action_row.addWidget(b)
 
@@ -292,7 +295,10 @@ class AuditorView(QWidget):
 
         self._table = QTableWidget(0, 5)
         self._table.setHorizontalHeaderLabels(["SKU", "Marca", "Tipo", "Detalhe", "Impt."])
-        self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        # Configure resize modes: all interactive, last column stretches
+        for col in range(4):
+            self._table.horizontalHeader().setSectionResizeMode(col, QHeaderView.Interactive)
+        self._table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
         self._table.setAlternatingRowColors(True)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -546,6 +552,9 @@ class AuditorView(QWidget):
                 self._table.setItem(r_idx, c_idx, item)
 
         # Update title
+        has_filters = bool(self._active_filters) or self._brand_filter != "all"
+        filter_indicator = "🔽 " if has_filters else ""
+
         if not self._active_filters:
             title_text = "Todos os Erros"
         else:
@@ -556,12 +565,44 @@ class AuditorView(QWidget):
                 title_text = " + ".join(names)
 
         brand_suffix = "" if self._brand_filter == "all" else f"  ·  {self._brand_filter.capitalize()}"
-        self._table_title.setText(f"{title_text}{brand_suffix}")
+        self._table_title.setText(f"{filter_indicator}{title_text}{brand_suffix}")
 
-        count_text = f"{len(visible)} erros"
+        # Calculate total errors from selected cards (respecting brand filter)
+        cards_total = 0
+        for code in (self._active_filters if self._active_filters else errors.keys()):
+            by_type = self._result.stats.get("by_type", {}).get(code, {})
+            if self._brand_filter == "natura":
+                cards_total += by_type.get("natura", 0)
+            elif self._brand_filter == "avon":
+                cards_total += by_type.get("avon", 0)
+            else:
+                cards_total += by_type.get("total", 0)
+
+        # Display count from selected cards, with note if table is truncated
+        count_text = f"{cards_total} erros encontrados"
         if truncated:
-            count_text += f"  (limitado a {MAX_TABLE_ROWS})"
+            count_text += f"  •  Exibindo {MAX_TABLE_ROWS} primeiros"
+
+        # Set tooltip to explain that this is the sum of selected cards
+        if has_filters:
+            tooltip_text = (
+                f"Total de {cards_total} erros dos cards selecionados.\n"
+                f"Filtros: {title_text}{brand_suffix}\n"
+                f"Tabela exibe os primeiros {len(visible)} para melhor visualização."
+                if not truncated
+                else
+                f"Total de {cards_total} erros dos cards selecionados.\n"
+                f"Filtros: {title_text}{brand_suffix}\n"
+                f"Tabela mostra apenas os {MAX_TABLE_ROWS} primeiros para performance."
+            )
+        else:
+            tooltip_text = (
+                f"Total de {cards_total} erros encontrados.\n"
+                f"Clique em um card de erro para filtrar por tipo ou use os botões de marca para filtrar."
+            )
+
         self._table_count_lbl.setText(count_text)
+        self._table_count_lbl.setToolTip(tooltip_text)
 
     # ── Export ────────────────────────────────────────────────────────────
     def _export_excel(self):

@@ -239,7 +239,10 @@ class MenuValidatorView(QWidget):
         self._table.setHorizontalHeaderLabels([
             "ID", "Nome", "Marca", "Status Origem", "Status CB", "Menu CB", "Alerta"
         ])
-        self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        # Configure resize modes: all interactive, last column stretches
+        for col in range(6):
+            self._table.horizontalHeader().setSectionResizeMode(col, QHeaderView.Interactive)
+        self._table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
         self._table.setAlternatingRowColors(True)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectRows)

@@ -353,7 +353,8 @@ class ErrorCard(QFrame):
         if impact:
             tip += f"<span style='color:#666'>Impacto: {impact}</span><br>"
         if desc:
-            tip += f"<hr><span style='font-size:11px'>{desc}</span>"
+            tip += f"<hr><span style='font-size:11px'>{desc}</span><br>"
+        tip += f"<hr><span style='color:#0066cc;font-weight:bold'>Clique para filtrar por este erro</span>"
         tip += "</div>"
         self.setToolTip(tip)
 

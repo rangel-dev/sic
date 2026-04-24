@@ -99,6 +99,9 @@ class HistoryView(QWidget):
         # Table
         self._table = QTableWidget(0, 5)
         self._table.setHorizontalHeaderLabels(["ID", "Data/Hora", "Módulo", "Marca", "Ação"])
+        # Configure resize modes: all interactive, last column stretches
+        for col in range(4):
+            self._table.horizontalHeader().setSectionResizeMode(col, QHeaderView.Interactive)
         self._table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
         self._table.setAlternatingRowColors(True)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
