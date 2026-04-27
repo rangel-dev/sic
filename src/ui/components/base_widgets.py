@@ -532,8 +532,11 @@ class PulseStatus(QWidget):
         return self._opacity
 
     def set_opacity(self, v):
-        self._opacity = v
-        self.update()
+        try:
+            self._opacity = v
+            self.update()
+        except KeyboardInterrupt:
+            pass
 
     opacity = Property(float, get_opacity, set_opacity)
 
