@@ -1,11 +1,18 @@
 {
     "venvPath": ".",
     "venv": ".venv",
-    "include": ["."],
-    "extraPaths": ["."],
-    "executionEnvironments": [
-        {
-            "root": "."
-        }
-    ]
+    "include": [
+        "."
+    ],
+    "extraPaths": [
+        ".",
+        "src"
+    ],
+    "typeCheckingMode": "basic",
+    "pythonVersion": "3.13",
+    "analysis": {
+        "autoSearchPaths": true,
+        "useLibraryCodeForTypes": true,
+        "diagnosticMode": "workspace"
+    }
 }
