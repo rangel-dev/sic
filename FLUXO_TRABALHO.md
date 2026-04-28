@@ -86,4 +86,4 @@ O ciclo de vida de uma demanda no SIC segue o fluxo abaixo:
 3. **Sincronia:** Mantenha o `version.py` sempre alinhado com a Tag criada.
 
 ---
-*Última atualização: 2026-04-28 (Padronização do Ciclo QA/Backlog)*
+*Última atualização: 28-04-2026 (Padronização do Ciclo QA/Backlog)*
