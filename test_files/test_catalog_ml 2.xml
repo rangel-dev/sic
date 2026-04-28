@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<catalog xmlns="http://www.demandware.com/xml/impex/catalog/2006-10-31" catalog-id="cb-br">
-    <product product-id="NATBRA-100"><online-flag>true</online-flag></product>
-    <product product-id="NATBRA-200"><online-flag>true</online-flag></product>
-    <category-assignment product-id="NATBRA-100" category-id="monte-seu-kit"><primary-flag>true</primary-flag></category-assignment>
-    <category-assignment product-id="NATBRA-200" category-id="monte-seu-kit"><primary-flag>true</primary-flag></category-assignment>
-</catalog>
