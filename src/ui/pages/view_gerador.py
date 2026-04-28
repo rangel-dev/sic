@@ -32,8 +32,14 @@ from src.core.history_engine import HistoryEngine
 TARGET_LABELS: dict[str, str] = {
     "natura": "Natura",
     "avon":   "Avon",
-    "ambas":  "Natura + Avon",
     "ml":     "Minha Loja (CB)",
+}
+
+# ── Brand colors matching the app's design system ─────────────────────────────
+TARGET_COLORS: dict[str, str] = {
+    "natura": "#f59e0b",   # Natura orange
+    "avon":   "#c4b5fd",   # Avon purple
+    "ml":     "#60a5fa",   # App accent blue (Minha Loja)
 }
 
 
@@ -73,17 +79,29 @@ class GeradorView(QWidget):
         target_layout.setSpacing(24)
 
         self._target_bg = QButtonGroup(self)
-        self._radio_natura = QRadioButton("🌿  Natura")
-        self._radio_avon   = QRadioButton("💜  Avon")
-        self._radio_ambas  = QRadioButton("🌿💜  Natura + Avon")
-        self._radio_ml     = QRadioButton("🏪  Minha Loja (CB)")
+        self._radio_natura = QRadioButton("Natura")
+        self._radio_avon   = QRadioButton("Avon")
+        self._radio_ml     = QRadioButton("Minha Loja (CB)")
 
-        self._radio_ambas.setChecked(True)  # default
+        # Apply brand colors via stylesheet
+        self._radio_natura.setStyleSheet(
+            "QRadioButton { color: #f59e0b; font-weight: 600; }"
+            "QRadioButton::indicator:checked { border: 2px solid #f59e0b; }"
+        )
+        self._radio_avon.setStyleSheet(
+            "QRadioButton { color: #c4b5fd; font-weight: 600; }"
+            "QRadioButton::indicator:checked { border: 2px solid #c4b5fd; }"
+        )
+        self._radio_ml.setStyleSheet(
+            "QRadioButton { color: #60a5fa; font-weight: 600; }"
+            "QRadioButton::indicator:checked { border: 2px solid #60a5fa; }"
+        )
+
+        self._radio_natura.setChecked(True)  # default
 
         for i, btn in enumerate([
             self._radio_natura,
             self._radio_avon,
-            self._radio_ambas,
             self._radio_ml,
         ]):
             self._target_bg.addButton(btn, i)
@@ -207,10 +225,9 @@ class GeradorView(QWidget):
 
     # ── Helpers ───────────────────────────────────────────────────────────
     def _selected_target(self) -> str:
-        if self._radio_natura.isChecked(): return "natura"
-        if self._radio_avon.isChecked():   return "avon"
-        if self._radio_ml.isChecked():     return "ml"
-        return "ambas"
+        if self._radio_avon.isChecked(): return "avon"
+        if self._radio_ml.isChecked():   return "ml"
+        return "natura"  # default
 
     # ── Slots ─────────────────────────────────────────────────────────────
     def _on_mode_changed(self):
@@ -252,9 +269,12 @@ class GeradorView(QWidget):
         target_key = s.get("target", "ambas")
 
         self._stat_total.set_value(str(s.get("total", 0)))
-        self._stat_natura.set_value(str(s.get("natura", 0)), "#FF8050")
-        self._stat_avon.set_value(str(s.get("avon", 0)), "#bb88ff")
-        self._stat_target.set_value(TARGET_LABELS.get(target_key, target_key), "#4ade80")
+        self._stat_natura.set_value(str(s.get("natura", 0)), TARGET_COLORS["natura"])
+        self._stat_avon.set_value(str(s.get("avon", 0)),    TARGET_COLORS["avon"])
+        self._stat_target.set_value(
+            TARGET_LABELS.get(target_key, target_key),
+            TARGET_COLORS.get(target_key, "#60a5fa"),
+        )
         self._stat_mode.set_value(s.get("mode", "—").upper(), "#888")
         self._stats_widget.show()
         self._btn_download.show()
@@ -310,6 +330,6 @@ class GeradorView(QWidget):
         self._btn_download.hide()
         self._result = None
         self._radio_full.setChecked(True)
-        self._radio_ambas.setChecked(True)
+        self._radio_natura.setChecked(True)
         self._delta_widget.hide()
         self._btn_run.setEnabled(True)

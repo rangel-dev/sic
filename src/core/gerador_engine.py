@@ -89,7 +89,7 @@ class GeradorEngine:
             excel_paths:   list of Excel file paths to process
             mode:          "full" | "delta"
             base_xml_path: path to the base pricebook XML (delta mode only)
-            target:        "natura" | "avon" | "ambas" | "ml"
+        target:        "natura" | "avon" | "ml"
 
         Returns a dict with keys: xml_content, brand, stats, error
         """
@@ -322,25 +322,23 @@ class GeradorEngine:
         target:
           "natura" → Natura DE + Natura POR  (only NATBRA- SKUs)
           "avon"   → Avon DE   + Avon POR    (only AVNBRA- SKUs)
-          "ambas"  → Natura DE + Natura POR + Avon DE + Avon POR
-          "ml"     → CB DE     + CB POR      (all SKUs from both brands)
+          "ml"     → CB DE     + CB POR      (all SKUs: NATBRA-* + AVNBRA-*)
         """
         root = etree.Element("pricebooks", xmlns=PRICEBOOK_NS)
 
-        if target in ("natura", "ambas"):
+        if target == "natura":
             defs = PRICEBOOK_DEFS["natura"]
             nat_skus = [p for p in products if p["sku"].startswith("NATBRA-")]
             self._add_pricebook_pair(root, defs, nat_skus)
 
-        if target in ("avon", "ambas"):
+        if target == "avon":
             defs = PRICEBOOK_DEFS["avon"]
             avn_skus = [p for p in products if p["sku"].startswith("AVNBRA-")]
             self._add_pricebook_pair(root, defs, avn_skus)
 
         if target == "ml":
-            defs = PRICEBOOK_DEFS["ml"]
             # ML uses all products from both brands
-            self._add_pricebook_pair(root, defs, products)
+            self._add_pricebook_pair(root, PRICEBOOK_DEFS["ml"], products)
 
         return etree.tostring(
             root, xml_declaration=True, encoding="UTF-8", pretty_print=True
