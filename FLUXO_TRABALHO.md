@@ -38,37 +38,52 @@ Enquanto estiver na branch `dev`, adicionamos o sufixo `-beta`:
 
 ## 🚀 Ciclo de Lançamento (Release Cycle)
 
-### Fase 1: Desenvolvimento e Testes Internos
-1. Certifique-se de que está na branch `dev`:  
-   `git checkout dev`
-2. Implemente as melhorias.
-3. Atualize a versão em `src/core/version.py` (ex: `1.0.2-beta`).
-4. Envie para o GitHub:  
-   `git add .`  
-   `git commit -m "feat: descrição da melhoria"`  
-   `git push origin dev`
-5. O GitHub criará uma **Versão Beta** automaticamente para testes.
+O ciclo de vida de uma demanda no SIC segue o fluxo abaixo:
 
-### Fase 2: Lançamento Oficial
-Quando a versão estiver estável e pronta para todos os usuários:
-1. Mude para a `main`:  
+### Passo 1: Backlog e Planejamento
+1. Selecione a demanda prioritária no **Backlog**.
+2. Identifique o tipo de alteração:
+   - ✨ `feature/`: Nova funcionalidade.
+   - 🐛 `fix/`: Correção de bug.
+   - 🆙 `update/`: Melhoria em recurso existente ou atualização de dependência.
+
+### Passo 2: Desenvolvimento Local
+1. A partir da branch `dev`, crie sua branch de trabalho:
+   `git checkout dev`
+   `git checkout -b feature/nome-da-demanda`
+2. Implemente as alterações e realize testes locais.
+
+### Passo 3: Integração e Versão Beta
+1. Quando terminar o desenvolvimento, faça o merge na branch `dev`:
+   `git checkout dev`
+   `git merge feature/nome-da-demanda`
+2. Atualize a versão em `src/core/version.py` adicionando o sufixo `-beta` (ex: `1.1.0-beta`).
+3. Envie para o GitHub:
+   `git push origin dev`
+4. **GitHub Actions:** O sistema criará automaticamente uma **Pre-release (Beta)**.
+
+### Passo 4: Validação por QA
+1. Notifique a equipe de **QA** que uma nova versão Beta está disponível.
+2. Aguarde os testes e o "OK" do QA.
+3. Se houver bugs, corrija na branch da demanda e repita o processo.
+
+### Passo 5: Lançamento Oficial (Latest)
+1. Após o "OK" do QA, mescle a `dev` na `main`:
    `git checkout main`
-2. Mescle as novidades da `dev`:  
    `git merge dev`
-3. Atualize a versão para a forma final (ex: `1.0.2` sem o "-beta").
-4. Crie uma Tag oficial:  
-   `git tag v1.0.2`
-5. Envie para o mundo:  
-   `git push origin main`  
-   `git push origin v1.0.2`
-6. **BUM!** O GitHub marcará como **"Latest"** e todos os usuários receberão o aviso de atualização no SIC.
+2. No arquivo `src/core/version.py`, remova o sufixo `-beta` (ex: `1.1.0`).
+3. Crie a tag da versão oficial:
+   `git tag v1.1.0`
+4. Suba as alterações e a tag:
+   `git push origin main --tags`
+5. **GitHub Actions:** O sistema gerará a versão **Latest** e os usuários receberão o aviso de atualização.
 
 ---
 
 ## 💡 Regras de Ouro
-1. **Nunca** faça commits diretos na `main` sem testar antes na `dev`.
-2. **Sempre** atualize o `version.py` antes de criar uma tag ou fazer um merge de lançamento.
-3. **Tags** devem sempre seguir o formato `vX.Y.Z` (v minúsculo).
+1. **Nomenclatura:** Use sempre os prefixos `feature/`, `fix/` ou `update/`.
+2. **Qualidade:** Nunca mescle para a `main` sem o selo de aprovação do QA na versão Beta.
+3. **Sincronia:** Mantenha o `version.py` sempre alinhado com a Tag criada.
 
 ---
-*Última atualização: 2026-04-17 (Início da Era v1.x)*
+*Última atualização: 2026-04-28 (Padronização do Ciclo QA/Backlog)*
