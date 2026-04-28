@@ -28,6 +28,15 @@ from src.workers.worker_gerador import GeradorWorker
 from src.core.history_engine import HistoryEngine
 
 
+# ── Target label mapping (for display and file naming) ────────────────────────
+TARGET_LABELS: dict[str, str] = {
+    "natura": "Natura",
+    "avon":   "Avon",
+    "ambas":  "Natura + Avon",
+    "ml":     "Minha Loja (CB)",
+}
+
+
 class GeradorView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -57,7 +66,33 @@ class GeradorView(QWidget):
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(20)
 
-        # Mode selector
+        # ── Destino do Pricebook ───────────────────────────────────────────
+        target_box = QGroupBox("Destino do Pricebook")
+        target_layout = QHBoxLayout(target_box)
+        target_layout.setContentsMargins(16, 18, 16, 14)
+        target_layout.setSpacing(24)
+
+        self._target_bg = QButtonGroup(self)
+        self._radio_natura = QRadioButton("🌿  Natura")
+        self._radio_avon   = QRadioButton("💜  Avon")
+        self._radio_ambas  = QRadioButton("🌿💜  Natura + Avon")
+        self._radio_ml     = QRadioButton("🏪  Minha Loja (CB)")
+
+        self._radio_ambas.setChecked(True)  # default
+
+        for i, btn in enumerate([
+            self._radio_natura,
+            self._radio_avon,
+            self._radio_ambas,
+            self._radio_ml,
+        ]):
+            self._target_bg.addButton(btn, i)
+            target_layout.addWidget(btn)
+
+        target_layout.addStretch()
+        layout.addWidget(target_box)
+
+        # ── Modo de Geração ────────────────────────────────────────────────
         mode_box = QGroupBox("Modo de Geração")
         mode_layout = QHBoxLayout(mode_box)
         mode_layout.setContentsMargins(16, 18, 16, 14)
@@ -76,7 +111,7 @@ class GeradorView(QWidget):
         mode_layout.addStretch()
         layout.addWidget(mode_box)
 
-        # File inputs
+        # ── Arquivos de Entrada ────────────────────────────────────────────
         files_box = QGroupBox("Arquivos de Entrada")
         files_layout = QVBoxLayout(files_box)
         files_layout.setContentsMargins(16, 18, 16, 14)
@@ -114,7 +149,7 @@ class GeradorView(QWidget):
 
         layout.addWidget(files_box)
 
-        # Action bar
+        # ── Action bar ────────────────────────────────────────────────────
         action_row = QHBoxLayout()
         action_row.setSpacing(12)
 
@@ -132,7 +167,7 @@ class GeradorView(QWidget):
         action_row.addStretch()
         layout.addLayout(action_row)
 
-        # Progress
+        # ── Progress ──────────────────────────────────────────────────────
         self._progress_bar = QProgressBar()
         self._progress_bar.setRange(0, 100)
         self._progress_bar.setValue(0)
@@ -144,22 +179,23 @@ class GeradorView(QWidget):
         self._status_lbl.hide()
         layout.addWidget(self._status_lbl)
 
-        # Stats row (shown after generation)
+        # ── Stats row (shown after generation) ────────────────────────────
         self._stats_widget = QWidget()
         stats_row = QHBoxLayout(self._stats_widget)
         stats_row.setContentsMargins(0, 0, 0, 0)
         stats_row.setSpacing(12)
-        self._stat_total  = StatPill("Total SKUs",  "—", "#f0f0f0")
-        self._stat_natura = StatPill("Natura",       "—", "#FF8050")
-        self._stat_avon   = StatPill("Avon",         "—", "#bb88ff")
-        self._stat_mode   = StatPill("Modo",         "—", "#888888")
-        for w in (self._stat_total, self._stat_natura, self._stat_avon, self._stat_mode):
+        self._stat_total   = StatPill("Total SKUs",  "—", "#f0f0f0")
+        self._stat_natura  = StatPill("Natura",       "—", "#FF8050")
+        self._stat_avon    = StatPill("Avon",         "—", "#bb88ff")
+        self._stat_target  = StatPill("Destino",      "—", "#4ade80")
+        self._stat_mode    = StatPill("Modo",         "—", "#888888")
+        for w in (self._stat_total, self._stat_natura, self._stat_avon, self._stat_target, self._stat_mode):
             stats_row.addWidget(w)
         stats_row.addStretch()
         self._stats_widget.hide()
         layout.addWidget(self._stats_widget)
 
-        # Download button
+        # ── Download button ───────────────────────────────────────────────
         self._btn_download = QPushButton("⬇  Salvar XML")
         self._btn_download.setObjectName("btn_secondary")
         self._btn_download.setFixedWidth(160)
@@ -168,6 +204,13 @@ class GeradorView(QWidget):
         layout.addWidget(self._btn_download)
 
         layout.addStretch()
+
+    # ── Helpers ───────────────────────────────────────────────────────────
+    def _selected_target(self) -> str:
+        if self._radio_natura.isChecked(): return "natura"
+        if self._radio_avon.isChecked():   return "avon"
+        if self._radio_ml.isChecked():     return "ml"
+        return "ambas"
 
     # ── Slots ─────────────────────────────────────────────────────────────
     def _on_mode_changed(self):
@@ -180,8 +223,9 @@ class GeradorView(QWidget):
             QMessageBox.warning(self, "Gerador", "Selecione ao menos uma planilha Excel.")
             return
 
-        mode = "delta" if self._radio_delta.isChecked() else "full"
-        base_xml = self._dz_base.file_path if mode == "delta" else None
+        mode       = "delta" if self._radio_delta.isChecked() else "full"
+        base_xml   = self._dz_base.file_path if mode == "delta" else None
+        target     = self._selected_target()
 
         self._btn_run.setEnabled(False)
         self._btn_download.hide()
@@ -190,7 +234,7 @@ class GeradorView(QWidget):
         self._progress_bar.show()
         self._status_lbl.show()
 
-        self._worker = GeradorWorker(excel_paths, mode, base_xml, self)
+        self._worker = GeradorWorker(excel_paths, mode, base_xml, target, self)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
         self._worker.error_msg.connect(self._on_error)
@@ -205,9 +249,12 @@ class GeradorView(QWidget):
         self._btn_run.setEnabled(True)
 
         s = result.get("stats", {})
+        target_key = s.get("target", "ambas")
+
         self._stat_total.set_value(str(s.get("total", 0)))
         self._stat_natura.set_value(str(s.get("natura", 0)), "#FF8050")
-        self._stat_avon.set_value(str(s.get("avon", 0)),    "#bb88ff")
+        self._stat_avon.set_value(str(s.get("avon", 0)), "#bb88ff")
+        self._stat_target.set_value(TARGET_LABELS.get(target_key, target_key), "#4ade80")
         self._stat_mode.set_value(s.get("mode", "—").upper(), "#888")
         self._stats_widget.show()
         self._btn_download.show()
@@ -215,7 +262,8 @@ class GeradorView(QWidget):
         if parent := self.parent():
             if hasattr(parent, "show_status"):
                 parent.show_status(
-                    f"Gerador: {s.get('total', 0)} SKUs processados ({s.get('mode', '')})"
+                    f"Gerador: {s.get('total', 0)} SKUs processados "
+                    f"({s.get('mode', '')} → {TARGET_LABELS.get(target_key, target_key)})"
                 )
 
         # Log to History
@@ -223,7 +271,8 @@ class GeradorView(QWidget):
         HistoryEngine.add_entry(
             "Gerador",
             brand,
-            f"Preço gerado ({s.get('mode', 'full').upper()}): {s.get('total', 0)} SKUs."
+            f"Pricebook gerado ({s.get('mode', 'full').upper()}) → "
+            f"{TARGET_LABELS.get(target_key, target_key)}: {s.get('total', 0)} SKUs."
         )
 
     def _on_error(self, msg: str):
@@ -235,9 +284,13 @@ class GeradorView(QWidget):
     def _save_xml(self):
         if not self._result or not self._result.get("xml_content"):
             return
-        brand = self._result.get("brand", "brand").upper()
-        mode  = self._result.get("stats", {}).get("mode", "full").upper()
-        default_name = f"PRICEBOOK_{brand}_{mode}_SYNC.xml"
+
+        brand      = self._result.get("brand", "brand").upper()
+        s          = self._result.get("stats", {})
+        mode       = s.get("mode", "full").upper()
+        target_key = s.get("target", "ambas")
+        target_str = target_key.upper().replace(" ", "_")
+        default_name = f"PRICEBOOK_{target_str}_{mode}_SYNC.xml"
 
         path, _ = QFileDialog.getSaveFileName(
             self, "Salvar Pricebook XML", default_name, "XML (*.xml)"
@@ -257,5 +310,6 @@ class GeradorView(QWidget):
         self._btn_download.hide()
         self._result = None
         self._radio_full.setChecked(True)
+        self._radio_ambas.setChecked(True)
         self._delta_widget.hide()
         self._btn_run.setEnabled(True)
