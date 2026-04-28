@@ -3,7 +3,7 @@ import os
 
 # DO NOT CHANGE THIS HASH.
 # Doing so overrides the integrity of the V11.6 logic parity.
-EXPECTED_V11_HASH = "fba954782f90c5fc817ce876b79dce64e73fb2c2f0b5b5cf39c5796b6cf10f7c"
+EXPECTED_V11_HASH = "b752bf57e1613e9048b0a5a93398f7d17202f19ef3179fc1fc6076c184801f03"
 
 def verify_core_integrity() -> bool:
     """

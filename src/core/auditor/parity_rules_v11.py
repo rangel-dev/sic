@@ -97,12 +97,12 @@ def execute_parity_rules(
                         if e_de > 0 and abs(e_de - px_de) > 0.01:
                             errors["price"].append({**row_base, "de_excel": e_de, "de_sf": px_de,
                                                     "por_excel": e_por, "por_sf": px_por,
-                                                    "detail": f"DIVERGE SF (DE: R${e_de:.2f} vs R${px_de:.2f})"})
+                                                    "detail": f"DIVERGE SF (DE GRADE: R${e_de:.2f} vs DE SF: R${px_de:.2f})"})
                             dump_stats("price", brand)
                         if e_por > 0 and abs(e_por - px_por) > 0.01:
                             errors["price"].append({**row_base, "de_excel": e_de, "de_sf": px_de,
                                                     "por_excel": e_por, "por_sf": px_por,
-                                                    "detail": f"DIVERGE SF (POR: R${e_por:.2f} vs R${px_por:.2f})"})
+                                                    "detail": f"DIVERGE SF (POR GRADE: R${e_por:.2f} vs POR SF: R${px_por:.2f})"})
                             dump_stats("price", brand)
 
                     # ── Check #6: SEARCHABLE vs VISIBLE ──────────────

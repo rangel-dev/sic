@@ -1,0 +1,17 @@
+[project]
+name = "sic"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "certifi>=2024.2.2",
+    "lxml>=4.9.0",
+    "openpyxl>=3.1.0",
+    "pandas>=2.0.0",
+    "pillow>=10.0.0",
+    "pyside6>=6.5.0",
+    "pytesseract>=0.3.10",
+    "requests>=2.31.0",
+    "truststore>=0.8.0",
+]
