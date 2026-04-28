@@ -94,6 +94,39 @@ QMainWindow {
 }
 
 /* ============================================================
+   CADASTRO DROPDOWN PANEL
+   ============================================================ */
+#dropdown_panel {
+    background-color: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 2px;
+}
+
+#dropdown_item {
+    background-color: transparent;
+    color: #94a3b8;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 400;
+    min-height: 36px;
+}
+
+#dropdown_item:hover {
+    background-color: #0c2540;
+    color: #60a5fa;
+    font-weight: 500;
+}
+
+#dropdown_item:pressed {
+    background-color: #1e3a6e;
+    color: #93c5fd;
+}
+
+/* ============================================================
    CONTENT AREA
    ============================================================ */
 #content_area {
