@@ -18,14 +18,12 @@ class GeradorWorker(QThread):
         excel_paths: list[str],
         mode: str = "full",
         base_xml_path: Optional[str] = None,
-        target: str = "ambas",
         parent=None,
     ):
         super().__init__(parent)
         self._excel_paths  = excel_paths
         self._mode         = mode
         self._base_xml     = base_xml_path
-        self._target       = target
 
     def run(self) -> None:
         engine = GeradorEngine(progress_callback=self._on_progress)
@@ -33,7 +31,6 @@ class GeradorWorker(QThread):
             self._excel_paths,
             self._mode,
             self._base_xml,
-            self._target,
         )
         if result.get("error"):
             self.error_msg.emit(result["error"])

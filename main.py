@@ -4,6 +4,10 @@ Entry point for the application.
 """
 import os
 import sys
+import warnings
+
+# Suppress openpyxl warnings about missing default styles and unsupported extensions
+warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
 
 def _fix_qt_plugin_path() -> None:
