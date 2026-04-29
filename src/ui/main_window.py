@@ -158,7 +158,6 @@ class MainWindow(QMainWindow):
             ("⊕",  "Gerador",     1),
             ("↕",  "Sync",        2),
             ("✓",  "Auditor",     3),
-            ("◎",  "Volumetria",  4),
             # Cadastro is now a dropdown with submenu items
             ("≈",  "Menus CB",    9),
             ("◔",  "Histórico",   7),

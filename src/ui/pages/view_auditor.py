@@ -76,12 +76,18 @@ class AuditorView(QWidget):
         self._splitter.setChildrenCollapsible(False)
         root.addWidget(self._splitter)
 
-        # ── Top panel: file inputs + action bar ──────────────────────────
+        # Container for the top half (so progress bar is outside scroll)
+        top_half_widget = QWidget()
+        top_half_layout = QVBoxLayout(top_half_widget)
+        top_half_layout.setContentsMargins(0, 0, 0, 0)
+        top_half_layout.setSpacing(0)
+
+        # ── Top panel: file inputs + action bar (Scrollable) ──────────────
         top_scroll = QScrollArea()
         top_scroll.setWidgetResizable(True)
         top_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         top_scroll.setMinimumHeight(240) # Slightly reduced from 280
-        self._splitter.addWidget(top_scroll)
+        top_half_layout.addWidget(top_scroll)
 
         top_widget = QWidget()
         top_scroll.setWidget(top_widget)
@@ -188,18 +194,28 @@ class AuditorView(QWidget):
 
         top_layout.addLayout(action_row)
 
-        # Progress bar + status
+        # Progress bar moved OUT of top_scroll
+        top_layout.addStretch()
+
+        # Fixed progress bar container at the bottom of the top half
+        progress_container = QWidget()
+        progress_layout = QVBoxLayout(progress_container)
+        progress_layout.setContentsMargins(28, 8, 28, 8)
+        progress_layout.setSpacing(4)
+        
         self._progress_bar = QProgressBar()
         self._progress_bar.setRange(0, 100)
         self._progress_bar.hide()
-        top_layout.addWidget(self._progress_bar)
+        self._progress_bar.setFixedHeight(6) # Thinner, more modern
+        progress_layout.addWidget(self._progress_bar)
 
         self._status_lbl = QLabel("")
         self._status_lbl.setObjectName("label_muted")
         self._status_lbl.hide()
-        top_layout.addWidget(self._status_lbl)
+        progress_layout.addWidget(self._status_lbl)
 
-        top_layout.addStretch()
+        top_half_layout.addWidget(progress_container)
+        self._splitter.addWidget(top_half_widget)
 
         # ── Bottom panel: dashboard + table + AI ─────────────────────────
         # Use a horizontal splitter for bottom results part
@@ -264,22 +280,16 @@ class AuditorView(QWidget):
         )
         self._empty_state.hide()
         diag_layout.addWidget(self._empty_state)
-
-        ai_header = QLabel("Diagnóstico Estratégico — IA")
-        ai_header.setStyleSheet("font-size:11px;font-weight:700;color:#888;text-transform:uppercase;")
-        diag_layout.addWidget(ai_header)
-
-        self._ai_browser = QTextBrowser()
-        self._ai_browser.setObjectName("ai_panel")
-        self._ai_browser.setMinimumHeight(200)
-        self._ai_browser.setOpenExternalLinks(False)
-        self._ai_browser.setPlaceholderText("Diagnóstico estratégico aparecerá aqui…")
-        diag_layout.addWidget(self._ai_browser)
         diag_layout.addStretch()
 
-        # ── RIGHT PART: SKU List ────────────────────────────────────────
+        # ── RIGHT PART: Vertical Splitter (Table top, AI bottom) ────────
+        right_splitter = QSplitter(Qt.Vertical)
+        right_splitter.setHandleWidth(4)
+        right_splitter.setChildrenCollapsible(False)
+        self._bottom_splitter.addWidget(right_splitter)
+
         table_widget = QWidget()
-        self._bottom_splitter.addWidget(table_widget)
+        right_splitter.addWidget(table_widget)
         table_layout = QVBoxLayout(table_widget)
         table_layout.setContentsMargins(10, 12, 18, 12)
         table_layout.setSpacing(12)
@@ -306,12 +316,33 @@ class AuditorView(QWidget):
         self._table.verticalHeader().setVisible(False)
         table_layout.addWidget(self._table)
 
+        # AI Panel (Bottom Right)
+        ai_widget = QWidget()
+        ai_layout = QVBoxLayout(ai_widget)
+        ai_layout.setContentsMargins(10, 0, 18, 12)
+        ai_layout.setSpacing(8)
+
+        ai_header = QLabel("Diagnóstico Estratégico — IA")
+        ai_header.setStyleSheet("font-size:11px;font-weight:700;color:#888;text-transform:uppercase;")
+        ai_layout.addWidget(ai_header)
+
+        self._ai_browser = QTextBrowser()
+        self._ai_browser.setObjectName("ai_panel")
+        self._ai_browser.setOpenExternalLinks(False)
+        self._ai_browser.setPlaceholderText("Diagnóstico estratégico aparecerá aqui…")
+        ai_layout.addWidget(self._ai_browser)
+
+        right_splitter.addWidget(ai_widget)
+        right_splitter.setSizes([450, 250])
+        right_splitter.setStretchFactor(0, 1)
+        right_splitter.setStretchFactor(1, 0)
+
         # Splitter distributions
-        self._splitter.setSizes([220, 680])
+        self._splitter.setSizes([260, 640])
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
 
-        self._bottom_splitter.setSizes([450, 750])
+        self._bottom_splitter.setSizes([350, 850])
         self._bottom_splitter.setStretchFactor(0, 0)
         self._bottom_splitter.setStretchFactor(1, 1)
 

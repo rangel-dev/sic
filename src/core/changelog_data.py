@@ -6,7 +6,7 @@ Para registrar uma nova versão, adicione uma entrada no início de CHANGELOG.
 CONTRIBUTORS = [
     {
         "name": "Edgar Galdino",
-        "role": "Fundador & Consultor de Regras de Negócio",
+        "role": "Fundador & Arquiteto das Regras de Negócio",
         "icon": "◈",
         "color": "#FF8050",
         "bio": (
