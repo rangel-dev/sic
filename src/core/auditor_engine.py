@@ -77,23 +77,23 @@ class AuditorEngine:
             if not verify_core_integrity():
                 print("⚠️ [Integrity Check] O arquivo parity_rules_v11.py foi modificado, mas a execução prosseguirá.")
 
-            # Trava 5: Pricebook e Catálogos devem ter sido exportados há menos de 15 min (DESATIVADO)
-            # self._prog(3, "Verificando antiguidade dos arquivos SF…")
-            # expired = []
-            # for p in [pb_path] + cat_paths:
-            #     try:
-            #         age = time.time() - os.path.getmtime(p)
-            #         if age > MAX_FILE_AGE_SECONDS:
-            #             expired.append(f"{Path(p).name} ({int(age/60)} min atrás)")
-            #     except OSError:
-            #         pass
-            # if expired:
-            #     result.preflight_error = (
-            #         "Arquivos SF desatualizados (>15 min):\n\n"
-            #         + "\n".join(expired)
-            #         + "\n\nExporte-os novamente do Salesforce Business Manager."
-            #     )
-            #     return result
+            # Trava 5: Pricebook e Catálogos devem ter sido exportados há menos de 15 min
+            self._prog(3, "Verificando antiguidade dos arquivos SF…")
+            expired = []
+            for p in [pb_path] + cat_paths:
+                try:
+                    age = time.time() - os.path.getmtime(p)
+                    if age > MAX_FILE_AGE_SECONDS:
+                        expired.append(f"{Path(p).name} ({int(age/60)} min atrás)")
+                except OSError:
+                    pass
+            if expired:
+                result.preflight_error = (
+                    "Arquivos SF desatualizados (>15 min):\n\n"
+                    + "\n".join(expired)
+                    + "\n\nExporte-os novamente do Salesforce Business Manager."
+                )
+                return result
 
             # 1. Excel (Opcional)
             self._prog(10, "Lendo planilhas Excel (se houver)…")
