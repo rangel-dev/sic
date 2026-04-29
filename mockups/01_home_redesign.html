@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <title>SIC — Home Redesign</title>
+  <link rel="stylesheet" href="_shared.css">
+  <style>
+    .crumbs { font-size: 12px; color: var(--text-mut); margin-bottom: 14px; }
+    .crumbs a { color: var(--text-mut); }
+
+    .greeting {
+      display: flex; align-items: center; gap: 14px;
+      margin-bottom: 4px;
+    }
+    .greeting h1 {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -.5px;
+      margin: 0;
+    }
+    .greeting .name { color: var(--accent); }
+    .sub-header { color: var(--text-mut); font-size: 13.5px; margin: 4px 0 28px; }
+    .sub-header .dot { margin: 0 8px; opacity: .5; }
+
+    /* ── KPI grid ─────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .kpi {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 18px 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi:hover { border-color: var(--border-2); }
+    .kpi .label {
+      font-size: 11px;
+      letter-spacing: 1.2px;
+      font-weight: 600;
+      color: var(--text-mut);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .kpi .icon {
+      width: 22px; height: 22px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+    }
+    .kpi .value {
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: -.5px;
+      margin: 8px 0 4px;
+    }
+    .kpi .delta {
+      font-size: 12px;
+      font-weight: 600;
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+    }
+    .kpi .delta.up   { color: var(--success); }
+    .kpi .delta.down { color: var(--danger); }
+    .kpi .delta.flat { color: var(--text-mut); }
+    .kpi .delta-meta { color: var(--text-mut); font-weight: 400; margin-left: 6px; }
+    .kpi .spark { margin-top: 14px; }
+
+    /* ── Two-col layout ────────────────────────────────────── */
+    .layout-2col {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+      margin-top: 8px;
+    }
+
+    /* ── Operations in progress ───────────────────────────── */
+    .ops-card { padding: 0; }
+    .ops-card .header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .ops-card h4 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .ops-list { padding: 6px 0; }
+    .op-row {
+      padding: 12px 20px;
+      display: grid;
+      grid-template-columns: 24px 1fr auto auto;
+      gap: 14px;
+      align-items: center;
+      border-bottom: 1px solid rgba(51, 65, 85, .4);
+    }
+    .op-row:last-child { border-bottom: 0; }
+    .op-row .icon-circle {
+      width: 24px; height: 24px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .op-row .title { font-size: 13.5px; font-weight: 500; }
+    .op-row .meta { font-size: 11.5px; color: var(--text-mut); margin-top: 2px; }
+
+    .progress {
+      width: 130px;
+      height: 6px;
+      background: var(--panel-2);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .progress > span {
+      display: block;
+      height: 100%;
+      background: var(--accent);
+      border-radius: 99px;
+    }
+
+    /* ── Quick actions ─────────────────────────────────────── */
+    .qa-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .qa {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: var(--r-md);
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .qa:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .qa .icon-circle {
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .qa .title { font-size: 13px; font-weight: 500; }
+    .qa .desc  { font-size: 11.5px; color: var(--text-mut); margin-top: 2px; }
+
+    /* ── Timeline ─────────────────────────────────────────── */
+    .timeline { padding: 0; }
+    .timeline .header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .timeline-list { padding: 6px 0; }
+    .tl-row {
+      padding: 12px 20px;
+      display: grid;
+      grid-template-columns: 28px 1fr auto;
+      gap: 14px;
+      align-items: center;
+      border-bottom: 1px solid rgba(51, 65, 85, .4);
+    }
+    .tl-row:last-child { border-bottom: 0; }
+    .tl-row .dot {
+      width: 28px; height: 28px;
+      border-radius: 999px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700;
+    }
+    .tl-row .title { font-size: 13px; font-weight: 500; }
+    .tl-row .meta  { font-size: 11.5px; color: var(--text-mut); margin-top: 2px; }
+    .tl-row .when { font-size: 11.5px; color: var(--text-mut); }
+
+    /* Module color accents */
+    .clr-gerador  { background: rgba(245,158,11,.15); color: var(--natura); }
+    .clr-auditor  { background: rgba(196,181,253,.15); color: var(--avon); }
+    .clr-cadastro { background: rgba(96,165,250,.15); color: var(--accent); }
+    .clr-sync     { background: rgba(56,189,248,.15); color: var(--info); }
+    .clr-success  { background: rgba(74,222,128,.15); color: var(--success); }
+    .clr-warn     { background: rgba(251,191,36,.15); color: var(--warning); }
+  </style>
+</head>
+<body>
+
+<!-- Top nav (compartilhado) -->
+<nav class="topnav">
+  <div class="logo">⬡ SIC</div>
+  <div class="tabs">
+    <div class="tab active">⌂ Início</div>
+    <div class="tab">⊕ Operações ▾</div>
+    <div class="tab">✓ Análise ▾</div>
+    <div class="tab">≡ Cadastros ▾</div>
+    <div class="tab">◔ Histórico</div>
+  </div>
+  <div class="right">
+    <div class="kbd-hint" title="Abrir command palette">
+      <span style="opacity:.7">Buscar…</span>
+      <span class="kbd">⌘K</span>
+    </div>
+    <button class="icon-btn" title="Notificações">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+    </button>
+    <button class="icon-btn" title="Tema">☾</button>
+    <button class="icon-btn" title="Configurações">⚙</button>
+  </div>
+</nav>
+
+<div class="page">
+
+  <div class="crumbs"><a href="index.html">← Voltar para o índice</a></div>
+
+  <!-- Greeting + status -->
+  <div class="greeting">
+    <h1>Bom dia, <span class="name">Marcos</span></h1>
+    <span class="pulse-dot" style="margin-left:6px"></span>
+    <span class="pill success">Tudo Operacional</span>
+  </div>
+  <div class="sub-header">
+    Centro de comando SIC
+    <span class="dot">·</span>
+    Ciclo ativo <strong style="color:var(--text)">202609</strong>
+    <span class="dot">·</span>
+    Versão 1.1.4-beta
+    <span class="dot">·</span>
+    Última sync há 3 min
+  </div>
+
+  <!-- KPI grid -->
+  <div class="kpi-grid">
+
+    <div class="kpi">
+      <div class="label"><span class="icon clr-cadastro">▤</span>Operações no ciclo</div>
+      <div class="value">142</div>
+      <div class="delta up">▲ 18 <span class="delta-meta">vs ciclo anterior</span></div>
+      <svg class="spark" width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none">
+        <polyline fill="none" stroke="#60a5fa" stroke-width="2" points="0,24 20,20 40,22 60,18 80,16 100,18 120,12 140,14 160,8 180,10 200,4"/>
+        <polyline fill="rgba(96,165,250,.12)" stroke="none" points="0,34 0,24 20,20 40,22 60,18 80,16 100,18 120,12 140,14 160,8 180,10 200,4 200,34"/>
+      </svg>
+    </div>
+
+    <div class="kpi">
+      <div class="label"><span class="icon clr-success">✓</span>Conformidade GCP</div>
+      <div class="value">96.2<span style="font-size:18px;color:var(--text-mut)">%</span></div>
+      <div class="delta up">▲ 2.1pp <span class="delta-meta">vs ciclo anterior</span></div>
+      <svg class="spark" width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none">
+        <polyline fill="none" stroke="#4ade80" stroke-width="2" points="0,16 20,18 40,14 60,16 80,12 100,14 120,10 140,8 160,10 180,6 200,4"/>
+        <polyline fill="rgba(74,222,128,.12)" stroke="none" points="0,34 0,16 20,18 40,14 60,16 80,12 100,14 120,10 140,8 160,10 180,6 200,4 200,34"/>
+      </svg>
+    </div>
+
+    <div class="kpi">
+      <div class="label"><span class="icon clr-warn">⚠</span>Exceções pendentes</div>
+      <div class="value">27</div>
+      <div class="delta down">▼ 12 <span class="delta-meta">vs ciclo anterior</span></div>
+      <svg class="spark" width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none">
+        <polyline fill="none" stroke="#fbbf24" stroke-width="2" points="0,8 20,12 40,10 60,18 80,14 100,20 120,18 140,22 160,20 180,24 200,28"/>
+        <polyline fill="rgba(251,191,36,.12)" stroke="none" points="0,34 0,8 20,12 40,10 60,18 80,14 100,20 120,18 140,22 160,20 180,24 200,28 200,34"/>
+      </svg>
+    </div>
+
+    <div class="kpi">
+      <div class="label"><span class="icon clr-auditor">⏱</span>Tempo médio</div>
+      <div class="value">2.4<span style="font-size:18px;color:var(--text-mut)">s</span></div>
+      <div class="delta up">▲ 31% mais rápido</div>
+      <svg class="spark" width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none">
+        <polyline fill="none" stroke="#c4b5fd" stroke-width="2" points="0,8 20,10 40,12 60,8 80,14 100,12 120,16 140,18 160,20 180,22 200,26"/>
+        <polyline fill="rgba(196,181,253,.12)" stroke="none" points="0,34 0,8 20,10 40,12 60,8 80,14 100,12 120,16 140,18 160,20 180,22 200,26 200,34"/>
+      </svg>
+    </div>
+
+  </div>
+
+  <!-- Two-col layout -->
+  <div class="layout-2col">
+
+    <!-- LEFT: ongoing + timeline -->
+    <div>
+      <!-- Ongoing operations -->
+      <div class="card ops-card">
+        <div class="header">
+          <h4>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Operações em andamento
+            <span class="pill info" style="margin-left:6px">2 ativas</span>
+          </h4>
+          <button class="btn ghost">Ver todas →</button>
+        </div>
+        <div class="ops-list">
+
+          <div class="op-row">
+            <div class="icon-circle clr-cadastro">≡</div>
+            <div>
+              <div class="title">Conversor Biosphera · Ciclo 202609</div>
+              <div class="meta">Cruzando 27 itens contra Revista CF · ETA 8s</div>
+            </div>
+            <div class="progress"><span style="width:64%"></span></div>
+            <div class="muted" style="font-size:12px;width:34px;text-align:right">64%</div>
+          </div>
+
+          <div class="op-row">
+            <div class="icon-circle clr-sync">↕</div>
+            <div>
+              <div class="title">Sync semanal — Salesforce</div>
+              <div class="meta">Baixando catálogo Natura · 1.2k registros</div>
+            </div>
+            <div class="progress"><span style="width:32%"></span></div>
+            <div class="muted" style="font-size:12px;width:34px;text-align:right">32%</div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Timeline -->
+      <div class="card timeline" style="margin-top:18px">
+        <div class="header">
+          <h4>Atividades recentes</h4>
+          <button class="btn ghost">Histórico completo →</button>
+        </div>
+        <div class="timeline-list">
+
+          <div class="tl-row">
+            <div class="dot clr-success">✓</div>
+            <div>
+              <div class="title">Carga GCP gerada — 42 linhas</div>
+              <div class="meta">Cadastro · Pontuação · 27/27 itens encontrados · 0 exceções</div>
+            </div>
+            <div class="when">há 4 min</div>
+          </div>
+
+          <div class="tl-row">
+            <div class="dot clr-warn">⚠</div>
+            <div>
+              <div class="title">Auditor — 3 conflitos de margem detectados</div>
+              <div class="meta">Auditor · catalog_natura · ML #178452, #203401, #80969</div>
+            </div>
+            <div class="when">há 22 min</div>
+          </div>
+
+          <div class="tl-row">
+            <div class="dot clr-cadastro">≡</div>
+            <div>
+              <div class="title">Validação de Kits aprovou 14 SKUs</div>
+              <div class="meta">Cadastro · Kits · base.xlsx</div>
+            </div>
+            <div class="when">há 1h</div>
+          </div>
+
+          <div class="tl-row">
+            <div class="dot clr-gerador">⊕</div>
+            <div>
+              <div class="title">Pricebook gerado para Avon</div>
+              <div class="meta">Gerador · 3.142 SKUs · 1.8MB · pricebook_2026-04-29.xml</div>
+            </div>
+            <div class="when">ontem 17:42</div>
+          </div>
+
+          <div class="tl-row">
+            <div class="dot clr-auditor">✓</div>
+            <div>
+              <div class="title">Volumetria mensal exportada</div>
+              <div class="meta">Análise · Volumetria · abril/2026</div>
+            </div>
+            <div class="when">ontem 09:14</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: quick actions + news -->
+    <div>
+      <div class="card">
+        <h4 style="margin:0 0 14px;font-size:13px;font-weight:600">Ações rápidas</h4>
+        <div class="qa-grid">
+          <div class="qa">
+            <div class="icon-circle clr-cadastro">≡</div>
+            <div>
+              <div class="title">Nova carga GCP</div>
+              <div class="desc">Auditoria → Carga</div>
+            </div>
+          </div>
+          <div class="qa">
+            <div class="icon-circle clr-gerador">⊕</div>
+            <div>
+              <div class="title">Gerar pricebook</div>
+              <div class="desc">Natura ou Avon</div>
+            </div>
+          </div>
+          <div class="qa">
+            <div class="icon-circle clr-auditor">✓</div>
+            <div>
+              <div class="title">Auditar margens</div>
+              <div class="desc">Conflitos & desvios</div>
+            </div>
+          </div>
+          <div class="qa">
+            <div class="icon-circle clr-sync">↕</div>
+            <div>
+              <div class="title">Sync agora</div>
+              <div class="desc">Forçar pull manual</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card accent-blue" style="margin-top:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span class="pill info">Versão 1.1.4-beta</span>
+          <span class="muted" style="font-size:11.5px">29/04/2026</span>
+        </div>
+        <div style="font-size:13px;line-height:1.6">
+          <p style="margin:0 0 8px"><strong style="color:var(--text)">Novidade:</strong> Conversor Biosphera agora prioriza aba "País" corretamente (era selecionada "Região Estratégica" por engano).</p>
+          <p style="margin:0;color:var(--text-mut)"><strong style="color:var(--text)">Ajuste:</strong> Auditor de Pontuação renomeado para Gestor GCP.</p>
+        </div>
+        <a href="#" style="display:inline-block;margin-top:10px;font-size:12px">Ver notas completas →</a>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <h4 style="margin:0 0 14px;font-size:13px;font-weight:600">Saúde do sistema</h4>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0;border-bottom:1px solid rgba(51,65,85,.4)">
+          <span class="muted">Salesforce API</span>
+          <span style="color:var(--success);font-weight:600">●  Online</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0;border-bottom:1px solid rgba(51,65,85,.4)">
+          <span class="muted">Banco local (SQLite)</span>
+          <span style="color:var(--success);font-weight:600">●  OK · 12.3 MB</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0">
+          <span class="muted">Cache</span>
+          <span style="color:var(--warning);font-weight:600">●  82% cheio</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
