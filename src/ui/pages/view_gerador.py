@@ -455,7 +455,12 @@ class GeradorView(QWidget):
         today      = date.today()
         dd         = today.strftime("%d")
         mm         = today.strftime("%m")
-        brands_str = "_".join(b.upper() for b in brands) if brands else "CB"
+        
+        if brands:
+            brands_str = "_".join(b.upper() for b in brands) + "+CB"
+        else:
+            brands_str = "CB"
+            
         default_name = f"---{dd}.{mm}-{brands_str}-PRICEBOOK-AJUSTE.xml"
 
         path, _ = QFileDialog.getSaveFileName(
