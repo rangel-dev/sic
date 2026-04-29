@@ -22,8 +22,8 @@ from src.core.auditor.parity_rules_v11 import execute_parity_rules
 PRICEBOOK_NS = "http://www.demandware.com/xml/impex/pricebook/2006-10-31"
 CATALOG_NS   = "http://www.demandware.com/xml/impex/catalog/2006-10-31"
 
-# ─── Regra dos 10 minutos (Auditor: arquivos SF devem ser RECENTES < 10 min) ─
-MAX_FILE_AGE_SECONDS = 600
+# ─── Regra dos 15 minutos (Auditor: arquivos SF devem ser RECENTES < 15 min) ─
+MAX_FILE_AGE_SECONDS = 900
 
 # ─── Categorias proibidas para promoção (Conflito de Margem) ─────────────────
 PROHIBITED_CATEGORIES = {
@@ -77,7 +77,7 @@ class AuditorEngine:
             if not verify_core_integrity():
                 print("⚠️ [Integrity Check] O arquivo parity_rules_v11.py foi modificado, mas a execução prosseguirá.")
 
-            # Pre-flight: arquivo SF deve ser recente (< 10 min) - DESATIVADO TEMPORARIAMENTE
+            # Trava 5: Pricebook e Catálogos devem ter sido exportados há menos de 15 min (DESATIVADO)
             # self._prog(3, "Verificando antiguidade dos arquivos SF…")
             # expired = []
             # for p in [pb_path] + cat_paths:
@@ -89,7 +89,7 @@ class AuditorEngine:
             #         pass
             # if expired:
             #     result.preflight_error = (
-            #         "Arquivos SF desatualizados (>10 min):\n\n"
+            #         "Arquivos SF desatualizados (>15 min):\n\n"
             #         + "\n".join(expired)
             #         + "\n\nExporte-os novamente do Salesforce Business Manager."
             #     )
@@ -126,6 +126,29 @@ class AuditorEngine:
             # 2. Pricebook
             self._prog(35, "Descompactando Pricebook XML…")
             prices_xml = self._parse_pricebook(pb_path)
+
+            # Trava 4: Pricebook deve conter DE e POR para as 3 operações
+            pb_coverage: dict[str, set] = {"Natura": set(), "Avon": set(), "ML": set()}
+            for sku_data in prices_xml.values():
+                for brand, type_map in sku_data.items():
+                    pb_coverage[brand].update(type_map.keys())
+
+            missing_pb = []
+            brand_labels = {"Natura": "Natura", "Avon": "Avon", "ML": "Minha Loja"}
+            for brand, label in brand_labels.items():
+                for price_type in ("DE", "POR"):
+                    if price_type not in pb_coverage[brand]:
+                        missing_pb.append(f"{label}: sem Preço {price_type}")
+
+            if missing_pb:
+                result.preflight_error = (
+                    "Dados Incompletos: O Pricebook não contém todos os preços necessários "
+                    "para as 3 operações:\n\n• "
+                    + "\n• ".join(missing_pb)
+                    + "\n\nExporte o Pricebook completo do Salesforce Business Manager "
+                    "com todos os pricebooks das operações Natura, Avon e Minha Loja."
+                )
+                return result
 
             # 3. Catálogos
             self._prog(60, "Varrendo Catálogos XML…")

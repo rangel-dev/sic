@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 
 from src.core.auditor_engine import AuditResult, ERROR_META
 from src.core.ai_agent import AiAgent
+from src.core.brand_detector import BrandDetector
 from src.ui.components.base_widgets import Divider, DropZone, ErrorCard, SectionHeader
 from src.workers.worker_auditor import AuditorWorker
 from src.core.history_engine import HistoryEngine
@@ -314,6 +315,64 @@ class AuditorView(QWidget):
         self._bottom_splitter.setStretchFactor(0, 0)
         self._bottom_splitter.setStretchFactor(1, 1)
 
+        # Conecta validadores de bloqueio imediato nos DropZones
+        self._setup_dropzone_validators()
+
+    # ── DropZone validators (bloqueio imediato no drag-and-drop) ──────────
+    def _setup_dropzone_validators(self) -> None:
+        """Registra funções validadoras e conecta o sinal de rejeição em cada DropZone."""
+        self._dz_cat.set_validator(self._validate_cat_paths)
+        self._dz_excel.set_validator(self._validate_excel_paths)
+        self._dz_cat.file_rejected.connect(self._on_file_rejected)
+        self._dz_excel.file_rejected.connect(self._on_file_rejected)
+
+    def _validate_cat_paths(self, paths: list[str]) -> "Optional[str]":
+        """
+        Valida a lista proposta de catálogos antes de qualquer commit no DropZone.
+        Retorna mensagem de erro se houver duplicidade de marca; None se ok.
+        (A checagem de quantidade exata de 3 fica reservada para o _run().)
+        """
+        brand_map: dict[str, str] = {}
+        for path in paths:
+            brands = BrandDetector.detect_single(path)
+            brand_key = next(iter(brands)) if brands else "desconhecida"
+            if brand_key in brand_map:
+                brand_display = BrandDetector.get_combined_display_name({brand_key})
+                return (
+                    f"Erro de Unicidade: Foram detectados dois arquivos da mesma marca "
+                    f"({brand_display}).\n\n"
+                    f"• {Path(brand_map[brand_key]).name}\n"
+                    f"• {Path(path).name}\n\n"
+                    f"Por favor, verifique os catálogos."
+                )
+            brand_map[brand_key] = path
+        return None
+
+    def _validate_excel_paths(self, paths: list[str]) -> "Optional[str]":
+        """
+        Valida a lista proposta de grades Excel antes de qualquer commit no DropZone.
+        Retorna mensagem de erro se houver duplicidade de marca; None se ok.
+        """
+        brand_map: dict[str, str] = {}
+        for path in paths:
+            brands = BrandDetector.detect_single(path)
+            brand_key = next(iter(brands)) if brands else "desconhecida"
+            if brand_key in brand_map:
+                brand_display = BrandDetector.get_combined_display_name({brand_key})
+                return (
+                    f"Erro de Unicidade: Foram detectados dois arquivos de Grade "
+                    f"da mesma marca ({brand_display}).\n\n"
+                    f"• {Path(brand_map[brand_key]).name}\n"
+                    f"• {Path(path).name}\n\n"
+                    f"Por favor, verifique as planilhas de Grade."
+                )
+            brand_map[brand_key] = path
+        return None
+
+    def _on_file_rejected(self, message: str) -> None:
+        """Exibe um aviso quando o DropZone rejeita um arquivo por violação de unicidade."""
+        QMessageBox.warning(self, "Arquivo Recusado", message)
+
     # ── Filter pills ──────────────────────────────────────────────────────
     def _make_filter_pill(self, text: str, key: str, checked: bool) -> QPushButton:
         btn = QPushButton(text)
@@ -351,6 +410,52 @@ class AuditorView(QWidget):
             )
             return
 
+        # Trava 1: Quantidade exata de catálogos
+        if len(cat_paths) != 3:
+            QMessageBox.warning(
+                self, "Quantidade Inválida",
+                f"Quantidade Inválida: A auditoria requer exatamente 3 catálogos "
+                f"(Natura, Avon e ML) para garantir a integridade cross-brand.\n\n"
+                f"Foram selecionados {len(cat_paths)} arquivo(s)."
+            )
+            return
+
+        # Trava 2: Unicidade de marca nos catálogos
+        cat_brand_map: dict[str, str] = {}
+        for path in cat_paths:
+            brands = BrandDetector.detect_single(path)
+            brand_key = next(iter(brands)) if brands else "desconhecida"
+            if brand_key in cat_brand_map:
+                brand_display = BrandDetector.get_combined_display_name({brand_key})
+                QMessageBox.warning(
+                    self, "Erro de Unicidade",
+                    f"Erro de Unicidade: Foram detectados dois arquivos da mesma marca "
+                    f"({brand_display}).\n\n"
+                    f"• {Path(cat_brand_map[brand_key]).name}\n"
+                    f"• {Path(path).name}\n\n"
+                    f"Por favor, verifique os catálogos."
+                )
+                return
+            cat_brand_map[brand_key] = path
+
+        # Trava 3: Unicidade de marca nas grades Excel (se enviadas)
+        if excel_paths:
+            excel_brand_map: dict[str, str] = {}
+            for path in excel_paths:
+                brands = BrandDetector.detect_single(path)
+                brand_key = next(iter(brands)) if brands else "desconhecida"
+                if brand_key in excel_brand_map:
+                    brand_display = BrandDetector.get_combined_display_name({brand_key})
+                    QMessageBox.warning(
+                        self, "Erro de Unicidade",
+                        f"Erro de Unicidade: Foram detectados dois arquivos de Grade "
+                        f"da mesma marca ({brand_display}).\n\n"
+                        f"• {Path(excel_brand_map[brand_key]).name}\n"
+                        f"• {Path(path).name}\n\n"
+                        f"Por favor, verifique as planilhas de Grade."
+                    )
+                    return
+                excel_brand_map[brand_key] = path
 
         self._btn_run.setEnabled(False)
         self._btn_export.setEnabled(False)

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from PySide6.QtCore import (
     Qt,
@@ -53,7 +53,8 @@ class DropZone(QFrame):
     multiple     : whether to allow selecting multiple files
     """
 
-    files_selected = Signal(list)  # list[str] of absolute paths
+    files_selected = Signal(list)   # list[str] of absolute paths
+    file_rejected  = Signal(str)    # emitted when validator rejects a proposed file list
 
     def __init__(
         self,
@@ -67,6 +68,7 @@ class DropZone(QFrame):
         self._multiple = multiple
         self._files: list[str] = []
         self._last_dir: str = ""  # Lembra a última pasta usada
+        self._validator: Optional[Callable[[list[str]], Optional[str]]] = None
 
         self.setObjectName("dropzone")
         self.setAcceptDrops(True)
@@ -111,6 +113,16 @@ class DropZone(QFrame):
         layout.addWidget(self._btn_clear)
 
     # ── Public API ────────────────────────────────────────────────────────
+    def set_validator(self, fn: Callable[[list[str]], Optional[str]]) -> None:
+        """
+        Define uma função validadora chamada antes de cada _set_files().
+
+        A função recebe a lista *proposta* de caminhos e deve retornar:
+          - None   → aceitar os arquivos normalmente
+          - str    → rejeitar; a string é a mensagem de erro emitida via file_rejected
+        """
+        self._validator = fn
+
     def clear(self) -> None:
         self._files = []
         self._file_label.hide()
@@ -181,6 +193,16 @@ class DropZone(QFrame):
 
     # ── State management ──────────────────────────────────────────────────
     def _set_files(self, paths: list[str]) -> None:
+        # Valida a lista proposta antes de comitar qualquer alteração de estado
+        if self._validator:
+            error_msg = self._validator(paths)
+            if error_msg:
+                # Reverte o estado visual de hover sem alterar self._files
+                self.setProperty("state", "filled" if self._files else "")
+                self._refresh_style()
+                self.file_rejected.emit(error_msg)
+                return
+
         self._files = paths
 
         # Build per-file brand information
