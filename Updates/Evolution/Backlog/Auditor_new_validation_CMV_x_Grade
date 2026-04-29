@@ -1,0 +1,38 @@
+# Plano de Execução - Módulo: Governança Financeira SIC (V1.0)
+
+## Contexto
+**Aplicação:** SIC - Sistema de Inteligência Corporativa.
+**Objetivo:** Implementar auditoria financeira com dupla camada de segurança: Regras Fixas (Desenvolvedor) e Flexibilizações Operacionais (Auditores).
+
+## 🛡️ Camada 1: Regras Fixas (Hard-Coded / Inalteráveis)
+*Definidas pelo Desenvolvedor no código-fonte. Servem como rede de segurança absoluta.*
+- **Margem de Segurança Mínima:** Valor global que o sistema nunca aceitará sem um override explícito.
+- **Teto de Desconto Global:** Limite máximo para evitar erros catastróficos de digitação.
+- **Hierarquia de Precedência:** A lógica do "Funil de Decisão" é imutável no motor de auditoria.
+
+## ⚙️ Camada 2: Painel de Flexibilização (Interface do Auditor)
+*Botão "Configurações de Negócio" dentro do módulo Auditor para ajustes táticos.*
+- **Upload de Base CMV:** Importação de `base_cmv.xlsx` (SKU, CMV, Preço Cheio, Categoria).
+- **Gestão de Margens:** Edição das % de Margem Padrão e Ciclo conforme o momento do negócio.
+- **Overrides Táticos (Exceções):** Upload de listas de SKUs autorizados pela diretoria (Decisões paralelas).
+- **Agendamento Sazonal:** Configuração de datas de eventos (ex: Black Friday).
+
+## 🌳 Funil de Precedência (Hierarquia de Decisão)
+O sistema busca a margem alvo para cada SKU nesta ordem prioritária:
+1. **Prioridade 1 (Exceção Tática):** SKU presente na lista de upload manual de overrides.
+2. **Prioridade 2 (Sazonalidade):** Data da auditoria coincide com evento agendado.
+3. **Prioridade 3 (Contexto de Ciclo):** Coluna `TIPO == "DE-POR CICLO"` na grade de ativação.
+4. **Prioridade 4 (Regra Geral):** Configuração definida pelo auditor no painel de flexibilização.
+5. **Prioridade 5 (Regra Fixa):** Valor de segurança definido pelo desenvolvedor (Fallback).
+
+## 📊 Regras de Validação (O Check-list do Robô)
+- **R01 (Preço Base):** `Grade[DE]` vs `BaseCMV[PRECO_CHEIO]`.
+- **R02 (Teto de Desconto):** `(DE - POR) / DE` vs `Limite_Categoria`.
+- **R03 (Rentabilidade):** `(POR - CMV) / POR` vs `Margem_Alvo_do_Funil`.
+
+## Ações de Interface
+- **Banner de Expiração:** Alerta visual se `Data_Atual > Validade_Base_CMV`.
+- **Dashboard Financeiro:** Cards específicos para "Risco de Margem" e "Erro de Preço Base".
+
+---
+**Nota:** Regras específicas de % por categoria serão preenchidas após definição com o Time de Negócio.
