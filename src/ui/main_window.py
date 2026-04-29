@@ -177,6 +177,7 @@ class MainWindow(QMainWindow):
         cadastro_btn.setObjectName("tab_button")
         cadastro_btn.add_submenu_item("Validação de Kits",     5, "▪")
         cadastro_btn.add_submenu_item("Gestor GCP", 6, "▪")
+        cadastro_btn.add_submenu_item("Pontuação", 12, "▪")
         cadastro_btn.submenu_clicked.connect(lambda idx: self._switch_cadastro(idx))
         self._nav_buttons[5] = cadastro_btn  # Store with index 5 for compatibility
         tabs_layout.insertWidget(5, cadastro_btn)  # Insert after Volumetria
@@ -230,9 +231,9 @@ class MainWindow(QMainWindow):
         return top_bar
 
     def _build_pages(self):
-        # 12 pages: 0-10 original + 11 = Sobre
-        self._pages = [None] * 12
-        for i in range(12):
+        # 13 pages: 0-10 original + 11 = Sobre + 12 = Conversor (Pontuação)
+        self._pages = [None] * 13
+        for i in range(13):
             self._stack.addWidget(QWidget())  # Dummy placeholder
 
         # Pre-load only the Home view for immediate startup
@@ -292,6 +293,9 @@ class MainWindow(QMainWindow):
         elif index == 11:
             from src.ui.pages.view_sobre import SobreView
             page = SobreView(self)
+        elif index == 12:
+            from src.ui.pages.view_cadastro_conversor import CadastroConversorView
+            page = CadastroConversorView(self)
         else:
             return
 
@@ -308,8 +312,8 @@ class MainWindow(QMainWindow):
 
         # Update button states (manual exclusive group)
         for i, btn in self._nav_buttons.items():
-            if i == 5:  # Cadastro dropdown — mark as active for both sub-pages
-                btn.setChecked(index in (5, 6))
+            if i == 5:  # Cadastro dropdown — mark as active for sub-pages
+                btn.setChecked(index in (5, 6, 12))
             else:
                 btn.setChecked(i == index)
 
@@ -326,6 +330,7 @@ class MainWindow(QMainWindow):
             8: "Configurações",
             9: "Menus CB",
             11: "Sobre",
+            12: "Cadastro → Pontuação",
         }
         name = PAGE_NAMES.get(index, "Módulo")
         self.statusBar().showMessage(f"Módulo ativo: {name}  |  v{VERSION}")
