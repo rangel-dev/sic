@@ -191,7 +191,14 @@ def main():
     window.show()
     splash.finish(window)
 
-    sys.exit(app.exec())
+    # Permitir que o Ctrl+C (SIGINT) feche o programa imediatamente e sem erros
+    import signal
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    try:
+        sys.exit(app.exec())
+    except KeyboardInterrupt:
+        sys.exit(0)
 
 
 if __name__ == "__main__":

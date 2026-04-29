@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from src.ui.styles.qss_dark  import DARK_STYLESHEET
 from src.ui.styles.qss_light import LIGHT_STYLESHEET
+from src.ui.components.dropdown_nav_button import DropdownNavButton
 
 # View modules will be imported lazily in _load_page to drastically improve application startup time.
 
@@ -158,8 +159,8 @@ class MainWindow(QMainWindow):
             ("↕",  "Sync",        2),
             ("✓",  "Auditor",     3),
             ("◎",  "Volumetria",  4),
-            ("≡",  "Cadastro",    5),
-            ("≈",  "Menus CB",    8),
+            # Cadastro is now a dropdown with submenu items
+            ("≈",  "Menus CB",    9),
             ("◔",  "Histórico",   7),
         ]
 
@@ -171,6 +172,16 @@ class MainWindow(QMainWindow):
             self._nav_buttons[idx] = btn
             tabs_layout.addWidget(btn)
 
+        # Cadastro dropdown: indices 5 and 6 for the two submodules
+        cadastro_btn = DropdownNavButton("≡", "Cadastro")
+        cadastro_btn.setFixedHeight(56)
+        cadastro_btn.setObjectName("tab_button")
+        cadastro_btn.add_submenu_item("Validação de Kits",     5, "▪")
+        cadastro_btn.add_submenu_item("Auditor de Pontuação", 6, "▪")
+        cadastro_btn.submenu_clicked.connect(lambda idx: self._switch_cadastro(idx))
+        self._nav_buttons[5] = cadastro_btn  # Store with index 5 for compatibility
+        tabs_layout.insertWidget(5, cadastro_btn)  # Insert after Volumetria
+
         layout.addWidget(tabs_container, 1)  # Expand horizontally
 
         # ── Settings section (right) ───────────────────────────────────────
@@ -180,13 +191,13 @@ class MainWindow(QMainWindow):
         settings_layout.setContentsMargins(12, 0, 12, 0)
         settings_layout.setSpacing(8)
 
-        # Settings button
+        # Settings button (now at index 8 after Cadastro expansion)
         btn_cfg = NavButton("⚙", "Configurações")
         btn_cfg.setFixedHeight(56)
         btn_cfg.setObjectName("tab_button")
         btn_cfg.setFixedWidth(160)
-        btn_cfg.clicked.connect(lambda: self._switch(6))
-        self._nav_buttons[6] = btn_cfg
+        btn_cfg.clicked.connect(lambda: self._switch(8))
+        self._nav_buttons[8] = btn_cfg
         settings_layout.addWidget(btn_cfg)
 
         # Theme toggle
@@ -211,10 +222,11 @@ class MainWindow(QMainWindow):
         return top_bar
 
     def _build_pages(self):
-        self._pages = [None] * 9
-        for i in range(9):
+        # Expanded from 9 to 11 pages: +2 for Cadastro submodules (Kits at 5, Pontuação at 6)
+        self._pages = [None] * 11
+        for i in range(11):
             self._stack.addWidget(QWidget())  # Dummy placeholder
-            
+
         # Pre-load only the Home view for immediate startup
         self._load_page(0)
 
@@ -247,19 +259,28 @@ class MainWindow(QMainWindow):
             from src.ui.pages.view_volumetria import VolumetriaView
             page = VolumetriaView(self)
         elif index == 5:
-            from src.ui.pages.view_cadastro import CadastroView
-            page = CadastroView(self)
+            # Cadastro submenu: Validação de Kits
+            from src.ui.pages.view_cadastro_kits import CadastroKitsView
+            page = CadastroKitsView(self)
         elif index == 6:
-            from src.ui.pages.view_settings import SettingsView
-            page = SettingsView(self)
+            # Cadastro submenu: Auditor de Pontuação
+            from src.ui.pages.view_cadastro_pontuacao import CadastroPontuacaoView
+            page = CadastroPontuacaoView(self)
         elif index == 7:
             from src.ui.pages.view_history import HistoryView
             page = HistoryView(self)
         elif index == 8:
+            from src.ui.pages.view_settings import SettingsView
+            page = SettingsView(self)
+        elif index == 9:
             QApplication.setOverrideCursor(Qt.WaitCursor)
             from src.ui.pages.view_menu_validator import MenuValidatorView
             page = MenuValidatorView(self)
             QApplication.restoreOverrideCursor()
+        elif index == 10:
+            # Legacy: if someone tries to access the old container (shouldn't happen)
+            from src.ui.pages.view_cadastro_kits import CadastroKitsView
+            page = CadastroKitsView(self)
         else:
             return
 
@@ -276,12 +297,30 @@ class MainWindow(QMainWindow):
 
         # Update button states (manual exclusive group)
         for i, btn in self._nav_buttons.items():
-            btn.setChecked(i == index)
+            if i == 5:  # Cadastro dropdown — mark as active for both sub-pages
+                btn.setChecked(index in (5, 6))
+            else:
+                btn.setChecked(i == index)
 
-        NAMES = ["Início", "Gerador", "Sync", "Auditor",
-                 "Volumetria", "Cadastro", "Configurações", "Histórico", "Menus CB"]
-        if 0 <= index < len(NAMES):
-            self.statusBar().showMessage(f"Módulo ativo: {NAMES[index]}  |  v{VERSION}")
+        # Map indices to display names
+        PAGE_NAMES = {
+            0: "Início",
+            1: "Gerador",
+            2: "Sync",
+            3: "Auditor",
+            4: "Volumetria",
+            5: "Cadastro → Validação de Kits",
+            6: "Cadastro → Auditor de Pontuação",
+            7: "Histórico",
+            8: "Configurações",
+            9: "Menus CB",
+        }
+        name = PAGE_NAMES.get(index, "Módulo")
+        self.statusBar().showMessage(f"Módulo ativo: {name}  |  v{VERSION}")
+
+    def _switch_cadastro(self, index: int):
+        """Handle Cadastro submenu clicks."""
+        self._switch(index)
 
     # ── Updates ───────────────────────────────────────────────────────────
     def _check_for_updates(self):
