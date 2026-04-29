@@ -191,6 +191,15 @@ class MainWindow(QMainWindow):
         settings_layout.setContentsMargins(12, 0, 12, 0)
         settings_layout.setSpacing(8)
 
+        # Sobre button
+        btn_sobre = NavButton("ℹ", "Sobre")
+        btn_sobre.setFixedHeight(56)
+        btn_sobre.setObjectName("tab_button")
+        btn_sobre.setFixedWidth(110)
+        btn_sobre.clicked.connect(lambda: self._switch(11))
+        self._nav_buttons[11] = btn_sobre
+        settings_layout.addWidget(btn_sobre)
+
         # Settings button (now at index 8 after Cadastro expansion)
         btn_cfg = NavButton("⚙", "Configurações")
         btn_cfg.setFixedHeight(56)
@@ -222,9 +231,9 @@ class MainWindow(QMainWindow):
         return top_bar
 
     def _build_pages(self):
-        # Expanded from 9 to 11 pages: +2 for Cadastro submodules (Kits at 5, Pontuação at 6)
-        self._pages = [None] * 11
-        for i in range(11):
+        # 12 pages: 0-10 original + 11 = Sobre
+        self._pages = [None] * 12
+        for i in range(12):
             self._stack.addWidget(QWidget())  # Dummy placeholder
 
         # Pre-load only the Home view for immediate startup
@@ -281,6 +290,9 @@ class MainWindow(QMainWindow):
             # Legacy: if someone tries to access the old container (shouldn't happen)
             from src.ui.pages.view_cadastro_kits import CadastroKitsView
             page = CadastroKitsView(self)
+        elif index == 11:
+            from src.ui.pages.view_sobre import SobreView
+            page = SobreView(self)
         else:
             return
 
@@ -314,6 +326,7 @@ class MainWindow(QMainWindow):
             7: "Histórico",
             8: "Configurações",
             9: "Menus CB",
+            11: "Sobre",
         }
         name = PAGE_NAMES.get(index, "Módulo")
         self.statusBar().showMessage(f"Módulo ativo: {name}  |  v{VERSION}")
