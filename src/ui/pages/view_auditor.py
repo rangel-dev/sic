@@ -637,6 +637,15 @@ class AuditorView(QWidget):
                     sheet = title[:31]
                     df.to_excel(writer, sheet_name=sheet, index=False)
 
+                # Aba de Acertos
+                acertos_df = getattr(self._result, "acertos", None)
+                if acertos_df is not None and not acertos_df.empty:
+                    df_ac = acertos_df.copy()
+                    if self._brand_filter != "all":
+                        df_ac = df_ac[df_ac["brand"].str.lower() == self._brand_filter.lower()]
+                    if not df_ac.empty:
+                        df_ac.to_excel(writer, sheet_name="Acertos", index=False)
+
             QMessageBox.information(self, "Exportado", f"Relatório salvo em:\n{path}")
         except Exception as exc:
             QMessageBox.critical(self, "Erro ao Exportar", str(exc))

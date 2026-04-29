@@ -58,6 +58,7 @@ class AuditResult:
     stats: dict = field(default_factory=dict)
     brands_found: list[str] = field(default_factory=list)
     total_excel_skus: int = 0
+    acertos: pd.DataFrame = field(default_factory=pd.DataFrame)
     error: Optional[str] = None
     preflight_error: Optional[str] = None
     integrity_error: bool = False
@@ -138,15 +139,16 @@ class AuditorEngine:
 
             # 5. Cruzamento analítico
             self._prog(85, "Cruzamento analítico — aplicando 12 regras…")
-            errors, stats = self._cross_validate(
+            errors, stats, acertos_df = self._cross_validate(
                 excel_prices, excel_lists, prices_xml,
                 online_status, searchable_status, technical_skus,
                 xml_lists, prohibited_state, cat_missing_primary,
                 bundles, variation_bases, job_errors,
                 has_nat, has_avn,
             )
-            result.errors = errors
-            result.stats = stats
+            result.errors   = errors
+            result.stats    = stats
+            result.acertos  = acertos_df
 
             self._prog(100, "Auditoria concluída!")
         except Exception as exc:
@@ -642,7 +644,41 @@ class AuditorEngine:
                 "avon":   sum(s["avon"]   for s in dedup_stats.values()),
             },
         }
-        return error_dfs, total_stats
+
+        # ─── ACERTOS: SKUs que passaram em todas as verificações ──────────────
+        skus_com_erro: set[str] = set()
+        for rows in errors.values():
+            for row in rows:
+                skus_com_erro.add(row["sku"])
+
+        acertos_rows = []
+        for sku in sorted(all_skus):
+            if not SKU_RE.match(sku):
+                continue
+            pE = excel_prices.get(sku)
+            is_offline = online_status.get(sku) is not True
+            if is_offline and pE is None:
+                continue
+            if sku in skus_com_erro:
+                continue
+            brand = "Natura" if sku.upper().startswith("NATBRA-") else "Avon"
+            px = (prices_xml.get(sku) or {}).get(brand, {})
+            acertos_rows.append({
+                "sku":        sku,
+                "brand":      brand,
+                "de_sf":      px.get("DE", 0) or 0,
+                "por_sf":     px.get("POR", 0) or 0,
+                "online":     online_status.get(sku, False),
+                "searchable": searchable_status.get(sku, False),
+            })
+
+        acertos_df = (
+            pd.DataFrame(acertos_rows)
+            if acertos_rows
+            else pd.DataFrame(columns=["sku", "brand", "de_sf", "por_sf", "online", "searchable"])
+        )
+
+        return error_dfs, total_stats, acertos_df
 
     # ── Helper ────────────────────────────────────────────────────────────
     @staticmethod
