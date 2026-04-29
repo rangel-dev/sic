@@ -145,7 +145,6 @@ class SobreView(QWidget):
             ("⊕", "Gerador",     "Processa planilhas Excel e gera XMLs de Pricebook para o Salesforce."),
             ("↕", "Sync",        "Sincroniza vitrines, atributos e catálogos entre marcas e plataformas."),
             ("✓", "Auditor",     "Valida consistência de preços, categorias e regras de negócio em lote."),
-            ("◎", "Volumetria",  "Analisa volumes e identifica divergências via leitura de catálogo."),
             ("≡", "Cadastro",    "Valida kits e pontuação cruzando XMLs Salesforce com planilhas de controle."),
             ("≈", "Menus CB",    "Verifica a integridade da estrutura de menus do catálogo B2C."),
         ]
