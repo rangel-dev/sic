@@ -176,7 +176,7 @@ class MainWindow(QMainWindow):
         cadastro_btn.setFixedHeight(56)
         cadastro_btn.setObjectName("tab_button")
         cadastro_btn.add_submenu_item("Validação de Kits",     5, "▪")
-        cadastro_btn.add_submenu_item("Auditor de Pontuação", 6, "▪")
+        cadastro_btn.add_submenu_item("Gestor GCP", 6, "▪")
         cadastro_btn.submenu_clicked.connect(lambda idx: self._switch_cadastro(idx))
         self._nav_buttons[5] = cadastro_btn  # Store with index 5 for compatibility
         tabs_layout.insertWidget(5, cadastro_btn)  # Insert after Volumetria
@@ -271,7 +271,7 @@ class MainWindow(QMainWindow):
             from src.ui.pages.view_cadastro_kits import CadastroKitsView
             page = CadastroKitsView(self)
         elif index == 6:
-            # Cadastro submenu: Auditor de Pontuação
+            # Cadastro submenu: Gestor GCP
             from src.ui.pages.view_cadastro_pontuacao import CadastroPontuacaoView
             page = CadastroPontuacaoView(self)
         elif index == 7:
@@ -321,7 +321,7 @@ class MainWindow(QMainWindow):
             3: "Auditor",
             4: "Volumetria",
             5: "Cadastro → Validação de Kits",
-            6: "Cadastro → Auditor de Pontuação",
+            6: "Cadastro → Gestor GCP",
             7: "Histórico",
             8: "Configurações",
             9: "Menus CB",

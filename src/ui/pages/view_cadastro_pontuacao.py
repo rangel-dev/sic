@@ -1,5 +1,5 @@
 """
-Cadastro — Pontuação Auditor sub-view.
+Cadastro — Gestor GCP sub-view.
 Validates SKUs from a Grade de Ativação against a GCP report within a ±2-cycle window.
 """
 from __future__ import annotations
@@ -260,7 +260,7 @@ class CadastroPontuacaoView(QWidget):
 
         if missing:
             QMessageBox.warning(
-                self, "Pontuação",
+                self, "Gestor GCP",
                 "Preencha os seguintes campos antes de executar:\n• "
                 + "\n• ".join(missing),
             )
@@ -330,7 +330,7 @@ class CadastroPontuacaoView(QWidget):
 
         total = stats.get("total", 0)
         HistoryEngine.add_entry(
-            "Cadastro/Pontuação",
+            "Cadastro/Gestor GCP",
             "NATBRA",
             (
                 f"Auditoria concluída: {total} SKUs · "
@@ -343,7 +343,7 @@ class CadastroPontuacaoView(QWidget):
         if p := self.parent():
             if hasattr(p, "show_status"):
                 p.show_status(
-                    f"Pontuação: {total} SKUs · "
+                    f"Gestor GCP: {total} SKUs · "
                     f"{stats.get('ok', 0)} conformes · "
                     f"{stats.get('fora', 0) + stats.get('erro', 0)} pendentes"
                 )
@@ -352,7 +352,7 @@ class CadastroPontuacaoView(QWidget):
         self._btn_run.setEnabled(True)
         self._progress_bar.hide()
         self._status_lbl.hide()
-        QMessageBox.critical(self, "Erro — Pontuação", msg)
+        QMessageBox.critical(self, "Erro — Gestor GCP", msg)
 
     # ── Export ────────────────────────────────────────────────────────────
 
