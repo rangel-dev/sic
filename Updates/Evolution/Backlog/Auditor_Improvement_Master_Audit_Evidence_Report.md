@@ -1,47 +1,40 @@
-# Melhoria no Módulo Auditor: Relatório de Evidências de Auditoria (Master Report)
+# Mdulo Auditor: Certificado de Conformidade e Evidncias (Master Audit)
 
-## 1. Contexto
-Para fins de governança e conformidade com auditorias internas e externas, o Módulo Auditor deve evoluir de um sistema focado apenas na detecção de erros para um sistema que fornece **evidências de conformidade**. Atualmente, o relatório de exportação foca apenas em divergências, omitindo os dados comparativos dos itens que foram validados com sucesso.
+## 1. Objetivo
+Transformar o processo de auditoria em um sistema de certificao. O objetivo  garantir que a Grade de Ativao esteja 100% ntegra antes de qualquer gerao de arquivos. Os documentos de evidncia (PDF e Excel) s sero emitidos se **no houver nenhuma divergncia** nos pontos crticos.
 
-## 2. Objetivo
-Implementar um "Arquivão de Auditoria" (Master Success Report) que consolide todos os dados validados, comparando lado a lado as informações extraídas da **Grade de Ativação (Excel)** e do **Salesforce (XML)**, mesmo quando os valores estão corretos.
+## 2. Fluxo de Operao e Trava de Segurana
+- **Condio de Emisso:** O sistema s habilitar a gerao do PDF e do Excel de Evidncias se o resultado da auditoria for **ZERO ERROS** nos pilares de Preo, Visibilidade e Existncia.
+- **Mensageria de Erro:** Caso existam divergncias, o sistema **bloqueia** a emisso dos documentos e exibe um alerta crtico: 
+  >  **Bloqueio de Conformidade:** Foram encontradas divergncias na auditoria. Ajuste os itens apontados para liberar o Certificado de Evidncias.
 
-## 3. Requisitos do Relatório
+## 3. Relatrios de Sada (Status: 100% OK)
 
-O novo relatório deve conter uma aba mestre denominada `EVIDENCIAS_AUDITORIA` com a seguinte estrutura de colunas:
+### 3.1 Sumrio Executivo (Documento PDF)
+Um documento formal em PDF contendo o resumo consolidado da auditoria para fins de arquivamento e governana:
+1.  **Total de Registros:** Quantidade total de produtos identificados na aba `GRADE DE ATIVAO`.
+2.  **Validao de Preos:** Confirmao de que 100% dos preos (DE/POR) esto em conformidade, informando a quantidade total de SKUs validados.
+3.  **Validao de Visibilidade:** Confirmao de que 100% dos itens marcados como `VISIBLE` no Excel esto como `searchable` no Salesforce, com a contagem total.
+4.  **Integridade de Ativao:** Confirmao de que todos os produtos da Grade esto presentes e corretos no Salesforce, com a contagem final.
 
-| Coluna | Descrição |
-| :--- | :--- |
-| **SKU** | Identificador único do produto (NATBRA- / AVNBRA-) |
-| **MARCA** | Natura ou Avon |
-| **FONTE** | Origem do dado (Pricebook XML ou Catálogo XML) |
-| **ATRIBUTO** | Nome do campo validado (Preço DE, Preço POR, Searchable, etc.) |
-| **VALOR_EXCEL** | Valor extraído da Grade de Ativação |
-| **VALOR_SALESFORCE** | Valor extraído do XML do Salesforce |
-| **STATUS** | Indicação visual de conformidade (ex: ✅ OK) |
+### 3.2 Relatrio de Evidncias (Arquivo Excel)
+Arquivo detalhado com o "lado a lado" de cada validao realizada.
+- **Aba nica:** `EVIDENCIAS_MASTER`
+- **Colunas:** SKU, MARCA, ATRIBUTO (Preo DE, Preo POR, Searchable, Online), VALOR_EXCEL, VALOR_SALESFORCE, STATUS ( OK).
 
-## 4. Escopo da Validação (Comparativo Lado a Lado)
+## 4. Especificaes Tcnicas
 
-Devem ser incluídos no relatório todos os atributos cruzados durante a auditoria:
+### 4.1 Lgica de Validao (`CertificationEngine`)
+- O motor deve realizar o cruzamento "Double-Blind" usual.
+- Se a lista de erros (`AuditResult.errors`) estiver vazia para os mdulos crticos, o sistema dispara a gerao dos arquivos de evidncia.
 
-1.  **Preços (Double-Blind):**
-    *   Preço **DE**: Valor na coluna "DE" do Excel vs Valor no Pricebook "Lista" do SF.
-    *   Preço **POR**: Valor na coluna "POR" do Excel vs Valor no Pricebook "Promocional" do SF.
-2.  **Visibilidade:**
-    *   **Searchable Flag**: Coluna "VISIBLE" (SIM/NÃO) do Excel vs atributo `searchable-flag` (true/false) do SF.
-3.  **Categorização e Listas:**
-    *   Presença em abas de lista (ex: LISTA_01) vs Atribuição em categorias equivalentes no XML.
+### 4.2 Requisitos de Dados (PDF)
+O PDF deve ser gerado contendo:
+- Data e Hora da Auditoria.
+- Nome dos arquivos comparados (Excel e XMLs).
+- Selo visual de **"CONFORMIDADE GARANTIDA"**.
 
-## 5. Especificações Técnicas Sugeridas
-
-### 5.1 Motor de Auditoria (`AuditorEngine`)
-- Criar uma nova estrutura de dados `success_log` no objeto `AuditResult`.
-- Alterar o motor para que, ao realizar um check bem-sucedido, os valores comparados sejam registrados nesta lista.
-
-### 5.2 Interface do Usuário (UI)
-- Adicionar um checkbox ou botão secundário na tela de resultados: **"Gerar Arquivo de Evidências (Full)"**.
-- Devido ao volume de dados (pode gerar milhares de linhas), a exportação deste relatório completo deve ser sob demanda para não impactar a performance do uso diário.
-
-## 6. Valor para o Negócio
-- **Transparência Total:** Prova documental de que 100% da base foi conferida.
-- **Rastreabilidade:** Histórico de auditoria pronto para ser apresentado a auditores, garantindo a integridade financeira das campanhas.
+## 5. Valor para o Negcio
+- **Segurana Operacional:** Garante que nenhum erro de preo ou visibilidade passe para a produo.
+- **Arquivamento de Provas:** O PDF serve como comprovante de que a auditoria foi realizada e aprovada em 100% da base.
+- **Eficincia:** Elimina a necessidade de conferncia manual de relatrios de erro "vazios".
