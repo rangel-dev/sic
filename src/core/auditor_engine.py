@@ -29,7 +29,7 @@ MAX_FILE_AGE_SECONDS = 900
 # ─── Categorias proibidas para promoção (Conflito de Margem) ─────────────────
 PROHIBITED_CATEGORIES = {
     "Natura": {"promocao-da-semana", "LISTA_01", "monte-seu-kit", "LISTA_02"},
-    "Avon":   {"desconto-progressivo", "lista-01"},
+    "Avon":   {"promocoes-desconto-progressivo", "lista-01"},
     "ML":     {"promocao-da-semana", "desconto-progressivo", "monte-seu-kit"},
 }
 
@@ -85,6 +85,7 @@ class AuditResult:
     brands_found: list[str] = field(default_factory=list)
     total_excel_skus: int = 0
     acertos: pd.DataFrame = field(default_factory=pd.DataFrame)
+    evidence: pd.DataFrame = field(default_factory=pd.DataFrame)
     error: Optional[str] = None
     preflight_error: Optional[str] = None
     integrity_error: bool = False
@@ -190,8 +191,8 @@ class AuditorEngine:
             job_errors = self._calc_job_errors(category_assignments_map, ml_job_rules)
 
             # 5. Cruzamento analítico
-            self._prog(85, "Cruzamento analítico — aplicando 12 regras…")
-            errors, stats, acertos_df = self._cross_validate(
+            self._prog(85, "Cruzamento analítico e gerando evidências…")
+            errors, stats, acertos_df, evidence_df = self._cross_validate(
                 excel_prices, excel_lists, prices_xml,
                 online_status, searchable_status, technical_skus,
                 xml_lists, prohibited_state, cat_missing_primary,
@@ -201,6 +202,7 @@ class AuditorEngine:
             result.errors   = errors
             result.stats    = stats
             result.acertos  = acertos_df
+            result.evidence = evidence_df
 
             self._prog(100, "Auditoria concluída!")
         except Exception as exc:
@@ -716,6 +718,65 @@ class AuditorEngine:
             },
         }
 
+        # ─── RELATÓRIO MESTRE DE EVIDÊNCIAS (Master Evidence Report) ──────────
+        evidence_rows = []
+        for sku in sorted(all_skus):
+            if not SKU_RE.match(sku): continue
+            
+            brand = "Natura" if sku.upper().startswith("NATBRA-") else "Avon"
+            pE = excel_prices.get(sku)
+            is_offline = online_status.get(sku) is not True
+            is_on_grade = pE is not None
+
+            # Só logamos evidências de produtos que "existem" comercialmente (Grade ou Online)
+            if is_offline and not is_on_grade: continue
+
+            # 1. Preços (Double-Blind)
+            px_all = prices_xml.get(sku, {})
+            px_brand = px_all.get(brand, {})
+            
+            pE_de  = (pE.get("de") or 0.0) if pE else 0.0
+            pE_por = (pE.get("por") or 0.0) if pE else 0.0
+            px_de  = px_brand.get("DE", 0.0)
+            px_por = px_brand.get("POR", 0.0)
+
+            # Atributo: Preço DE
+            evidence_rows.append({
+                "SKU": sku, "MARCA": brand, "FONTE": "Pricebook XML", "ATRIBUTO": "Preço DE",
+                "VALOR_EXCEL": f"R$ {pE_de:.2f}", "VALOR_SALESFORCE": f"R$ {px_de:.2f}",
+                "STATUS": "✅ OK" if abs(pE_de - px_de) <= 0.01 else "❌ ERRO"
+            })
+            # Atributo: Preço POR
+            evidence_rows.append({
+                "SKU": sku, "MARCA": brand, "FONTE": "Pricebook XML", "ATRIBUTO": "Preço POR",
+                "VALOR_EXCEL": f"R$ {pE_por:.2f}", "VALOR_SALESFORCE": f"R$ {px_por:.2f}",
+                "STATUS": "✅ OK" if abs(pE_por - px_por) <= 0.01 else "❌ ERRO"
+            })
+
+            # 2. Visibilidade (Searchable)
+            vE = (pE.get("visible") or "FALSE") if pE else "FALSE"
+            vX = searchable_status.get(sku, False)
+            vX_str = "TRUE" if vX else "FALSE"
+            
+            evidence_rows.append({
+                "SKU": sku, "MARCA": brand, "FONTE": "Catálogo XML", "ATRIBUTO": "Searchable",
+                "VALOR_EXCEL": vE, "VALOR_SALESFORCE": vX_str,
+                "STATUS": "✅ OK" if vE == vX_str else "❌ ERRO"
+            })
+
+            # 3. Listas (Categorização)
+            # Para cada lista no Excel onde o SKU aparece, verificamos se o XML reflete isso
+            for list_id, skus_in_list in excel_lists.items():
+                if sku in skus_in_list:
+                    in_xml = sku in xml_lists.get(list_id, set())
+                    evidence_rows.append({
+                        "SKU": sku, "MARCA": brand, "FONTE": "Catálogo XML", "ATRIBUTO": f"Lista ({list_id})",
+                        "VALOR_EXCEL": "Presente", "VALOR_SALESFORCE": "Presente" if in_xml else "Ausente",
+                        "STATUS": "✅ OK" if in_xml else "❌ ERRO"
+                    })
+
+        evidence_df = pd.DataFrame(evidence_rows) if evidence_rows else pd.DataFrame(columns=["SKU", "MARCA", "FONTE", "ATRIBUTO", "VALOR_EXCEL", "VALOR_SALESFORCE", "STATUS"])
+
         # ─── ACERTOS: SKUs que passaram em todas as verificações ──────────────
         skus_com_erro: set[str] = set()
         for rows in errors.values():
@@ -724,15 +785,13 @@ class AuditorEngine:
 
         acertos_rows = []
         for sku in sorted(all_skus):
-            if not SKU_RE.match(sku):
-                continue
+            if not SKU_RE.match(sku): continue
             pE = excel_prices.get(sku)
             is_offline = online_status.get(sku) is not True
             is_on_grade = pE is not None
-            if is_offline and not is_on_grade:
-                continue
-            if sku in skus_com_erro:
-                continue
+            if is_offline and not is_on_grade: continue
+            if sku in skus_com_erro: continue
+
             brand = "Natura" if sku.upper().startswith("NATBRA-") else "Avon"
             px = (prices_xml.get(sku) or {}).get(brand, {})
             acertos_rows.append({
@@ -744,13 +803,9 @@ class AuditorEngine:
                 "searchable": searchable_status.get(sku, False),
             })
 
-        acertos_df = (
-            pd.DataFrame(acertos_rows)
-            if acertos_rows
-            else pd.DataFrame(columns=["sku", "brand", "de_sf", "por_sf", "online", "searchable"])
-        )
+        acertos_df = pd.DataFrame(acertos_rows) if acertos_rows else pd.DataFrame(columns=["sku", "brand", "de_sf", "por_sf", "online", "searchable"])
 
-        return error_dfs, total_stats, acertos_df
+        return error_dfs, total_stats, acertos_df, evidence_df
 
     # ── Helper ────────────────────────────────────────────────────────────
     @staticmethod

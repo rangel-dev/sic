@@ -40,6 +40,7 @@ from src.core.menu_validator_engine import (
 from src.ui.components.base_widgets import Divider, DropZone, SectionHeader
 from src.workers.worker_menu_validator import MenuValidatorWorker
 from src.core.history_engine import HistoryEngine
+from src.core.utils import get_unique_path
 
 
 MAX_TABLE_ROWS = 1000
@@ -455,7 +456,7 @@ class MenuValidatorView(QWidget):
         )
         if not path:
             return
-
+        path = get_unique_path(path)
         try:
             with pd.ExcelWriter(path, engine="openpyxl") as writer:
                 self._result.df_report.to_excel(writer, sheet_name="Divergências", index=False)
