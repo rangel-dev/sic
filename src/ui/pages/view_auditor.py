@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-from PySide6.QtCore import Qt, QSettings
+from PySide6.QtCore import Qt, QSettings, QThread, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -42,6 +42,34 @@ from src.core.brand_detector import BrandDetector
 from src.ui.components.base_widgets import Divider, DropZone, ErrorCard, SectionHeader
 from src.workers.worker_auditor import AuditorWorker
 from src.core.history_engine import HistoryEngine
+
+
+class WebhookWorker(QThread):
+    finished_signal = Signal(bool, str)
+
+    def __init__(self, url: str, payload_template: dict, agent_kwargs: dict, parent=None):
+        super().__init__(parent)
+        self.url = url
+        self.payload_template = payload_template
+        self.agent_kwargs = agent_kwargs
+
+    def run(self):
+        try:
+            import requests
+            from src.core.ai_agent import AiAgent
+            agent = AiAgent()
+            plain_ai = agent.generate_gchat_report(**self.agent_kwargs)
+            
+            # Inject AI text into the payload template
+            self.payload_template["cards"][0]["sections"][1]["widgets"][0]["textParagraph"]["text"] = plain_ai[:3000]
+            
+            resp = requests.post(self.url, json=self.payload_template, timeout=15)
+            if resp.status_code == 200:
+                self.finished_signal.emit(True, "Relatório enviado com sucesso!")
+            else:
+                self.finished_signal.emit(False, f"Status {resp.status_code}: {resp.text[:200]}")
+        except Exception as exc:
+            self.finished_signal.emit(False, str(exc))
 
 
 MAX_TABLE_ROWS = 500
@@ -879,14 +907,7 @@ class AuditorView(QWidget):
         else:
             subtitle = f"{self._result.total_excel_skus} SKUs auditados"
 
-        agent = AiAgent()
-        plain_ai = agent.generate_gchat_report(
-            stats,
-            brands_found=self._result.brands_found,
-            total_excel_skus=self._result.total_excel_skus,
-        )
-
-        payload = {
+        payload_template = {
             "cards": [
                 {
                     "header": {
@@ -901,20 +922,33 @@ class AuditorView(QWidget):
                                 {"keyValue": {"topLabel": "Erros Avon",             "content": str(avn_err)}},
                             ]
                         },
-                        {"widgets": [{"textParagraph": {"text": plain_ai[:3000]}}]},
+                        {"widgets": [{"textParagraph": {"text": ""}}]},
                     ],
                 }
             ]
         }
 
-        try:
-            resp = requests.post(url, json=payload, timeout=10)
-            if resp.status_code == 200:
-                QMessageBox.information(self, "Google Chat", "Relatório enviado com sucesso!")
-            else:
-                QMessageBox.warning(self, "Google Chat", f"Status {resp.status_code}: {resp.text[:200]}")
-        except Exception as exc:
-            QMessageBox.critical(self, "Erro", str(exc))
+        agent_kwargs = {
+            "stats": stats,
+            "brands_found": self._result.brands_found,
+            "total_excel_skus": self._result.total_excel_skus,
+        }
+
+        self._btn_webhook.setEnabled(False)
+        self._btn_webhook.setText("Enviando...")
+
+        self._webhook_worker = WebhookWorker(url, payload_template, agent_kwargs, self)
+        self._webhook_worker.finished_signal.connect(self._on_webhook_finished)
+        self._webhook_worker.start()
+
+    def _on_webhook_finished(self, success: bool, msg: str):
+        self._btn_webhook.setEnabled(True)
+        self._btn_webhook.setText("⊕  Enviar ao Google Chat")
+        
+        if success:
+            QMessageBox.information(self, "Google Chat", msg)
+        else:
+            QMessageBox.critical(self, "Erro", msg)
 
     # ── Clear ─────────────────────────────────────────────────────────────
     def _clear(self):
