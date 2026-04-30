@@ -137,18 +137,26 @@ class AiAgent:
         total_excel_skus: int = 0,
         theme: str = "light",
     ) -> tuple[str, bool]:
-        """Retorna (html_content, is_fallback)"""
+        """Retorna (html_content, is_fallback) com até 2 tentativas de retry."""
         if self._client:
             prompt = self._build_prompt(stats, brands_found, total_excel_skus, "html", theme)
-            try:
-                response = self._client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=prompt,
-                )
-                if response.text:
-                    return response.text.replace("```html", "").replace("```", "").strip(), False
-            except Exception as e:
-                print(f"Gemini API erro HTML: {e}")
+            import time
+            for attempt in range(3): # 3 tentativas no total
+                try:
+                    response = self._client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=prompt,
+                    )
+                    if response.text:
+                        return response.text.replace("```html", "").replace("```", "").strip(), False
+                except Exception as e:
+                    err_msg = str(e)
+                    # Se for erro de sobrecarga (503), espera um pouco e tenta de novo
+                    if "503" in err_msg or "UNAVAILABLE" in err_msg:
+                        if attempt < 2:
+                            time.sleep(2 * (attempt + 1)) # 2s, 4s
+                            continue
+                    print(f"Gemini API erro HTML (Tentativa {attempt+1}): {err_msg}")
 
         # Fallback para heurística
         return self._rule_based_html(stats, theme), True
@@ -156,18 +164,23 @@ class AiAgent:
     def generate_gchat_report(
         self, stats: dict, brands_found: Optional[list[str]] = None, total_excel_skus: int = 0
     ) -> tuple[str, bool]:
-        """Retorna (plain_text, is_fallback)"""
+        """Retorna (plain_text, is_fallback) com retry."""
         if self._client:
             prompt = self._build_prompt(stats, brands_found, total_excel_skus, "gchat", "light")
-            try:
-                response = self._client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=prompt,
-                )
-                if response.text:
-                    return response.text.replace("```html", "").replace("```", "").strip(), False
-            except Exception as e:
-                print(f"Gemini API erro GChat: {e}")
+            import time
+            for attempt in range(2):
+                try:
+                    response = self._client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=prompt,
+                    )
+                    if response.text:
+                        return response.text.replace("```html", "").replace("```", "").strip(), False
+                except Exception as e:
+                    if ("503" in str(e) or "UNAVAILABLE" in str(e)) and attempt == 0:
+                        time.sleep(2)
+                        continue
+                    print(f"Gemini API erro GChat: {e}")
 
         # Fallback
         return self._rule_based_gchat(stats), True
