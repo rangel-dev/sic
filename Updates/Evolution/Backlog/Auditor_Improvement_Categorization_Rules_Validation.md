@@ -1,10 +1,15 @@
 # Melhoria no Módulo Auditor: Validação Universal de Categorization Rules
 
-## 1. Contexto
-Atualmente, o Módulo Auditor possui uma validação de sincronia (Check #11 - ML JOB) que verifica se as categorias do catálogo "Minha Loja" estão espelhando corretamente as categorias das marcas-mãe (Natura/Avon). Esta melhoria visa **universalizar** essa lógica, permitindo que o Auditor valide qualquer categoria que possua regras de categorização baseadas em vínculo de IDs, independentemente do catálogo.
+## 1. Contexto e Comparativo
+Atualmente, o Módulo Auditor possui uma validação de sincronia restrita. Abaixo o comparativo de evolução:
+
+| Recurso | Situação Atual (V11.6) | Situação Futura (Proposta) |
+| :--- | :--- | :--- |
+| **Escopo de Catálogo** | Apenas catálogo "Minha Loja" (cbbrazil) | **Todos** (Natura, Avon e Minha Loja) |
+| **Identificação de Regra** | Hardcoded para regras específicas de espelhamento ML | **Dinâmica**: Detecta qualquer `<category-assignment-rule>` |
+| **Tipo de Validação** | Valida se SKUs da Marca Mãe estão na ML | Valida qualquer Categoria A que espelha uma Categoria B |
 
 ## 2. Requisitos de Negócio (Regras de Auditoria)
-
 O novo motor de auditoria deve seguir o fluxo lógico abaixo para cada categoria encontrada nos arquivos XML de catálogo:
 
 ### 2.1 Identificação de Regras
@@ -21,7 +26,6 @@ O novo motor de auditoria deve seguir o fluxo lógico abaixo para cada categoria
 - **Falha:** Qualquer divergência (SKU sobrando ou faltando em um dos lados) deve gerar um alerta de erro de sincronia.
 
 ## 3. Especificações Técnicas
-
 ### 3.1 Mapeamento XML (Salesforce Schema)
 - **Tag Pai:** `category` (atributo `category-id`)
 - **Tag de Regra:** `category-assignment-rule`
@@ -31,6 +35,7 @@ O novo motor de auditoria deve seguir o fluxo lógico abaixo para cada categoria
 - **Código Sugerido:** `sync_rule`
 - **Título na UI:** Falha de Categorização Dinâmica
 - **Mensagem Detalhada:** `Divergência detectada: A categoria [ID_FILHA] não reflete fielmente a origem [ID_MAE].`
+
 
 ## 4. Impacto Esperado
 - Eliminação de "Gaps" de vitrine onde produtos entram na categoria principal mas não aparecem nas categorias espelhadas (ex: Categorias de Promoção ou Vitrines Temáticas).

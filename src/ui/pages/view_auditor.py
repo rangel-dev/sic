@@ -43,6 +43,7 @@ from src.ui.components.base_widgets import Divider, DropZone, ErrorCard, Section
 from src.workers.worker_auditor import AuditorWorker
 from src.core.history_engine import HistoryEngine
 from src.core.utils import get_unique_path
+from src.core.certificate_engine import CertificateEngine
 
 
 MAX_TABLE_ROWS = 500
@@ -194,6 +195,21 @@ class AuditorView(QWidget):
         self._btn_export_full.setEnabled(False)
         self._btn_export_full.setToolTip("Exportar relatório completo de evidências (OK + ERRO)")
         action_row.addWidget(self._btn_export_full)
+
+        self._btn_master_cert = QPushButton("🏅  Certificado Mestre")
+        self._btn_master_cert.setObjectName("btn_cert")
+        self._btn_master_cert.clicked.connect(self._export_master_audit)
+        self._btn_master_cert.setEnabled(False)
+        self._btn_master_cert.setToolTip(
+            "Disponível apenas quando a auditoria retorna ZERO divergências.\n"
+            "Gera Certificado de Conformidade (PDF) + Relatório de Evidências Master (Excel)."
+        )
+        action_row.addWidget(self._btn_master_cert)
+
+        self._cert_status_lbl = QLabel("")
+        self._cert_status_lbl.setObjectName("cert_status_waiting")
+        self._cert_status_lbl.hide()
+        action_row.addWidget(self._cert_status_lbl)
 
         self._btn_webhook = QPushButton("⊕  Enviar ao Google Chat")
         self._btn_webhook.setObjectName("btn_ghost")
@@ -534,6 +550,19 @@ class AuditorView(QWidget):
         self._btn_export_full.setEnabled(True)
         self._btn_webhook.setEnabled(True)
 
+        total = result.stats.get("total", 0)
+        if total == 0:
+            self._btn_master_cert.setEnabled(True)
+            self._cert_status_lbl.setObjectName("cert_status_ready")
+            self._cert_status_lbl.setText("✅  CERTIFICADO DISPONÍVEL")
+        else:
+            self._btn_master_cert.setEnabled(False)
+            self._cert_status_lbl.setObjectName("cert_status_waiting")
+            self._cert_status_lbl.setText("⏳  AGUARDANDO CONFORMIDADE")
+        self._cert_status_lbl.show()
+        self._cert_status_lbl.style().unpolish(self._cert_status_lbl)
+        self._cert_status_lbl.style().polish(self._cert_status_lbl)
+
         self._refresh_cards()
 
         # Default: show all errors (clear selection)
@@ -560,7 +589,6 @@ class AuditorView(QWidget):
         {html}
         </body></html>""")
 
-        total = result.stats.get("total", 0)
         color = "#ef5350" if total > 0 else "#66bb6a"
         if p := self.parent():
             if hasattr(p, "show_status"):
@@ -919,6 +947,8 @@ class AuditorView(QWidget):
         self._btn_export.setEnabled(False)
         self._btn_export_full.setEnabled(False)
         self._btn_webhook.setEnabled(False)
+        self._btn_master_cert.setEnabled(False)
+        self._cert_status_lbl.hide()
         self._result = None
         self._active_filters.clear()
         self._brand_filter  = "all"
@@ -953,6 +983,149 @@ class AuditorView(QWidget):
             QMessageBox.information(self, "Exportado", f"Relatório de Evidências salvo em:\n{path}")
         except Exception as exc:
             QMessageBox.critical(self, "Erro ao Exportar", str(exc))
+
+    def _export_master_audit(self):
+        """
+        Safety-gated: gera Certificado de Conformidade (PDF) + Excel EVIDENCIAS_MASTER.
+        Bloqueado se result.stats["total"] != 0.
+        """
+        if not self._result:
+            return
+
+        total = self._result.stats.get("total", 0)
+        if total != 0:
+            QMessageBox.critical(
+                self,
+                "Exportação Bloqueada — Conformidade Pendente",
+                f"O Certificado de Conformidade não pode ser emitido.\n\n"
+                f"A auditoria encontrou {total} divergência(s) pendente(s).\n\n"
+                f"Corrija todas as divergências no Salesforce e execute a auditoria "
+                f"novamente antes de emitir o certificado.",
+            )
+            return
+
+        pdf_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Salvar Certificado de Conformidade (PDF)",
+            "CERTIFICADO_CONFORMIDADE.pdf",
+            "PDF (*.pdf)",
+        )
+        if not pdf_path:
+            return
+
+        pdf_path = get_unique_path(pdf_path)
+
+        source_files: list[str] = []
+        if pb := self._dz_pb.file_path:
+            source_files.append(Path(pb).name)
+        for p in (self._dz_cat.file_paths or []):
+            source_files.append(Path(p).name)
+        for p in (self._dz_excel.file_paths or []):
+            source_files.append(Path(p).name)
+
+        try:
+            CertificateEngine().generate(
+                result=self._result,
+                output_path=pdf_path,
+                source_files=source_files,
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Erro — Certificado PDF", str(exc))
+            return
+
+        QMessageBox.information(
+            self,
+            "Certificado Emitido",
+            f"Certificado de Conformidade salvo em:\n{pdf_path}",
+        )
+
+    def _write_evidence_master(self, path: str) -> None:
+        """Gera Excel estilizado com trilha de auditoria completa (aba EVIDENCIAS_MASTER)."""
+        from datetime import datetime as _dt
+        import openpyxl
+        from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        if self._result is None or self._result.evidence.empty:
+            return
+
+        df = self._result.evidence.copy()
+
+        expected_cols = ["SKU", "MARCA", "FONTE", "ATRIBUTO", "VALOR_EXCEL", "VALOR_SALESFORCE", "STATUS"]
+        for col in expected_cols:
+            if col not in df.columns:
+                df[col] = ""
+        df["TIMESTAMP"] = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+        df = df[expected_cols + ["TIMESTAMP"]]
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "EVIDENCIAS_MASTER"
+
+        HEADER_FILL  = PatternFill("solid", fgColor="0D1F3D")
+        OK_FILL      = PatternFill("solid", fgColor="D1FAE5")
+        ERROR_FILL   = PatternFill("solid", fgColor="FEE2E2")
+        ALT_FILL     = PatternFill("solid", fgColor="F5F7FA")
+
+        HEADER_FONT  = Font(name="Calibri", bold=True, color="FFFFFF", size=10)
+        BODY_FONT    = Font(name="Calibri", size=9)
+        OK_FONT      = Font(name="Calibri", size=9, color="065F46", bold=True)
+        ERROR_FONT   = Font(name="Calibri", size=9, color="991B1B", bold=True)
+
+        _side = lambda: Side(style="thin", color="CBD5E1")
+        THIN_BORDER  = Border(left=_side(), right=_side(), top=_side(), bottom=_side())
+        CENTER       = Alignment(horizontal="center", vertical="center")
+        LEFT         = Alignment(horizontal="left",   vertical="center")
+
+        ws.append(list(df.columns))
+        for cell in ws[1]:
+            cell.fill      = HEADER_FILL
+            cell.font      = HEADER_FONT
+            cell.alignment = CENTER
+            cell.border    = THIN_BORDER
+        ws.row_dimensions[1].height = 20
+
+        for idx, (_, row) in enumerate(df.iterrows(), start=2):
+            ws.append(list(row))
+            status  = str(row.get("STATUS", "")).upper()
+            is_ok   = any(k in status for k in ("OK", "ACERTO", "CONFORME"))
+            is_err  = any(k in status for k in ("ERRO", "ERROR", "DIVERG"))
+
+            for col_idx, cell in enumerate(ws[idx], start=1):
+                col_name = df.columns[col_idx - 1]
+                cell.border = THIN_BORDER
+
+                if col_name == "STATUS":
+                    cell.alignment = CENTER
+                    if is_ok:
+                        cell.fill, cell.font = OK_FILL, OK_FONT
+                    elif is_err:
+                        cell.fill, cell.font = ERROR_FILL, ERROR_FONT
+                    else:
+                        cell.alignment = LEFT
+                        cell.font = BODY_FONT
+                else:
+                    cell.alignment = LEFT
+                    if is_ok:
+                        cell.fill, cell.font = OK_FILL, BODY_FONT
+                    elif is_err:
+                        cell.fill, cell.font = ERROR_FILL, BODY_FONT
+                    elif idx % 2 == 0:
+                        cell.fill, cell.font = ALT_FILL, BODY_FONT
+                    else:
+                        cell.font = BODY_FONT
+
+        col_widths = {
+            "SKU": 20, "MARCA": 12, "FONTE": 18, "ATRIBUTO": 24,
+            "VALOR_EXCEL": 18, "VALOR_SALESFORCE": 20, "STATUS": 14, "TIMESTAMP": 20,
+        }
+        for col_idx, col_name in enumerate(df.columns, start=1):
+            ws.column_dimensions[get_column_letter(col_idx)].width = col_widths.get(col_name, 16)
+
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(df.columns))}1"
+
+        wb.save(path)
 
     def refresh_theme(self):
         """Update UI components that have hardcoded theme colors (like HTML panels)."""
