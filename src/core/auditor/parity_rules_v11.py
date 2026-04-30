@@ -88,10 +88,17 @@ def execute_parity_rules(
 
                     # ── Check #4: PREÇO AUSENTE NO SF ────────────────
                     if not px_de and not px_por:
-                        errors["price"].append({**row_base, "de_excel": e_de, "de_sf": 0,
-                                                "por_excel": e_por, "por_sf": 0,
-                                                "detail": "FALTA NO SF (PREÇO)"})
+                        err_payload = {**row_base, "de_excel": e_de, "de_sf": 0,
+                                       "por_excel": e_por, "por_sf": 0,
+                                       "detail": "FALTA NO SF (PREÇO)"}
+                        
+                        # Parity V11.6: "FALTA NO SF (PREÇO)" conta como Preço E como Lista 
+                        # no dashboard legado devido ao filtro de string "FALTA NO SF".
+                        errors["price"].append(err_payload)
                         dump_stats("price", brand)
+                        
+                        errors["list"].append(err_payload)
+                        dump_stats("list", brand)
                     else:
                         # ── Check #5: DIVERGÊNCIA DE PREÇO ───────────
                         if e_de > 0 and abs(e_de - px_de) > 0.01:
