@@ -98,7 +98,9 @@ class AiAgent:
         self, stats: dict, brands: Optional[list[str]], skus: int, fmt: str, theme: str
     ) -> str:
         prompt = (
-            "Você é um especialista em e-commerce e catálogo Salesforce B2C.\n"
+            "Você é um especialista em e-commerce e catálogo Salesforce B2C.\n\n"
+            "⚠️ GLOSSÁRIO E CONTEXTO DE NEGÓCIO IMPORTANTE:\n"
+            "- 'ML' ou 'ml' significa 'Minha Loja' (também conhecido como CB - Consultor de Beleza). É uma das marcas/canais ao lado de Natura e Avon. NUNCA interprete 'ml' como mililitros ou volume de produto.\n\n"
             "Eu executei uma auditoria de catálogo e encontrei os seguintes erros técnicos:\n"
             f"{json.dumps(stats.get('by_type', {}), indent=2)}\n\n"
             f"O total de SKUs lidos no Excel foi de {skus}.\n"
