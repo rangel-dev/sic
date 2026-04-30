@@ -6,5 +6,7 @@ AUDIT_REPORT.xlsx
 .claude/
 scratch/
 
+# Secrets generated during build
+src/core/_secret.py
 
 history.db

@@ -51,6 +51,11 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Inject API Key
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/obfuscate_key.py
+
       - name: Build with PyInstaller
         run: |
           pyinstaller sic.spec
