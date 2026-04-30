@@ -136,7 +136,8 @@ class AiAgent:
         brands_found: Optional[list[str]] = None,
         total_excel_skus: int = 0,
         theme: str = "light",
-    ) -> str:
+    ) -> tuple[str, bool]:
+        """Retorna (html_content, is_fallback)"""
         if self._client:
             prompt = self._build_prompt(stats, brands_found, total_excel_skus, "html", theme)
             try:
@@ -145,21 +146,17 @@ class AiAgent:
                     contents=prompt,
                 )
                 if response.text:
-                    return response.text.replace("```html", "").replace("```", "").strip()
+                    return response.text.replace("```html", "").replace("```", "").strip(), False
             except Exception as e:
                 print(f"Gemini API erro HTML: {e}")
 
-        # Fallback para heurística com aviso ao usuário
-        notice = (
-            "<div style='margin-top: 12px; padding-top: 8px; border-top: 1px dashed #ccc; font-size: 11px; color: #888;'>"
-            "<i>⚠️ O Gemini está temporariamente indisponível (alta demanda). Exibindo diagnóstico baseado em regras locais.</i>"
-            "</div>"
-        )
-        return self._rule_based_html(stats, theme) + notice
+        # Fallback para heurística
+        return self._rule_based_html(stats, theme), True
 
     def generate_gchat_report(
         self, stats: dict, brands_found: Optional[list[str]] = None, total_excel_skus: int = 0
-    ) -> str:
+    ) -> tuple[str, bool]:
+        """Retorna (plain_text, is_fallback)"""
         if self._client:
             prompt = self._build_prompt(stats, brands_found, total_excel_skus, "gchat", "light")
             try:
@@ -168,13 +165,12 @@ class AiAgent:
                     contents=prompt,
                 )
                 if response.text:
-                    return response.text.replace("```html", "").replace("```", "").strip()
+                    return response.text.replace("```html", "").replace("```", "").strip(), False
             except Exception as e:
                 print(f"Gemini API erro GChat: {e}")
 
-        # Fallback com aviso
-        notice = "<br><br>⚠️ <i>Nota: Gemini indisponível no momento. Relatório gerado via motor de regras local.</i>"
-        return self._rule_based_gchat(stats) + notice
+        # Fallback
+        return self._rule_based_gchat(stats), True
 
     def _rule_based_html(self, stats: dict, theme: str) -> str:
         """Heurística nativa de fallback genérica (sem cores inline)."""

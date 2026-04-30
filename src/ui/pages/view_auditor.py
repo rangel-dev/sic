@@ -572,12 +572,19 @@ class AuditorView(QWidget):
             agent = AiAgent()
             self._settings.sync()
             theme = str(self._settings.value("theme", "light"))
-            self._cached_ai_html = agent.generate_report(
+            self._cached_ai_html, is_fallback = agent.generate_report(
                 result.stats,
                 brands_found=result.brands_found,
                 total_excel_skus=result.total_excel_skus,
                 theme=theme,
             )
+            
+            if is_fallback:
+                QMessageBox.warning(
+                    self, "IA Temporariamente Indisponível",
+                    "O Gemini está com alta demanda no momento.\n\n"
+                    "Exibindo diagnóstico estratégico baseado em regras locais (motor de fallback)."
+                )
 
         html = self._cached_ai_html
         theme = str(self._settings.value("theme", "light"))
