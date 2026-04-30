@@ -913,4 +913,36 @@ QSplitter::handle:vertical {
 #nexus_greeting {
     color: #f1f5f9;
 }
+
+/* ============================================================
+   CERTIFICADO MESTRE — Botão e Label de Status
+   ============================================================ */
+QPushButton#btn_cert:enabled {
+    background-color: #10b981;
+    color: #ffffff;
+    border: 1px solid #059669;
+    border-radius: 4px;
+    font-weight: 700;
+    padding: 4px 12px;
+}
+QPushButton#btn_cert:enabled:hover {
+    background-color: #059669;
+}
+QPushButton#btn_cert:disabled {
+    background-color: #334155;
+    color: #64748b;
+    border: 1px solid #475569;
+    border-radius: 4px;
+    padding: 4px 12px;
+}
+QLabel#cert_status_ready {
+    color: #34d399;
+    font-size: 11px;
+    font-weight: 700;
+}
+QLabel#cert_status_waiting {
+    color: #fbbf24;
+    font-size: 11px;
+    font-style: italic;
+}
 """
