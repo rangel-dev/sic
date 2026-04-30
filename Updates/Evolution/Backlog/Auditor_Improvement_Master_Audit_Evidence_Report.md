@@ -1,40 +1,45 @@
 # Mdulo Auditor: Certificado de Conformidade e Evidncias (Master Audit)
 
 ## 1. Objetivo
-Transformar o processo de auditoria em um sistema de certificao. O objetivo  garantir que a Grade de Ativao esteja 100% ntegra antes de qualquer gerao de arquivos. Os documentos de evidncia (PDF e Excel) s sero emitidos se **no houver nenhuma divergncia** nos pontos crticos.
+Transformar o processo de auditoria em um sistema de certificao de alta governana. O objetivo  assegurar que 100% da Grade de Ativao esteja ntegra antes da execuo de cargas, fornecendo uma trilha de auditoria (audit trail) profissional e irrefutvel.
 
-## 2. Fluxo de Operao e Trava de Segurana
-- **Condio de Emisso:** O sistema s habilitar a gerao do PDF e do Excel de Evidncias se o resultado da auditoria for **ZERO ERROS** nos pilares de Preo, Visibilidade e Existncia.
-- **Mensageria de Erro:** Caso existam divergncias, o sistema **bloqueia** a emisso dos documentos e exibe um alerta crtico: 
-  >  **Bloqueio de Conformidade:** Foram encontradas divergncias na auditoria. Ajuste os itens apontados para liberar o Certificado de Evidncias.
+## 2. Fluxo de Operao e Segurana (Safety Gate)
+- **Trava de Emisso:** Os documentos de conformidade (PDF e Excel) so bloqueados por padro. Sua emisso  habilitada **exclusivamente** quando o motor de auditoria retorna um status de **ZERO DIVERGNCIAS** nos pilares crticos.
+- **Protocolo de Falha:** Caso existam erros, o sistema exibe uma interface de alerta impeditiva, orientando o analista a realizar os ajustes necessrios antes de tentar uma nova certificao.
 
-## 3. Relatrios de Sada (Status: 100% OK)
+## 3. Design e Identidade Visual (Padro Executivo)
 
-### 3.1 Sumrio Executivo (Documento PDF)
-Um documento formal em PDF contendo o resumo consolidado da auditoria para fins de arquivamento e governana:
-1.  **Total de Registros:** Quantidade total de produtos identificados na aba `GRADE DE ATIVAO`.
-2.  **Validao de Preos:** Confirmao de que 100% dos preos (DE/POR) esto em conformidade, informando a quantidade total de SKUs validados.
-3.  **Validao de Visibilidade:** Confirmao de que 100% dos itens marcados como `VISIBLE` no Excel esto como `searchable` no Salesforce, com a contagem total.
-4.  **Integridade de Ativao:** Confirmao de que todos os produtos da Grade esto presentes e corretos no Salesforce, com a contagem final.
+O Certificado em PDF deve seguir rigorosos padres de design corporativo:
+- **Tipografia:** Uso de fontes *Sans-Serif* modernas (Inter, Roboto ou Montserrat) para mxima legibilidade.
+- **Paleta de Cores:** Azul Marinho (Autoridade), Cinza Grafite (Sobriedade) e Verde Esmeralda (Sucesso/Aprovao).
+- **Elementos de Segurana:** Incluso de carimbo digital de "CONFORMIDADE GARANTIDA" e Protocolo nico de Auditoria (Hash ID).
 
-### 3.2 Relatrio de Evidncias (Arquivo Excel)
-Arquivo detalhado com o "lado a lado" de cada validao realizada.
-- **Aba nica:** `EVIDENCIAS_MASTER`
-- **Colunas:** SKU, MARCA, ATRIBUTO (Preo DE, Preo POR, Searchable, Online), VALOR_EXCEL, VALOR_SALESFORCE, STATUS ( OK).
+## 4. Estrutura do Sumrio Executivo (PDF)
 
-## 4. Especificaes Tcnicas
+O documento deve ser organizado nas seguintes sees:
 
-### 4.1 Lgica de Validao (`CertificationEngine`)
-- O motor deve realizar o cruzamento "Double-Blind" usual.
-- Se a lista de erros (`AuditResult.errors`) estiver vazia para os mdulos crticos, o sistema dispara a gerao dos arquivos de evidncia.
+### 4.1 Cabealho de Governança
+- Identificao da Marca (Natura/Avon).
+- Data e Hora da Extrao (Timestamp).
+- Verso do Motor de Auditoria.
+- Arquivos Fontes (Nomes dos arquivos Excel e XML processados).
 
-### 4.2 Requisitos de Dados (PDF)
-O PDF deve ser gerado contendo:
-- Data e Hora da Auditoria.
-- Nome dos arquivos comparados (Excel e XMLs).
-- Selo visual de **"CONFORMIDADE GARANTIDA"**.
+### 4.2 Indicadores de Conformidade
+| Indicador | Descrio Tcnica | Status |
+| :--- | :--- | :---: |
+| **Volumetria Total** | Total de SKUs processados na Grade de Ativao. | [QTD] |
+| **Audit de Preos** | 100% de paridade entre Excel (DE/POR) e Salesforce. |  OK |
+| **Audit de Visibilidade** | 100% de paridade na flag `searchable` (Searchable/Visible). |  OK |
+| **Integridade de Catlogo** | Validao de presena e categorizao primria. |  OK |
 
-## 5. Valor para o Negcio
-- **Segurana Operacional:** Garante que nenhum erro de preo ou visibilidade passe para a produo.
-- **Arquivamento de Provas:** O PDF serve como comprovante de que a auditoria foi realizada e aprovada em 100% da base.
-- **Eficincia:** Elimina a necessidade de conferncia manual de relatrios de erro "vazios".
+## 5. Relatrio de Evidncias Detalhado (Excel)
+
+Complementando o PDF, o sistema gera um arquivo Excel tcnico para conferncia linha a linha:
+- **Aba:** `EVIDENCIAS_MASTER`
+- **Contedo:** Tabela completa contendo `SKU`, `ATRIBUTO`, `VALOR_EXCEL`, `VALOR_SF` e o timestamp da validao.
+
+## 6. Valor para Auditoria (Compliance)
+Este novo formato foi desenhado para atender aos requisitos de auditorias externas, garantindo:
+1.  **Imutabilidade:** O PDF serve como um "Snapshot" do momento da validao.
+2.  **Transparncia:** Exposio clara de todos os critrios de sucesso.
+3.  **Rastreabilidade:** Registro histrico de quem e quando validou cada lote de ativao.
