@@ -1,38 +1,37 @@
-# BugFix: Preciso na Identificao de Listas (Sub-listas Decimais)
+# BugFix: Normalizao Inteligente de IDs de Listas (Smart Padding)
 
-## 1. Descrio do Problema
-O Mdulo Auditor apresentava um comportamento de "truncamento" ao identificar categorias de lista a partir das abas do Excel. Abas com IDs decimais ou identificadores de sub-lista (ex: `LISTA_20.1`, `LISTA_20.2`) eram reduzidas ao nmero inteiro base (`LISTA_20`).
+## 1. Contexto da Melhoria
+Identificamos que apenas permitir nmeros decimais na Regex no era suficiente, pois havia divergncias na conveno de zeros esquerd entre o Excel (`LISTA_6.1`) e o Salesforce (`LISTA_06.1`).
 
-### Impactos Identificados:
-- **Mesclagem Indevida:** O Auditor somava os SKUs de diferentes abas (ex: "Lista Principal" + "Lista de Refil") como se fossem uma s.
-- **Falsos Positivos:** O sistema gerava erros de "Lista Inexistente no Salesforce" ou "Falta no SF" porque tentava validar o ID truncado contra um XML que possua IDs especficos.
-- **Confuso no Dashboard:** O nmero de erros reportados no condizia com a realidade da Grade de Ativao.
+## 2. Nova Lgica de Inteligncia
+O Auditor agora aplica uma **Normalizao Segmentada**. Em vez de tratar o ID como um texto nico, ele processa a parte principal e a sub-lista separadamente para garantir a paridade com o Salesforce.
 
-## 2. Causa Raiz
-A Expresso Regular (Regex) no arquivo `src/core/auditor_engine.py` estava definida para capturar apenas sequncias de dgitos (`\d+`), parando no primeiro caractere no-numrico (como o ponto `.` das sub-listas).
+### O Algoritmo:
+1.  **Captura:** Extrai o ncleo numrico da aba (ex: `1.5`, `06.1`).
+2.  **Segmentao:** Divide o ID no caractere de ponto (`.`).
+3.  **Padding:** Aplica `zfill(2)` **apenas na primeira parte** (ID Principal).
+4.  **Reconstituio:** Une as partes novamente para formar o ID Final.
 
-**Regex Antiga:** `r"(?i)lista[-_\s]*0*(\d+)"`
+## 3. Exemplos de Sucesso (Casos de Match)
 
-## 3. Soluo Tcnica
-A Regex foi atualizada para permitir o caractere de ponto (`.`) dentro do grupo de captura do ID, garantindo que sub-listas sejam tratadas como categorias independentes.
+| Nome da Aba (Excel) | ID Bruto | Processamento | ID Final (Auditor) | ID Salesforce |
+| :--- | :--- | :--- | :--- | :--- |
+| `LISTA_1.5_PROMO` | `1.5` | `1`  `01` | **`LISTA_01.5`** | `LISTA_01.5` |
+| `LISTA_01.5_V1` | `01.5` | `01`  `01` | **`LISTA_01.5`** | `LISTA_01.5` |
+| `LISTA_6.1_CAMPANHA` | `6.1` | `6`  `06` | **`LISTA_06.1`** | `LISTA_06.1` |
+| `LISTA_20.2_REFIL` | `20.2` | `20`  `20` | **`LISTA_20.2`** | `LISTA_20.2` |
 
-**Nova Regex:** `r"(?i)lista[-_\s]*0*([0-9.]+)"`
+## 4. Implementao Tcnica
+A mudana foi aplicada no mtodo `_parse_excels` do arquivo `src/core/auditor_engine.py`.
 
-### Comparativo de Comportamento:
+```python
+# Trecho da nova lgica
+raw_id = m.group(1)
+parts = raw_id.split('.')
+parts[0] = parts[0].zfill(2) # Normaliza a parte principal
+num = ".".join(parts)
+```
 
-| Nome da Aba no Excel | ID Detectado (Antigo) | ID Detectado (Novo) | Status |
-| :--- | :--- | :--- | :--- |
-| `LISTA_20` | `LISTA_20` | `LISTA_20` |  Inalterado |
-| `LISTA_20.1_DIA_DAS_MAES` | `LISTA_20` | `LISTA_20.1` |  Corrigido |
-| `LISTA_20.2_REFIL` | `LISTA_20` | `LISTA_20.2` |  Corrigido |
-| `LISTA_06_EXTRA` | `LISTA_06` | `LISTA_06` |  Inalterado |
-
-## 4. Arquivos Afetados
-- `src/core/auditor_engine.py`: Atualizao do mtodo `_parse_excels`.
-
-## 5. Verificao Sugerida
-1. Processar o arquivo Excel `CL08_2026_VIRADA_.xlsm`.
-2. Validar se o Dashboard agora separa as divergncias da `LISTA_20` das divergncias da `LISTA_20.2`.
-3. Confirmar que o erro "Lista Inexistente" sumiu para os casos onde o ID decimal existe no Salesforce.
-
-Commit
+## 5. Benefcios
+- **Resilincia:** O analista pode digitar com ou sem o zero inicial no Excel sem quebrar a auditoria.
+- **Preciso:** Garante que sub-listas no sejam mescladas com a lista principal.
