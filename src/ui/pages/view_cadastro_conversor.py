@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from src.core.history_engine import HistoryEngine
 from src.core.conversor_engine import ConversorResult
+from src.core.utils import get_unique_path
 from src.ui.components.base_widgets import DropZone
 from src.workers.worker_conversor import ConversorWorker
 
@@ -350,6 +351,7 @@ class CadastroConversorView(QWidget):
         )
         if not path:
             return
+        path = get_unique_path(path)
         try:
             df = pd.DataFrame(self._result.excecoes)
             with pd.ExcelWriter(path, engine="openpyxl") as writer:
@@ -369,6 +371,7 @@ class CadastroConversorView(QWidget):
         )
         if not path:
             return
+        path = get_unique_path(path)
         try:
             df = pd.DataFrame(self._result.carga)
             with pd.ExcelWriter(path, engine="openpyxl") as writer:

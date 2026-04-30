@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QFrame,
 )
 
+from src.core.utils import get_unique_path
 from src.core.menu_validator_engine import (
     MenuValidationResult,
     ALERT_META,
@@ -455,6 +456,7 @@ class MenuValidatorView(QWidget):
         )
         if not path:
             return
+        path = get_unique_path(path)
 
         try:
             with pd.ExcelWriter(path, engine="openpyxl") as writer:

@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from src.ui.components.base_widgets import Divider, DropZone, SectionHeader, StatPill
 from src.workers.worker_gerador import GeradorWorker
 from src.core.history_engine import HistoryEngine
+from src.core.utils import get_unique_path
 
 
 # ── Brand palette ────────────────────────────────────────────────────────────
@@ -467,6 +468,7 @@ class GeradorView(QWidget):
             self, "Salvar Pricebook XML", default_name, "XML (*.xml)"
         )
         if path:
+            path = get_unique_path(path)
             with open(path, "wb") as f:
                 f.write(self._result["xml_content"])
             QMessageBox.information(self, "Salvo", f"XML salvo em:\n{path}")

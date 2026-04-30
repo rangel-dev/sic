@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 
 from src.core.auditor_engine import AuditResult, ERROR_META
 from src.core.ai_agent import AiAgent
+from src.core.utils import get_unique_path
 from src.core.brand_detector import BrandDetector
 from src.ui.components.base_widgets import Divider, DropZone, ErrorCard, SectionHeader
 from src.workers.worker_auditor import AuditorWorker
@@ -749,6 +750,7 @@ class AuditorView(QWidget):
         )
         if not path:
             return
+        path = get_unique_path(path)
         try:
             with pd.ExcelWriter(path, engine="openpyxl") as writer:
                 # Filter codes to export: active selections OR all non-empty ones

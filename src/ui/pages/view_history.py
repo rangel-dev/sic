@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.core.history_engine import HistoryEngine
+from src.core.utils import get_unique_path
 from src.ui.components.base_widgets import Divider, SectionHeader
 
 
@@ -213,6 +214,7 @@ class HistoryView(QWidget):
         )
         if not path:
             return
+        path = get_unique_path(path)
 
         # Collect data from table
         data = []

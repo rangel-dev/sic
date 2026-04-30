@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from src.core.history_engine import HistoryEngine
 from src.core.pontuacao_engine import PontuacaoResult
+from src.core.utils import get_unique_path
 from src.ui.components.base_widgets import DropZone
 from src.workers.worker_pontuacao import PontuacaoWorker
 
@@ -364,6 +365,7 @@ class CadastroPontuacaoView(QWidget):
         )
         if not path:
             return
+        path = get_unique_path(path)
         try:
             df = pd.DataFrame(self._result.relatorio)
             with pd.ExcelWriter(path, engine="openpyxl") as writer:
@@ -381,6 +383,7 @@ class CadastroPontuacaoView(QWidget):
         )
         if not path:
             return
+        path = get_unique_path(path)
         try:
             df = pd.DataFrame(self._result.carga)
             with pd.ExcelWriter(path, engine="openpyxl") as writer:
