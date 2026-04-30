@@ -34,4 +34,4 @@ A lógica interna deve ser expandida no arquivo de regras:
 
 ## 5. Valor para o Negócio
 - **Governança de Catálogo:** Garante que o site não tenha "lixo" de campanhas anteriores.
-- **Controle de Estoque/Operação:** Evita que produtos sem preço planejado ou sem estratégia comercial continuem disponíveis para compra.
+- **Controle de Estoque/Operação:** Evita que produtos sem preço planejado ou sem estratégia comercial continuem disponíveis para compra!
