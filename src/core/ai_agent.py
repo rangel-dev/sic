@@ -109,8 +109,9 @@ class AiAgent:
                 "Me responda EXCLUSIVAMENTE com um snippet HTML (sem a tag <html> ou <body>).\n"
                 "NÃO utilize atributos 'style' para cores, pois o CSS será injetado pela interface.\n"
                 "Utilize tags semânticas estruturadas (<h3>, <h4>, <ul>, <li>, <strong>, <p>).\n"
+                "Utilize EMOJIS e ÍCONES (✅, ⚠️, 🚩, 📊, 💡, 🚨) para deixar o texto mais visual, moderno e menos seco.\n"
                 "Estrutura esperada:\n"
-                "1. Resumo executivo (1 parágrafo em <p> identificando erros e marcas).\n"
+                "1. Resumo executivo (1 parágrafo em <p> identificando erros e marcas com emojis de alerta ou sucesso).\n"
                 "2. Lista de alertas detalhados (use <h4> para o título do erro e <ul>/<li> para contexto/risco).\n"
                 "3. Uma recomendação final destacada.\n"
             )
@@ -118,6 +119,7 @@ class AiAgent:
             prompt += (
                 "Me responda EXCLUSIVAMENTE com texto contendo tags HTML básicas (<b>, <br>).\n"
                 "NÃO utilize formatação Markdown (como ** ou *), pois o Google Chat Cards não suporta.\n"
+                "Utilize EMOJIS e ÍCONES (✅, ⚠️, 🚩, 📊, 💡, 🚨) para deixar o texto visual.\n"
                 "Estrutura esperada:\n"
                 "1. Resumo executivo curto.<br>\n"
                 "2. Lista de problemas (use <b> para destacar o erro).<br>\n"

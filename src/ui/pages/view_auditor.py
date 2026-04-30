@@ -47,22 +47,14 @@ from src.core.history_engine import HistoryEngine
 class WebhookWorker(QThread):
     finished_signal = Signal(bool, str)
 
-    def __init__(self, url: str, payload_template: dict, agent_kwargs: dict, parent=None):
+    def __init__(self, url: str, payload_template: dict, parent=None):
         super().__init__(parent)
         self.url = url
         self.payload_template = payload_template
-        self.agent_kwargs = agent_kwargs
 
     def run(self):
         try:
             import requests
-            from src.core.ai_agent import AiAgent
-            agent = AiAgent()
-            plain_ai = agent.generate_gchat_report(**self.agent_kwargs)
-            
-            # Inject AI text into the payload template
-            self.payload_template["cards"][0]["sections"][1]["widgets"][0]["textParagraph"]["text"] = plain_ai[:3000]
-            
             resp = requests.post(self.url, json=self.payload_template, timeout=15)
             if resp.status_code == 200:
                 self.finished_signal.emit(True, "Relatório enviado com sucesso!")
@@ -350,13 +342,29 @@ class AuditorView(QWidget):
         ai_layout.setContentsMargins(10, 0, 18, 12)
         ai_layout.setSpacing(8)
 
+        # Header row for AI panel
+        ai_header_layout = QHBoxLayout()
+        ai_header_layout.setContentsMargins(0, 0, 0, 0)
+        
         ai_header = QLabel("Diagnóstico Estratégico — IA")
         ai_header.setStyleSheet("font-size:11px;font-weight:700;color:#888;text-transform:uppercase;")
-        ai_layout.addWidget(ai_header)
+        ai_header_layout.addWidget(ai_header)
+        
+        ai_header_layout.addStretch()
+        
+        self._btn_edit_ai = QPushButton("✏️ Editar")
+        self._btn_edit_ai.setObjectName("btn_ghost")
+        self._btn_edit_ai.setFixedHeight(20)
+        self._btn_edit_ai.setStyleSheet("font-size: 10px; padding: 0 8px;")
+        self._btn_edit_ai.clicked.connect(self._toggle_ai_edit)
+        ai_header_layout.addWidget(self._btn_edit_ai)
+        
+        ai_layout.addLayout(ai_header_layout)
 
         self._ai_browser = QTextBrowser()
         self._ai_browser.setObjectName("ai_panel")
         self._ai_browser.setOpenExternalLinks(False)
+        self._ai_browser.setReadOnly(True)
         self._ai_browser.setPlaceholderText("Diagnóstico estratégico aparecerá aqui…")
         ai_layout.addWidget(self._ai_browser)
 
@@ -907,6 +915,12 @@ class AuditorView(QWidget):
         else:
             subtitle = f"{self._result.total_excel_skus} SKUs auditados"
 
+        # Pega o texto exatamente como o usuário editou na tela
+        edited_text = self._ai_browser.toPlainText()
+        
+        # Converte as quebras de linha para o formato aceito pelo Google Chat Cards
+        gchat_text = edited_text.replace('\n', '<br>')
+
         payload_template = {
             "cards": [
                 {
@@ -922,22 +936,16 @@ class AuditorView(QWidget):
                                 {"keyValue": {"topLabel": "Erros Avon",             "content": str(avn_err)}},
                             ]
                         },
-                        {"widgets": [{"textParagraph": {"text": ""}}]},
+                        {"widgets": [{"textParagraph": {"text": gchat_text[:3000]}}]},
                     ],
                 }
             ]
         }
 
-        agent_kwargs = {
-            "stats": stats,
-            "brands_found": self._result.brands_found,
-            "total_excel_skus": self._result.total_excel_skus,
-        }
-
         self._btn_webhook.setEnabled(False)
         self._btn_webhook.setText("Enviando...")
 
-        self._webhook_worker = WebhookWorker(url, payload_template, agent_kwargs, self)
+        self._webhook_worker = WebhookWorker(url, payload_template, self)
         self._webhook_worker.finished_signal.connect(self._on_webhook_finished)
         self._webhook_worker.start()
 
@@ -949,6 +957,19 @@ class AuditorView(QWidget):
             QMessageBox.information(self, "Google Chat", msg)
         else:
             QMessageBox.critical(self, "Erro", msg)
+
+    def _toggle_ai_edit(self):
+        """Toggle the readonly state of the AI text browser to allow user edits."""
+        is_readonly = self._ai_browser.isReadOnly()
+        if is_readonly:
+            self._ai_browser.setReadOnly(False)
+            self._ai_browser.setFocus()
+            self._btn_edit_ai.setText("✅ Concluir")
+            self._btn_edit_ai.setStyleSheet("font-size: 10px; padding: 0 8px; color: #22A06B; font-weight: bold;")
+        else:
+            self._ai_browser.setReadOnly(True)
+            self._btn_edit_ai.setText("✏️ Editar")
+            self._btn_edit_ai.setStyleSheet("font-size: 10px; padding: 0 8px;")
 
     # ── Clear ─────────────────────────────────────────────────────────────
     def _clear(self):
