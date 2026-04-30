@@ -82,18 +82,19 @@ class GeradorEngine:
         excel_paths: list[str],
         mode: str = "full",
         base_xml_path: Optional[str] = None,
-        target: str = "ambas",
     ) -> dict:
         """
         Args:
-            excel_paths:   list of Excel file paths to process
+            excel_paths:   list of Excel file paths to process (max 2: one Natura, one Avon)
             mode:          "full" | "delta"
             base_xml_path: path to the base pricebook XML (delta mode only)
-        target:        "natura" | "avon" | "ml"
 
-        Returns a dict with keys: xml_content, brand, stats, error
+        A marca é detectada automaticamente via prefixo de SKU (NATBRA- / AVNBRA-).
+        O CB (Minha Loja) é SEMPRE incluído no XML gerado.
+
+        Returns a dict with keys: xml_content, brand, brands, stats, error
         """
-        result: dict = {"xml_content": None, "brand": "unknown", "stats": {}, "error": None}
+        result: dict = {"xml_content": None, "brand": "unknown", "brands": set(), "stats": {}, "error": None}
 
         try:
             base_prices: dict = {}
@@ -145,15 +146,16 @@ class GeradorEngine:
                 return result
 
             self._progress(80, "Gerando XML Pricebook…")
-            xml_bytes = self._generate_xml(all_products, target)
+            xml_bytes = self._generate_xml_auto(all_products, brands_detected)
             result["xml_content"] = xml_bytes
+            result["brands"] = brands_detected
             result["stats"].update(
                 {
-                    "total":  len(all_products),
-                    "natura": nat_count,
-                    "avon":   avn_count,
-                    "mode":   mode,
-                    "target": target,
+                    "total":   len(all_products),
+                    "natura":  nat_count,
+                    "avon":    avn_count,
+                    "mode":    mode,
+                    "brands":  sorted(brands_detected),
                 }
             )
             self._progress(100, "XML gerado com sucesso!")
@@ -315,30 +317,30 @@ class GeradorEngine:
         return delta
 
     # ── XML generation ────────────────────────────────────────────────────
-    def _generate_xml(self, products: list[dict], target: str) -> bytes:
+    def _generate_xml_auto(self, products: list[dict], brands_detected: set[str]) -> bytes:
         """
-        Generate the pricebook XML based on the chosen target.
+        Gera o XML de pricebook automaticamente com base nas marcas detectadas.
 
-        target:
-          "natura" → Natura DE + Natura POR  (only NATBRA- SKUs)
-          "avon"   → Avon DE   + Avon POR    (only AVNBRA- SKUs)
-          "ml"     → CB DE     + CB POR      (all SKUs: NATBRA-* + AVNBRA-*)
+        Regras:
+          - CB (Minha Loja) é SEMPRE incluído, usando todos os SKUs.
+          - Natura é incluída se "natura" em brands_detected  (apenas NATBRA- SKUs).
+          - Avon é incluída se "avon" em brands_detected      (apenas AVNBRA- SKUs).
+
+        Ordem de geração no XML:
+          Natura DE → Natura POR → Avon DE → Avon POR → CB DE → CB POR
         """
         root = etree.Element("pricebooks", xmlns=PRICEBOOK_NS)
 
-        if target == "natura":
-            defs = PRICEBOOK_DEFS["natura"]
+        if "natura" in brands_detected:
             nat_skus = [p for p in products if p["sku"].startswith("NATBRA-")]
-            self._add_pricebook_pair(root, defs, nat_skus)
+            self._add_pricebook_pair(root, PRICEBOOK_DEFS["natura"], nat_skus)
 
-        if target == "avon":
-            defs = PRICEBOOK_DEFS["avon"]
+        if "avon" in brands_detected:
             avn_skus = [p for p in products if p["sku"].startswith("AVNBRA-")]
-            self._add_pricebook_pair(root, defs, avn_skus)
+            self._add_pricebook_pair(root, PRICEBOOK_DEFS["avon"], avn_skus)
 
-        if target == "ml":
-            # ML uses all products from both brands
-            self._add_pricebook_pair(root, PRICEBOOK_DEFS["ml"], products)
+        # CB (Minha Loja) — sempre presente, com todos os SKUs de todas as marcas
+        self._add_pricebook_pair(root, PRICEBOOK_DEFS["ml"], products)
 
         return etree.tostring(
             root, xml_declaration=True, encoding="UTF-8", pretty_print=True

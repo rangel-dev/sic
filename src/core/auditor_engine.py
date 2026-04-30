@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 import time
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -22,8 +23,8 @@ from src.core.auditor.parity_rules_v11 import execute_parity_rules
 PRICEBOOK_NS = "http://www.demandware.com/xml/impex/pricebook/2006-10-31"
 CATALOG_NS   = "http://www.demandware.com/xml/impex/catalog/2006-10-31"
 
-# ─── Regra dos 10 minutos (Auditor: arquivos SF devem ser RECENTES < 10 min) ─
-MAX_FILE_AGE_SECONDS = 600
+# ─── Regra dos 15 minutos (Auditor: arquivos SF devem ser RECENTES < 15 min) ─
+MAX_FILE_AGE_SECONDS = 900
 
 # ─── Categorias proibidas para promoção (Conflito de Margem) ─────────────────
 PROHIBITED_CATEGORIES = {
@@ -51,6 +52,31 @@ ERROR_META: dict[str, dict] = {
 SKU_RE = re.compile(r"^(NAT|AVN)BRA-", re.IGNORECASE)
 
 
+def _is_production_environment() -> bool:
+    """Retorna True se estivermos empacotados (produção) ou na branch main."""
+    if getattr(sys, 'frozen', False):
+         return True
+    try:
+        current_dir = Path(__file__).resolve().parent
+        repo_root = current_dir
+        for _ in range(5):
+            if (repo_root / ".git").exists():
+                break
+            repo_root = repo_root.parent
+        
+        head_file = repo_root / ".git" / "HEAD"
+        if head_file.exists():
+            content = head_file.read_text(encoding="utf-8").strip()
+            if "refs/heads/main" in content or "refs/heads/master" in content:
+                return True
+            else:
+                return False
+    except Exception:
+        pass
+    
+    return True
+
+
 # ─── Resultado ────────────────────────────────────────────────────────────────
 @dataclass
 class AuditResult:
@@ -58,6 +84,7 @@ class AuditResult:
     stats: dict = field(default_factory=dict)
     brands_found: list[str] = field(default_factory=list)
     total_excel_skus: int = 0
+    acertos: pd.DataFrame = field(default_factory=pd.DataFrame)
     error: Optional[str] = None
     preflight_error: Optional[str] = None
     integrity_error: bool = False
@@ -76,23 +103,26 @@ class AuditorEngine:
             if not verify_core_integrity():
                 print("⚠️ [Integrity Check] O arquivo parity_rules_v11.py foi modificado, mas a execução prosseguirá.")
 
-            # Pre-flight: arquivo SF deve ser recente (< 10 min) - DESATIVADO TEMPORARIAMENTE
-            # self._prog(3, "Verificando antiguidade dos arquivos SF…")
-            # expired = []
-            # for p in [pb_path] + cat_paths:
-            #     try:
-            #         age = time.time() - os.path.getmtime(p)
-            #         if age > MAX_FILE_AGE_SECONDS:
-            #             expired.append(f"{Path(p).name} ({int(age/60)} min atrás)")
-            #     except OSError:
-            #         pass
-            # if expired:
-            #     result.preflight_error = (
-            #         "Arquivos SF desatualizados (>10 min):\n\n"
-            #         + "\n".join(expired)
-            #         + "\n\nExporte-os novamente do Salesforce Business Manager."
-            #     )
-            #     return result
+            # Trava 5: Pricebook e Catálogos devem ter sido exportados há menos de 15 min
+            if _is_production_environment():
+                self._prog(3, "Verificando antiguidade dos arquivos SF…")
+                expired = []
+                for p in [pb_path] + cat_paths:
+                    try:
+                        age = time.time() - os.path.getmtime(p)
+                        if age > MAX_FILE_AGE_SECONDS:
+                            expired.append(f"{Path(p).name} ({int(age/60)} min atrás)")
+                    except OSError:
+                        pass
+                if expired:
+                    result.preflight_error = (
+                        "Arquivos SF desatualizados (>15 min):\n\n"
+                        + "\n".join(expired)
+                        + "\n\nExporte-os novamente do Salesforce Business Manager."
+                    )
+                    return result
+            else:
+                self._prog(3, "Bypass: Verificação de idade dos arquivos desativada (dev)")
 
             # 1. Excel (Opcional)
             self._prog(10, "Lendo planilhas Excel (se houver)…")
@@ -126,6 +156,29 @@ class AuditorEngine:
             self._prog(35, "Descompactando Pricebook XML…")
             prices_xml = self._parse_pricebook(pb_path)
 
+            # Trava 4: Pricebook deve conter DE e POR para as 3 operações
+            pb_coverage: dict[str, set] = {"Natura": set(), "Avon": set(), "ML": set()}
+            for sku_data in prices_xml.values():
+                for brand, type_map in sku_data.items():
+                    pb_coverage[brand].update(type_map.keys())
+
+            missing_pb = []
+            brand_labels = {"Natura": "Natura", "Avon": "Avon", "ML": "Minha Loja"}
+            for brand, label in brand_labels.items():
+                for price_type in ("DE", "POR"):
+                    if price_type not in pb_coverage[brand]:
+                        missing_pb.append(f"{label}: sem Preço {price_type}")
+
+            if missing_pb:
+                result.preflight_error = (
+                    "Dados Incompletos: O Pricebook não contém todos os preços necessários "
+                    "para as 3 operações:\n\n• "
+                    + "\n• ".join(missing_pb)
+                    + "\n\nExporte o Pricebook completo do Salesforce Business Manager "
+                    "com todos os pricebooks das operações Natura, Avon e Minha Loja."
+                )
+                return result
+
             # 3. Catálogos
             self._prog(60, "Varrendo Catálogos XML…")
             (online_status, searchable_status, technical_skus, xml_lists,
@@ -138,15 +191,16 @@ class AuditorEngine:
 
             # 5. Cruzamento analítico
             self._prog(85, "Cruzamento analítico — aplicando 12 regras…")
-            errors, stats = self._cross_validate(
+            errors, stats, acertos_df = self._cross_validate(
                 excel_prices, excel_lists, prices_xml,
                 online_status, searchable_status, technical_skus,
                 xml_lists, prohibited_state, cat_missing_primary,
                 bundles, variation_bases, job_errors,
                 has_nat, has_avn,
             )
-            result.errors = errors
-            result.stats = stats
+            result.errors   = errors
+            result.stats    = stats
+            result.acertos  = acertos_df
 
             self._prog(100, "Auditoria concluída!")
         except Exception as exc:
@@ -642,7 +696,41 @@ class AuditorEngine:
                 "avon":   sum(s["avon"]   for s in dedup_stats.values()),
             },
         }
-        return error_dfs, total_stats
+
+        # ─── ACERTOS: SKUs que passaram em todas as verificações ──────────────
+        skus_com_erro: set[str] = set()
+        for rows in errors.values():
+            for row in rows:
+                skus_com_erro.add(row["sku"])
+
+        acertos_rows = []
+        for sku in sorted(all_skus):
+            if not SKU_RE.match(sku):
+                continue
+            pE = excel_prices.get(sku)
+            is_offline = online_status.get(sku) is not True
+            if is_offline and pE is None:
+                continue
+            if sku in skus_com_erro:
+                continue
+            brand = "Natura" if sku.upper().startswith("NATBRA-") else "Avon"
+            px = (prices_xml.get(sku) or {}).get(brand, {})
+            acertos_rows.append({
+                "sku":        sku,
+                "brand":      brand,
+                "de_sf":      px.get("DE", 0) or 0,
+                "por_sf":     px.get("POR", 0) or 0,
+                "online":     online_status.get(sku, False),
+                "searchable": searchable_status.get(sku, False),
+            })
+
+        acertos_df = (
+            pd.DataFrame(acertos_rows)
+            if acertos_rows
+            else pd.DataFrame(columns=["sku", "brand", "de_sf", "por_sf", "online", "searchable"])
+        )
+
+        return error_dfs, total_stats, acertos_df
 
     # ── Helper ────────────────────────────────────────────────────────────
     @staticmethod

@@ -5,7 +5,6 @@ from PySide6.QtWidgets import (
     QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 from src.ui.components.base_widgets import Divider, SectionHeader
-from src.core.version import VERSION
 
 
 class SettingsView(QWidget):
@@ -98,23 +97,6 @@ class SettingsView(QWidget):
 
         layout.addWidget(acc_box)
 
-        # About
-        about_box = QGroupBox("Sobre")
-        about_layout = QVBoxLayout(about_box)
-        about_layout.setContentsMargins(16, 20, 16, 16)
-        about_layout.setSpacing(6)
-
-        for line in [
-            f"SIC — System Intelligence Commerce  v{VERSION}",
-            "Enterprise Pricing & Catalog Management para Salesforce Demandware",
-            "Compatível com: Natura (NATBRA-), Avon (AVNBRA-), Minha Loja (ML)",
-            "Dependências: PySide6, Pandas, lxml, openpyxl, pytesseract",
-        ]:
-            lbl = QLabel(line)
-            lbl.setObjectName("label_muted")
-            about_layout.addWidget(lbl)
-
-        layout.addWidget(about_box)
         layout.addStretch()
 
     # ── Persistence ───────────────────────────────────────────────────────

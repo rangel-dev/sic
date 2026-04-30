@@ -158,7 +158,6 @@ class MainWindow(QMainWindow):
             ("⊕",  "Gerador",     1),
             ("↕",  "Sync",        2),
             ("✓",  "Auditor",     3),
-            ("◎",  "Volumetria",  4),
             # Cadastro is now a dropdown with submenu items
             ("≈",  "Menus CB",    9),
             ("◔",  "Histórico",   7),
@@ -177,7 +176,8 @@ class MainWindow(QMainWindow):
         cadastro_btn.setFixedHeight(56)
         cadastro_btn.setObjectName("tab_button")
         cadastro_btn.add_submenu_item("Validação de Kits",     5, "▪")
-        cadastro_btn.add_submenu_item("Auditor de Pontuação", 6, "▪")
+        cadastro_btn.add_submenu_item("Gestor GCP", 6, "▪")
+        cadastro_btn.add_submenu_item("Pontuação", 12, "▪")
         cadastro_btn.submenu_clicked.connect(lambda idx: self._switch_cadastro(idx))
         self._nav_buttons[5] = cadastro_btn  # Store with index 5 for compatibility
         tabs_layout.insertWidget(5, cadastro_btn)  # Insert after Volumetria
@@ -190,6 +190,15 @@ class MainWindow(QMainWindow):
         settings_layout = QHBoxLayout(settings_container)
         settings_layout.setContentsMargins(12, 0, 12, 0)
         settings_layout.setSpacing(8)
+
+        # Sobre button
+        btn_sobre = NavButton("ℹ", "Sobre")
+        btn_sobre.setFixedHeight(56)
+        btn_sobre.setObjectName("tab_button")
+        btn_sobre.setFixedWidth(110)
+        btn_sobre.clicked.connect(lambda: self._switch(11))
+        self._nav_buttons[11] = btn_sobre
+        settings_layout.addWidget(btn_sobre)
 
         # Settings button (now at index 8 after Cadastro expansion)
         btn_cfg = NavButton("⚙", "Configurações")
@@ -222,9 +231,9 @@ class MainWindow(QMainWindow):
         return top_bar
 
     def _build_pages(self):
-        # Expanded from 9 to 11 pages: +2 for Cadastro submodules (Kits at 5, Pontuação at 6)
-        self._pages = [None] * 11
-        for i in range(11):
+        # 13 pages: 0-10 original + 11 = Sobre + 12 = Conversor (Pontuação)
+        self._pages = [None] * 13
+        for i in range(13):
             self._stack.addWidget(QWidget())  # Dummy placeholder
 
         # Pre-load only the Home view for immediate startup
@@ -263,7 +272,7 @@ class MainWindow(QMainWindow):
             from src.ui.pages.view_cadastro_kits import CadastroKitsView
             page = CadastroKitsView(self)
         elif index == 6:
-            # Cadastro submenu: Auditor de Pontuação
+            # Cadastro submenu: Gestor GCP
             from src.ui.pages.view_cadastro_pontuacao import CadastroPontuacaoView
             page = CadastroPontuacaoView(self)
         elif index == 7:
@@ -281,6 +290,12 @@ class MainWindow(QMainWindow):
             # Legacy: if someone tries to access the old container (shouldn't happen)
             from src.ui.pages.view_cadastro_kits import CadastroKitsView
             page = CadastroKitsView(self)
+        elif index == 11:
+            from src.ui.pages.view_sobre import SobreView
+            page = SobreView(self)
+        elif index == 12:
+            from src.ui.pages.view_cadastro_conversor import CadastroConversorView
+            page = CadastroConversorView(self)
         else:
             return
 
@@ -297,8 +312,8 @@ class MainWindow(QMainWindow):
 
         # Update button states (manual exclusive group)
         for i, btn in self._nav_buttons.items():
-            if i == 5:  # Cadastro dropdown — mark as active for both sub-pages
-                btn.setChecked(index in (5, 6))
+            if i == 5:  # Cadastro dropdown — mark as active for sub-pages
+                btn.setChecked(index in (5, 6, 12))
             else:
                 btn.setChecked(i == index)
 
@@ -310,10 +325,12 @@ class MainWindow(QMainWindow):
             3: "Auditor",
             4: "Volumetria",
             5: "Cadastro → Validação de Kits",
-            6: "Cadastro → Auditor de Pontuação",
+            6: "Cadastro → Gestor GCP",
             7: "Histórico",
             8: "Configurações",
             9: "Menus CB",
+            11: "Sobre",
+            12: "Cadastro → Pontuação",
         }
         name = PAGE_NAMES.get(index, "Módulo")
         self.statusBar().showMessage(f"Módulo ativo: {name}  |  v{VERSION}")

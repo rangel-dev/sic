@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QPushButton
 )
-from src.ui.components.base_widgets import Divider, PulseStatus, KpiWidget, NexusCard
+from src.ui.components.base_widgets import Divider, PulseStatus, KpiWidget
 from src.core.history_engine import HistoryEngine
 from src.core.version import VERSION
 
@@ -93,62 +93,17 @@ class HomeView(QWidget):
         kpi_row.addStretch()
         
         self.main_layout.addLayout(kpi_row)
-        self.main_layout.addSpacing(32)
-
-        # ─── ACESSOS RECENTES ──────────────────────────────────────────────────────
-        recent_header = QHBoxLayout()
-        recent_title = QLabel("ACESSOS RECENTES")
-        recent_title.setStyleSheet(
-            "font-size: 11px; font-weight: 700; color: #555; letter-spacing: 1.5px;"
-        )
-        recent_header.addWidget(recent_title)
-        recent_header.addStretch()
-        self.main_layout.addLayout(recent_header)
-        self.main_layout.addSpacing(12)
-
-        # Container widget para recentes (QGridLayout igual ao nexus_grid)
-        self.recent_container = QWidget()
-        self.recent_grid = QGridLayout(self.recent_container)
-        self.recent_grid.setSpacing(20)
-        self.recent_grid.setContentsMargins(0, 0, 0, 0)
-
-        self.recent_placeholder = QLabel("Nenhum módulo utilizado ainda. Execute uma operação para ver seus atalhos aqui.")
-        self.recent_placeholder.setStyleSheet("color: #888; font-size: 12px;")
-        self.recent_grid.addWidget(self.recent_placeholder, 0, 0)
-
-        self.main_layout.addWidget(self.recent_container)
-        self.main_layout.addSpacing(32)
-
-        # ─── NEXUS CENTER (Action Cards) ──────────────────────────────────────
-        nexus_label = QLabel("NEXUS DE OPERAÇÕES")
-        nexus_label.setStyleSheet("font-size: 11px; font-weight: 700; color: #555; letter-spacing: 1.5px; margin-bottom: 15px;")
-        self.main_layout.addWidget(nexus_label)
-
-        nexus_grid = QGridLayout()
-        nexus_grid.setSpacing(20)
-
-        # Module Cards
-        modules = [
-            ("⊕", "Gerador Pro",  "Processamento de planilhas e geração de XML Pricebook.", "#FF8050", 1),
-            ("↕", "Sync Hub",     "Sincronização de vitrines e atributos Salesforce.",    "#FF8050", 2),
-            ("✓", "Audit Nexus",  "Motor de auditoria integrada com 12 regras.",          "#BB88FF", 3),
-            ("◎", "Volumetria",   "Validação de volumes via processamento de catálogo.",  "#BB88FF", 4),
-        ]
-
-        for i, (icon, name, desc, color, idx) in enumerate(modules):
-            card = NexusCard(icon, name, desc, color)
-            card.clicked.connect(lambda i=idx: self.window._switch(i)) # Access main window
-            nexus_grid.addWidget(card, 0, i)
-
-        self.main_layout.addLayout(nexus_grid)
         self.main_layout.addSpacing(40)
 
-        # ─── RECENT ACTIVITY ──────────────────────────────────────────────────
+        # ─── NOVIDADES DO SISTEMA ──────────────────────────────────────────────
+        self._build_news_section()
+
+        # ─── RECENT ACTIVITY TIMELINE ──────────────────────────────────────────
         self.main_layout.addWidget(Divider())
         self.main_layout.addSpacing(25)
         
         activity_header = QHBoxLayout()
-        act_title = QLabel("Atividade Recente")
+        act_title = QLabel("Timeline de Operações")
         act_title.setStyleSheet("font-size: 16px; font-weight: 700;")
         activity_header.addWidget(act_title)
         activity_header.addStretch()
@@ -168,6 +123,70 @@ class HomeView(QWidget):
 
         self.main_layout.addStretch()
 
+    def _build_news_section(self):
+        news_header = QHBoxLayout()
+        news_title = QLabel("ÚLTIMAS NOVIDADES")
+        news_title.setStyleSheet(
+            "font-size: 11px; font-weight: 700; color: #555; letter-spacing: 1.5px;"
+        )
+        news_header.addWidget(news_title)
+        
+        news_header.addStretch()
+
+        btn_sobre = QPushButton("Ver notas da versão →")
+        btn_sobre.setObjectName("btn_ghost")
+        btn_sobre.setCursor(Qt.PointingHandCursor)
+        if hasattr(self, 'window') and self.window:
+            btn_sobre.clicked.connect(lambda: self.window._switch(11))
+        news_header.addWidget(btn_sobre)
+        
+        self.main_layout.addLayout(news_header)
+        self.main_layout.addSpacing(12)
+
+        from src.core.changelog_data import CHANGELOG
+        latest = CHANGELOG[0] if CHANGELOG else None
+
+        if latest:
+            card = QFrame()
+            card.setObjectName("card_flat")
+            card.setStyleSheet("QFrame#card_flat { border-left: 4px solid #BB88FF; }")
+            layout = QVBoxLayout(card)
+            layout.setContentsMargins(20, 16, 20, 16)
+            layout.setSpacing(8)
+
+            ver_lbl = QLabel(f"Versão {latest['version']}  ·  {latest.get('date', '')}")
+            ver_lbl.setStyleSheet("font-size: 12px; font-weight: 700; color: #BB88FF; background: transparent;")
+            layout.addWidget(ver_lbl)
+
+            TYPE_MAP = {
+                "feat": "Novidade",
+                "fix":  "Correção",
+                "perf": "Performance",
+                "chore":"Ajuste",
+            }
+
+            for entry in latest["entries"][:2]:
+                if len(entry) >= 2:
+                    etype, etext = entry[0], entry[1]
+                    label = TYPE_MAP.get(etype, "Info")
+                    lbl = QLabel(f"• <b>{label}:</b> {etext}")
+                    lbl.setWordWrap(True)
+                    lbl.setStyleSheet("font-size: 13px; color: #555; background: transparent;")
+                    layout.addWidget(lbl)
+            
+            if len(latest["entries"]) > 2:
+                more_lbl = QLabel(f"<i>E mais {len(latest['entries']) - 2} melhorias...</i>")
+                more_lbl.setStyleSheet("font-size: 11px; color: #888; background: transparent;")
+                layout.addWidget(more_lbl)
+
+            self.main_layout.addWidget(card)
+        else:
+            lbl = QLabel("Nenhuma novidade registrada.")
+            lbl.setStyleSheet("color: #888; font-size: 12px;")
+            self.main_layout.addWidget(lbl)
+            
+        self.main_layout.addSpacing(32)
+
     def _get_greeting(self) -> str:
         hour = datetime.now().hour
         if hour < 12: return "Bom dia"
@@ -180,65 +199,50 @@ class HomeView(QWidget):
             entries = HistoryEngine.get_entries()
             self.kpi_total.set_value(len(entries))
 
-            # ── Acessos Recentes: últimos 3 módulos distintos ──────────────────
-            # Clear grid preservando o placeholder
-            while self.recent_grid.count():
-                item = self.recent_grid.takeAt(0)
-                if item and item.widget() and item.widget() is not self.recent_placeholder:
-                    item.widget().deleteLater()
-
-            seen: set[str] = set()
-            recent_modules: list[dict] = []
-            for entry in entries:
-                mod = entry["module"]
-                if mod not in seen and mod in _MODULE_NAV:
-                    seen.add(mod)
-                    recent_modules.append(entry)
-                if len(recent_modules) == 3:
-                    break
-
-            if recent_modules:
-                for col, entry in enumerate(recent_modules):
-                    mod = entry["module"]
-                    icon, nav_idx, color = _MODULE_NAV.get(mod, ("◈", 0, "#888888"))
-                    try:
-                        dt = datetime.fromisoformat(entry["timestamp"])
-                        when = dt.strftime("%d/%m  %H:%M")
-                    except Exception:
-                        when = entry["timestamp"][:16]
-                    card = NexusCard(icon, mod, f"Última vez: {when}", color)
-                    card.clicked.connect(lambda i=nav_idx: self.window._switch(i))
-                    self.recent_grid.addWidget(card, 0, col)
-            else:
-                self.recent_grid.addWidget(self.recent_placeholder, 0, 0)
-
-            # ── Atividade Recente (últimas 3 entradas) ─────────────────────────
+            # ── Atividade Recente (Timeline) ─────────────────────────
             for i in reversed(range(self.activity_container.count())):
                 self.activity_container.itemAt(i).widget().setParent(None)
 
-            for entry in entries[:3]:
+            if not entries:
+                lbl = QLabel("Nenhuma atividade registrada no histórico.")
+                lbl.setStyleSheet("color: #888; font-style: italic; font-size: 12px;")
+                self.activity_container.addWidget(lbl)
+                return
+
+            for entry in entries[:6]:
                 row = QFrame()
                 row.setObjectName("card_flat")
                 row_layout = QHBoxLayout(row)
-                row_layout.setContentsMargins(15, 10, 15, 10)
+                row_layout.setContentsMargins(15, 12, 15, 12)
 
-                mod_lbl = QLabel(f"<b>{entry['module']}</b>")
-                mod_lbl.setFixedWidth(80)
-                row_layout.addWidget(mod_lbl)
+                mod = entry.get('module', 'SIC')
+                icon_char = _MODULE_NAV.get(mod, ("◈", 0, "#888"))[0]
+                color = _MODULE_NAV.get(mod, ("◈", 0, "#888"))[2]
 
-                act_lbl = QLabel(entry['action'])
-                row_layout.addWidget(act_lbl, 1)
+                icon_lbl = QLabel(icon_char)
+                icon_lbl.setStyleSheet(f"font-size: 16px; color: {color}; font-weight: bold; background: transparent;")
+                icon_lbl.setFixedWidth(24)
+                icon_lbl.setAlignment(Qt.AlignCenter)
+                row_layout.addWidget(icon_lbl)
+
+                info_layout = QVBoxLayout()
+                info_layout.setSpacing(2)
+                
+                act_lbl = QLabel(entry.get('action', 'Ação desconhecida'))
+                act_lbl.setStyleSheet("font-size: 13px; font-weight: 600; background: transparent;")
+                info_layout.addWidget(act_lbl)
 
                 try:
                     dt = datetime.fromisoformat(entry['timestamp'])
-                    date_str = dt.strftime("%d/%m/%Y")
+                    date_str = dt.strftime("%d/%m/%Y às %H:%M")
                 except Exception:
-                    date_str = entry['timestamp'].split('T')[0]
+                    date_str = entry.get('timestamp', '')[:16]
 
-                date_lbl = QLabel(date_str)
-                date_lbl.setStyleSheet("color: #666; font-size: 11px;")
-                row_layout.addWidget(date_lbl)
+                meta_lbl = QLabel(f"{mod}  ·  {date_str}")
+                meta_lbl.setStyleSheet("font-size: 11px; color: #888; background: transparent;")
+                info_layout.addWidget(meta_lbl)
 
+                row_layout.addLayout(info_layout, 1)
                 self.activity_container.addWidget(row)
 
         except Exception as e:

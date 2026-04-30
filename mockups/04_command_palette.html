@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <title>SIC — Command Palette</title>
+  <link rel="stylesheet" href="_shared.css">
+  <style>
+    /* simulated background page */
+    .bg-page {
+      filter: blur(2px) brightness(.5);
+      pointer-events: none;
+      user-select: none;
+    }
+    .bg-page .crumbs { font-size: 12px; color: var(--text-mut); margin-bottom: 14px; }
+    .bg-page .greeting h1 { font-size: 28px; font-weight: 800; margin: 0; }
+    .bg-page .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin: 24px 0;
+    }
+    .bg-page .kpi {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 18px;
+      height: 110px;
+    }
+
+    /* overlay */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, .7);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 80px;
+    }
+
+    .palette {
+      width: 100%;
+      max-width: 640px;
+      background: var(--panel);
+      border: 1px solid var(--border-2);
+      border-radius: var(--r-xl);
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      max-height: 540px;
+    }
+
+    .palette-search {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .palette-search svg { color: var(--text-mut); flex-shrink: 0; }
+    .palette-search input {
+      background: transparent;
+      border: 0;
+      outline: 0;
+      color: var(--text);
+      font-size: 16px;
+      flex: 1;
+      font-weight: 400;
+    }
+    .palette-search input::placeholder { color: var(--text-dim); }
+    .palette-search .esc {
+      padding: 3px 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 11px;
+      color: var(--text-mut);
+      font-family: ui-monospace, monospace;
+    }
+
+    .palette-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+
+    .group-label {
+      padding: 10px 20px 6px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+
+    .cmd-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 20px;
+      cursor: pointer;
+      transition: background .1s;
+    }
+    .cmd-row:hover { background: var(--panel-2); }
+    .cmd-row.active {
+      background: var(--accent-soft);
+      border-left: 3px solid var(--accent);
+      padding-left: 17px;
+    }
+
+    .cmd-icon {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .cmd-info { flex: 1; min-width: 0; }
+    .cmd-title {
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--text);
+    }
+    .cmd-title .hl { color: var(--accent); font-weight: 700; }
+    .cmd-meta {
+      font-size: 11.5px;
+      color: var(--text-mut);
+      margin-top: 2px;
+    }
+
+    .cmd-shortcut {
+      display: flex; gap: 4px;
+      flex-shrink: 0;
+    }
+    .cmd-shortcut .kbd {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      padding: 2px 7px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text-mut);
+    }
+
+    .palette-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 18px;
+      border-top: 1px solid var(--border);
+      font-size: 11.5px;
+      color: var(--text-mut);
+    }
+    .palette-footer .legend {
+      display: flex; gap: 16px;
+    }
+    .palette-footer .legend-item {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .palette-footer .legend-item .kbd {
+      font-family: ui-monospace, monospace;
+      font-size: 10px;
+      padding: 1px 5px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    /* Module color accents */
+    .clr-cad { background: rgba(96,165,250,.15); color: var(--accent); }
+    .clr-ger { background: rgba(245,158,11,.15); color: var(--natura); }
+    .clr-aud { background: rgba(196,181,253,.15); color: var(--avon); }
+    .clr-syn { background: rgba(56,189,248,.15); color: var(--info); }
+    .clr-his { background: rgba(148,163,184,.18); color: var(--text-mut); }
+    .clr-set { background: rgba(74,222,128,.15); color: var(--success); }
+  </style>
+</head>
+<body>
+
+<!-- Top nav (still visible behind overlay) -->
+<nav class="topnav bg-page">
+  <div class="logo">⬡ SIC</div>
+  <div class="tabs">
+    <div class="tab active">⌂ Início</div>
+    <div class="tab">⊕ Operações ▾</div>
+    <div class="tab">✓ Análise ▾</div>
+    <div class="tab">≡ Cadastros ▾</div>
+    <div class="tab">◔ Histórico</div>
+  </div>
+  <div class="right">
+    <div class="kbd-hint"><span style="opacity:.7">Buscar…</span><span class="kbd">⌘K</span></div>
+  </div>
+</nav>
+
+<!-- Background page (blurred) -->
+<div class="page bg-page">
+  <div class="crumbs">← Voltar</div>
+  <div class="greeting"><h1>Bom dia, Marcos</h1></div>
+  <div style="color:var(--text-mut);font-size:13.5px;margin:6px 0 24px">Centro de comando SIC · Ciclo 202609</div>
+  <div class="kpi-grid">
+    <div class="kpi"></div><div class="kpi"></div><div class="kpi"></div><div class="kpi"></div>
+  </div>
+</div>
+
+<!-- Overlay with palette -->
+<div class="overlay">
+  <div class="palette">
+
+    <!-- Search -->
+    <div class="palette-search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input value="conv" placeholder="O que você quer fazer? (ex: nova carga, abrir auditor, exportar…)" />
+      <span class="esc">esc</span>
+    </div>
+
+    <!-- Body -->
+    <div class="palette-body">
+
+      <div class="group-label">Sugestões</div>
+
+      <div class="cmd-row active">
+        <div class="cmd-icon clr-cad">≡</div>
+        <div class="cmd-info">
+          <div class="cmd-title">Abrir <span class="hl">Conv</span>ersor Biosphera</div>
+          <div class="cmd-meta">Cadastros · Pontuação · página de processamento</div>
+        </div>
+        <div class="cmd-shortcut">
+          <span class="kbd">⌘</span><span class="kbd">G</span>
+        </div>
+      </div>
+
+      <div class="cmd-row">
+        <div class="cmd-icon clr-cad">▶</div>
+        <div class="cmd-info">
+          <div class="cmd-title">Nova carga GCP a partir do <span class="hl">Conv</span>ersor</div>
+          <div class="cmd-meta">Atalho · pula direto para o stepper de upload</div>
+        </div>
+        <div class="cmd-shortcut">
+          <span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">N</span>
+        </div>
+      </div>
+
+      <div class="cmd-row">
+        <div class="cmd-icon clr-his">↻</div>
+        <div class="cmd-info">
+          <div class="cmd-title">Re-executar última <span class="hl">conv</span>ersão</div>
+          <div class="cmd-meta">Conversor · 27 itens · há 4 min · ciclo 202609</div>
+        </div>
+      </div>
+
+      <div class="group-label">Recentes</div>
+
+      <div class="cmd-row">
+        <div class="cmd-icon clr-aud">✓</div>
+        <div class="cmd-info">
+          <div class="cmd-title">Auditor — Conflitos de margem</div>
+          <div class="cmd-meta">Aberto há 22 min</div>
+        </div>
+      </div>
+
+      <div class="cmd-row">
+        <div class="cmd-icon clr-ger">⊕</div>
+        <div class="cmd-info">
+          <div class="cmd-title">Gerador — Pricebook Avon</div>
+          <div class="cmd-meta">Executado ontem 17:42</div>
+        </div>
+      </div>
+
+      <div class="group-label">Navegar</div>
+
+      <div class="cmd-row">
+        <div class="cmd-icon clr-cad">≡</div>
+        <div class="cmd-info">
+          <div class="cmd-title">Validação de Kits</div>
+          <div class="cmd-meta">Cadastros</div>
+        </div>
+      </div>
+
+      <div class="cmd-row">
+        <div class="cmd-icon clr-cad">≡</div>
+        <div class="cmd-info">
+          <div class="cmd-title">Gestor GCP</div>
+          <div class="cmd-meta">Cadastros</div>
+        </div>
+      </div>
+
+      <div class="cmd-row">
+        <div class="cmd-icon clr-syn">↕</div>
+        <div class="cmd-info">
+          <div class="cmd-title">Sync com Salesforce</div>
+          <div class="cmd-meta">Operações</div>
+        </div>
+        <div class="cmd-shortcut">
+          <span class="kbd">⌘</span><span class="kbd">S</span>
+        </div>
+      </div>
+
+      <div class="cmd-row">
+        <div class="cmd-icon clr-set">⚙</div>
+        <div class="cmd-info">
+          <div class="cmd-title">Configurações</div>
+          <div class="cmd-meta">Tema, fonte, integração</div>
+        </div>
+        <div class="cmd-shortcut">
+          <span class="kbd">⌘</span><span class="kbd">,</span>
+        </div>
+      </div>
+
+      <div class="group-label">Ações</div>
+
+      <div class="cmd-row">
+        <div class="cmd-icon clr-his">⤓</div>
+        <div class="cmd-info">
+          <div class="cmd-title">Exportar último resultado</div>
+          <div class="cmd-meta">Conversor · 42 linhas · CSV ou XLSX</div>
+        </div>
+      </div>
+
+      <div class="cmd-row">
+        <div class="cmd-icon clr-set">☾</div>
+        <div class="cmd-info">
+          <div class="cmd-title">Alternar tema (Claro/Escuro)</div>
+          <div class="cmd-meta">Atualmente: Escuro</div>
+        </div>
+        <div class="cmd-shortcut">
+          <span class="kbd">⌘</span><span class="kbd">T</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="palette-footer">
+      <div class="legend">
+        <div class="legend-item"><span class="kbd">↑</span><span class="kbd">↓</span> navegar</div>
+        <div class="legend-item"><span class="kbd">⏎</span> selecionar</div>
+        <div class="legend-item"><span class="kbd">esc</span> fechar</div>
+      </div>
+      <div>11 resultados · 0.04 ms</div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

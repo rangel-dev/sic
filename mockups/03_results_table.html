@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <title>SIC — Tabela de resultados</title>
+  <link rel="stylesheet" href="_shared.css">
+  <style>
+    .crumbs { font-size: 12px; color: var(--text-mut); margin-bottom: 14px; }
+    .crumbs a { color: var(--text-mut); }
+
+    .page-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 20px;
+    }
+    .page-header h1 {
+      margin: 0 0 4px;
+      font-size: 22px;
+      font-weight: 700;
+    }
+    .page-header .subtitle { color: var(--text-mut); font-size: 13.5px; }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg) var(--r-lg) 0 0;
+      border-bottom: 0;
+    }
+    .search-box {
+      display: flex; align-items: center; gap: 8px;
+      flex: 1;
+      max-width: 380px;
+      padding: 8px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+    }
+    .search-box svg { flex-shrink: 0; color: var(--text-mut); }
+    .search-box input {
+      background: transparent;
+      border: 0;
+      outline: 0;
+      color: var(--text);
+      font-size: 13px;
+      flex: 1;
+    }
+    .search-box .clear-btn {
+      background: var(--panel-2);
+      border: 0;
+      color: var(--text-mut);
+      width: 18px; height: 18px;
+      border-radius: 999px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .filter-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .filter-chip.active {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .filter-chip .count {
+      background: rgba(255,255,255,.08);
+      border-radius: 999px;
+      padding: 1px 7px;
+      font-size: 11px;
+    }
+    .filter-chip.active .count { background: var(--accent); color: #0b1220; }
+
+    .toolbar .grow { flex: 1; }
+
+    /* ── Bulk action bar ──────────────────────────────────── */
+    .bulk-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      background: var(--accent-soft);
+      border-left: 1px solid var(--accent);
+      border-right: 1px solid var(--accent);
+      color: var(--text);
+      font-size: 12.5px;
+    }
+    .bulk-bar .grow { flex: 1; }
+    .bulk-bar strong { color: var(--accent); }
+
+    /* ── Table ────────────────────────────────────────────── */
+    .table-wrap {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 0 0 var(--r-lg) var(--r-lg);
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead th {
+      text-align: left;
+      padding: 10px 16px;
+      font-size: 11px;
+      letter-spacing: 1px;
+      font-weight: 700;
+      color: var(--text-mut);
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      position: sticky; top: 0;
+      cursor: pointer;
+      user-select: none;
+    }
+    thead th:hover { color: var(--text); background: var(--panel-2); }
+    thead th .sort-arrow { opacity: .5; margin-left: 4px; font-size: 10px; }
+    thead th.sorted .sort-arrow { color: var(--accent); opacity: 1; }
+    thead th.checkbox { width: 36px; }
+
+    tbody tr {
+      border-bottom: 1px solid rgba(51, 65, 85, .4);
+      transition: background .12s;
+    }
+    tbody tr:hover { background: var(--panel-2); }
+    tbody tr.selected { background: var(--accent-soft); }
+    tbody tr:last-child { border-bottom: 0; }
+    tbody td {
+      padding: 12px 16px;
+      vertical-align: middle;
+    }
+    tbody td.checkbox input { accent-color: var(--accent); }
+    tbody td.code {
+      font-family: ui-monospace, monospace;
+      font-weight: 600;
+    }
+    tbody td.action {
+      text-align: right;
+      white-space: nowrap;
+    }
+    .row-action {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-mut);
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .row-action:hover { background: var(--panel); color: var(--text); border-color: var(--border); }
+
+    /* ── Pagination ───────────────────────────────────────── */
+    .pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 18px;
+      border-top: 1px solid var(--border);
+      background: var(--panel);
+      font-size: 12.5px;
+      color: var(--text-mut);
+    }
+    .page-controls { display: flex; gap: 6px; align-items: center; }
+    .page-btn {
+      width: 30px; height: 30px;
+      border-radius: 6px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-mut);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .page-btn:hover { background: var(--panel-2); color: var(--text); }
+    .page-btn.active { background: var(--accent); color: #0b1220; border-color: var(--accent); font-weight: 700; }
+
+    /* ── Empty state (commented version below) ───────────── */
+    .demo-toggle {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+    .demo-toggle button {
+      padding: 7px 14px;
+      border-radius: 999px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text-mut);
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .demo-toggle button.active {
+      background: var(--accent);
+      color: #0b1220;
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    .empty-state {
+      padding: 80px 30px;
+      text-align: center;
+    }
+    .empty-state .illustration {
+      width: 120px; height: 120px;
+      margin: 0 auto 20px;
+      border-radius: 999px;
+      background: var(--panel-2);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .empty-state h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .empty-state p {
+      margin: 0 auto 20px;
+      max-width: 380px;
+      color: var(--text-mut);
+      font-size: 13.5px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Top nav -->
+<nav class="topnav">
+  <div class="logo">⬡ SIC</div>
+  <div class="tabs">
+    <div class="tab">⌂ Início</div>
+    <div class="tab">⊕ Operações ▾</div>
+    <div class="tab">✓ Análise ▾</div>
+    <div class="tab active">≡ Cadastros ▾</div>
+    <div class="tab">◔ Histórico</div>
+  </div>
+  <div class="right">
+    <div class="kbd-hint"><span style="opacity:.7">Buscar…</span><span class="kbd">⌘K</span></div>
+    <button class="icon-btn">☾</button>
+    <button class="icon-btn">⚙</button>
+  </div>
+</nav>
+
+<div class="page">
+
+  <div class="crumbs"><a href="index.html">← Voltar para o índice</a> · Cadastros · Pontuação · Resultado</div>
+
+  <!-- Page header -->
+  <div class="page-header">
+    <div>
+      <h1>Exceções encontradas</h1>
+      <div class="subtitle">Itens da auditoria que não foram localizados na Revista CF nem na Grade. <strong style="color:var(--text)">27 registros</strong> — clique para investigar cada um.</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn outline">⤓ Exportar Excel</button>
+      <button class="btn primary">⤓ Carga GCP (42 linhas)</button>
+    </div>
+  </div>
+
+  <!-- Demo toggle -->
+  <div class="demo-toggle">
+    <button class="active">Com dados (27 linhas)</button>
+    <button onclick="document.getElementById('with-data').style.display='none';document.getElementById('empty').style.display='block';this.classList.add('active');this.previousElementSibling.classList.remove('active')">Empty state (0 exceções)</button>
+  </div>
+
+  <div id="with-data">
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="search-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input placeholder="Buscar por código, descrição…" />
+        <span class="kbd">⌘F</span>
+      </div>
+
+      <div class="filter-chip active">Todos <span class="count">27</span></div>
+      <div class="filter-chip">Não localizados <span class="count">22</span></div>
+      <div class="filter-chip">Ciclo errado <span class="count">5</span></div>
+
+      <div class="grow"></div>
+
+      <button class="btn outline" style="padding:7px 12px">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        Colunas
+      </button>
+      <button class="btn outline" style="padding:7px 12px">↑↓ Ordenar</button>
+    </div>
+
+    <!-- Bulk action bar -->
+    <div class="bulk-bar">
+      <strong>3 itens selecionados</strong>
+      <span style="opacity:.6">·</span>
+      <span>Aplicar a todos:</span>
+      <div class="grow"></div>
+      <button class="btn ghost" style="padding:5px 10px;font-size:12px">⤓ Exportar selecionados</button>
+      <button class="btn ghost" style="padding:5px 10px;font-size:12px">↻ Re-validar</button>
+      <button class="btn ghost" style="padding:5px 10px;font-size:12px;color:var(--danger)">✕ Ignorar</button>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="checkbox"><input type="checkbox" /></th>
+            <th class="sorted">Código <span class="sort-arrow">▲</span></th>
+            <th>Descrição</th>
+            <th>Status <span class="sort-arrow">↕</span></th>
+            <th>Ciclo <span class="sort-arrow">↕</span></th>
+            <th>Última verificação</th>
+            <th>Ação sugerida</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <tr class="selected">
+            <td class="checkbox"><input type="checkbox" checked /></td>
+            <td class="code">179454</td>
+            <td>BIOGRAFIA ENCONTROS FEM DES COL 100ML</td>
+            <td><span class="pill danger">Não localizado</span></td>
+            <td>202607</td>
+            <td class="muted" style="font-size:12.5px">há 4 min</td>
+            <td class="muted" style="font-size:12.5px">Verificar aba Revista CF</td>
+            <td class="action">
+              <button class="row-action" title="Detalhes">→</button>
+              <button class="row-action" title="Mais">⋯</button>
+            </td>
+          </tr>
+
+          <tr class="selected">
+            <td class="checkbox"><input type="checkbox" checked /></td>
+            <td class="code">80969</td>
+            <td>CHRONOS SABONETE PELE OLEOSA</td>
+            <td><span class="pill danger">Não localizado</span></td>
+            <td>202607</td>
+            <td class="muted" style="font-size:12.5px">há 4 min</td>
+            <td class="muted" style="font-size:12.5px">Verificar aba Revista CF</td>
+            <td class="action">
+              <button class="row-action">→</button>
+              <button class="row-action">⋯</button>
+            </td>
+          </tr>
+
+          <tr class="selected">
+            <td class="checkbox"><input type="checkbox" checked /></td>
+            <td class="code">203377</td>
+            <td>EKOS CASTANHA DESODORANTE 75G</td>
+            <td><span class="pill warning">Ciclo errado</span></td>
+            <td>202607</td>
+            <td class="muted" style="font-size:12.5px">há 4 min</td>
+            <td class="muted" style="font-size:12.5px">SKU existe em 202608</td>
+            <td class="action">
+              <button class="row-action">→</button>
+              <button class="row-action">⋯</button>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="checkbox"><input type="checkbox" /></td>
+            <td class="code">200658</td>
+            <td>NATURA TODODIA HIDR EXTRA SUAVE 400ML</td>
+            <td><span class="pill danger">Não localizado</span></td>
+            <td>202607</td>
+            <td class="muted" style="font-size:12.5px">há 4 min</td>
+            <td class="muted" style="font-size:12.5px">Verificar aba Revista CF</td>
+            <td class="action">
+              <button class="row-action">→</button>
+              <button class="row-action">⋯</button>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="checkbox"><input type="checkbox" /></td>
+            <td class="code">205931</td>
+            <td>EKOS BURITI HIDRATANTE CORPORAL 250ML</td>
+            <td><span class="pill warning">Ciclo errado</span></td>
+            <td>202607</td>
+            <td class="muted" style="font-size:12.5px">há 4 min</td>
+            <td class="muted" style="font-size:12.5px">SKU existe em 202609</td>
+            <td class="action">
+              <button class="row-action">→</button>
+              <button class="row-action">⋯</button>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="checkbox"><input type="checkbox" /></td>
+            <td class="code">200656</td>
+            <td>UNA INSTANT VOLUMETRIC EYELINER</td>
+            <td><span class="pill danger">Não localizado</span></td>
+            <td>202607</td>
+            <td class="muted" style="font-size:12.5px">há 4 min</td>
+            <td class="muted" style="font-size:12.5px">Verificar aba Revista CF</td>
+            <td class="action">
+              <button class="row-action">→</button>
+              <button class="row-action">⋯</button>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="checkbox"><input type="checkbox" /></td>
+            <td class="code">259854</td>
+            <td>KIT PRESENTE NATAL — não detalhado</td>
+            <td><span class="pill danger">Não localizado</span></td>
+            <td>202607</td>
+            <td class="muted" style="font-size:12.5px">há 4 min</td>
+            <td class="muted" style="font-size:12.5px">Possível kit ZEST sem filhos</td>
+            <td class="action">
+              <button class="row-action">→</button>
+              <button class="row-action">⋯</button>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="checkbox"><input type="checkbox" /></td>
+            <td class="code">206730</td>
+            <td>TODODIA AVELÃ TONIFICANTE 200ML</td>
+            <td><span class="pill danger">Não localizado</span></td>
+            <td>202607</td>
+            <td class="muted" style="font-size:12.5px">há 4 min</td>
+            <td class="muted" style="font-size:12.5px">Verificar aba Revista CF</td>
+            <td class="action">
+              <button class="row-action">→</button>
+              <button class="row-action">⋯</button>
+            </td>
+          </tr>
+
+        </tbody>
+      </table>
+
+      <!-- Pagination -->
+      <div class="pagination">
+        <span>Mostrando <strong style="color:var(--text)">1–8</strong> de <strong style="color:var(--text)">27</strong> exceções</span>
+        <div class="page-controls">
+          <button class="page-btn" disabled style="opacity:.4">‹</button>
+          <button class="page-btn active">1</button>
+          <button class="page-btn">2</button>
+          <button class="page-btn">3</button>
+          <button class="page-btn">4</button>
+          <button class="page-btn">›</button>
+          <span style="margin:0 10px">·</span>
+          <span>20 / pág</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Empty state (toggle) -->
+  <div id="empty" style="display:none">
+    <div class="card flat" style="padding:0">
+      <div class="empty-state">
+        <div class="illustration">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--success)">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
+        <h3>Nenhuma exceção encontrada 🎉</h3>
+        <p>Todos os 27 SKUs da auditoria foram localizados na Revista CF. A carga para GCP está pronta com 42 linhas geradas.</p>
+        <button class="btn primary">⤓ Baixar Carga GCP (42 linhas)</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
