@@ -120,16 +120,17 @@ def execute_parity_rules(
                                 "detail": "DIVERGE SEARCHABLE (Excel NÃO vs SF true)"})
                             dump_stats("searchable", brand)
 
-                    # ── Check #7: LISTAS DE VITRINE ───────────────────
-                    for list_id, ex_skus in excel_lists.items():
-                        list_is_mine = (
-                            (brand == "Natura" and list_id.startswith("LISTA_")) or
-                            (brand == "Avon"   and list_id.startswith("lista-"))
-                        )
-                        if not list_is_mine:
-                            continue
-                        if sku not in ex_skus:
-                            continue
+
+                # ── Check #7: LISTAS DE VITRINE ───────────────────
+                # Paridade V11.6: Listas são validadas independente de o SKU estar na Grade (pE)
+                for list_id, ex_skus in excel_lists.items():
+                    list_is_mine = (
+                        (brand == "Natura" and list_id.startswith("LISTA_")) or
+                        (brand == "Avon"   and list_id.startswith("lista-"))
+                    )
+                    if not list_is_mine:
+                        continue
+                    if sku in ex_skus:
                         if list_id not in xml_lists:
                             errors["list"].append({**row_base,
                                 "detail": f"LISTA INEXISTENTE NO SF ({list_id})"})

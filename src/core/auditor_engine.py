@@ -29,7 +29,7 @@ MAX_FILE_AGE_SECONDS = 900
 # ─── Categorias proibidas para promoção (Conflito de Margem) ─────────────────
 PROHIBITED_CATEGORIES = {
     "Natura": {"promocao-da-semana", "LISTA_01", "monte-seu-kit", "LISTA_02"},
-    "Avon":   {"desconto-progressivo", "lista-01"},
+    "Avon":   {"promocoes-desconto-progressivo", "lista-01"},
     "ML":     {"promocao-da-semana", "desconto-progressivo", "monte-seu-kit"},
 }
 
@@ -224,7 +224,7 @@ class AuditorEngine:
             wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
 
             # Detecta marca do arquivo
-            file_brand = self._detect_brand_workbook(wb)
+            file_brand = self._detect_brand_workbook(wb, path)
             if file_brand == "Natura": has_nat = True
             if file_brand == "Avon":   has_avn = True
 
@@ -238,38 +238,49 @@ class AuditorEngine:
                 ws = wb[name]
                 if ws.sheet_state != 'visible':
                     continue
-                    
-                m = re.match(r"(?i)lista[-_\s]*0*(\d+)", name)
+
+                # Voltando para a regex que agrupa (ignora .1, .2) para paridade
+                m = re.match(r"(?i)^LISTA[-_\s]*0*(\d+)", name)
                 if m:
                     num = m.group(1).zfill(2)
-                    # Natura → LISTA_XX, Avon → lista-XX
-                    list_key = f"LISTA_{num}" if file_brand == "Natura" else f"lista-{num}"
-                    self._parse_lista(ws, file_brand, list_key, excel_lists)
+                    self._parse_lista(ws, file_brand, num, excel_lists)
 
             wb.close()
 
         brands = (["Natura"] if has_nat else []) + (["Avon"] if has_avn else [])
         return excel_prices, excel_lists, brands, has_nat, has_avn
 
-    def _detect_brand_workbook(self, wb) -> str:
-        """Varre toda a aba GRADE ou a primeira disponível e conta NATBRA/AVNBRA (Robust like JS)."""
+    def _detect_brand_workbook(self, wb, path: str = "") -> str:
+        """
+        Varre a aba GRADE inteira e conta NATBRA-/AVNBRA-, espelhando o legado JS
+        (XLSX.utils.sheet_to_csv). Sem `max_row` — o limite anterior podia falhar
+        em planilhas grandes ou com cabeçalhos longos. Fallback final pelo nome
+        do arquivo, antes de devolver "Desconhecida".
+        """
         sheet = self._find_grade_sheet(wb) or (wb[wb.sheetnames[0]] if wb.sheetnames else None)
-        if not sheet:
-            return "Desconhecida"
-        
+
         nat = avn = 0
-        # Tenta ler um volume maior de dados para detecção precisa
-        for row in sheet.iter_rows(max_row=500, values_only=True):
-            for cell in row:
-                if cell is None:
-                    continue
-                v = str(cell).upper()
-                nat += v.count("NATBRA-")
-                avn += v.count("AVNBRA-")
-        
-        if nat == 0 and avn == 0:
-            return "Desconhecida"
-        return "Natura" if nat >= avn else "Avon"
+        if sheet is not None:
+            for row in sheet.iter_rows(values_only=True):
+                for cell in row:
+                    if cell is None:
+                        continue
+                    v = str(cell).upper()
+                    if "NATBRA-" in v:
+                        nat += v.count("NATBRA-")
+                    if "AVNBRA-" in v:
+                        avn += v.count("AVNBRA-")
+
+        if nat or avn:
+            return "Natura" if nat >= avn else "Avon"
+
+        # Fallback: nome do arquivo (rede de segurança quando o conteúdo é ambíguo)
+        name = Path(path).name.lower() if path else ""
+        if "natura" in name:
+            return "Natura"
+        if "avon" in name:
+            return "Avon"
+        return "Desconhecida"
 
     def _get_catalog_brand_quick(self, path: str) -> str:
         """Lê o início do XML para detectar a marca sem parsing total (Gold Rule)."""
@@ -287,6 +298,14 @@ class AuditorEngine:
         return "Desconhecida"
 
     def _find_grade_sheet(self, wb):
+        # Paridade com legado JS: preferir o nome canônico "GRADE DE ATIVAÇÃO"
+        # (e variantes sem acento) antes de cair na heurística por substring.
+        # Sem isso, abas auxiliares como "CHECK_GRADE" são casadas indevidamente
+        # quando aparecem antes da grade real na ordem das abas.
+        canonical = {"GRADE DE ATIVAÇÃO", "GRADE DE ATIVACAO"}
+        for name in wb.sheetnames:
+            if name.strip().upper() in canonical and wb[name].sheet_state == 'visible':
+                return wb[name]
         for name in wb.sheetnames:
             n = name.upper()
             if "GRADE" in n or "ATIVA" in n:
@@ -299,24 +318,46 @@ class AuditorEngine:
         sku_col = de_col = por_col = vis_col = None
         sku_start = None
 
-        for i, row in enumerate(rows[:60]):
+        # Fase 1 — localiza o primeiro SKU em qualquer linha (espelha o
+        # findDynamicColumns do legado JS, que usa fallback skuCol=2 quando
+        # não encontra nas primeiras 50 linhas; aqui simplesmente varremos
+        # toda a planilha, o que é mais robusto).
+        for i, row in enumerate(rows):
             for j, cell in enumerate(row):
                 if cell is None:
                     continue
                 v = str(cell).strip()
-                vu = v.upper()
+                if SKU_RE.match(v):
+                    sku_col = j
+                    sku_start = i
+                    break
+            if sku_col is not None:
+                break
+
+        # Fase 2 — varre as linhas ACIMA do primeiro SKU para descobrir
+        # as colunas DE, POR e VISIBLE.
+        header_window = rows[: (sku_start if sku_start is not None else min(60, len(rows)))]
+        for row in header_window:
+            for j, cell in enumerate(row):
+                if cell is None:
+                    continue
+                vu = str(cell).strip().upper()
                 if vu == "DE":
                     de_col = j
                 elif vu == "POR":
                     por_col = j
                 elif "VISIBLE" in vu or "VISIBILIDADE" in vu:
                     vis_col = j
-                if sku_col is None and SKU_RE.match(v):
-                    sku_col = j
-                    sku_start = i
 
+        # Fallback final — paridade com findDynamicColumns do legado
+        # (skuCol=2, deCol=26, porCol=27). Só aplicado se a fase 1/2 falhou.
         if sku_col is None:
-            return
+            sku_col = 2
+            sku_start = 0
+        if de_col is None:
+            de_col = 26
+        if por_col is None:
+            por_col = 27
 
         empty = 0
         for row in rows[sku_start:]:
@@ -342,12 +383,13 @@ class AuditorEngine:
 
             out[sku] = {"DE": de or 0.0, "POR": por or 0.0, "VISIBLE": vis}
 
-    def _parse_lista(self, ws, file_brand: str, list_key: str, out: dict) -> None:
+    def _parse_lista(self, ws, file_brand: str, num: str, out: dict) -> None:
         sku_col = -1
         rows = list(ws.iter_rows(max_row=10000, values_only=True))
-        
-        # Scanner Dinâmico (Legacy JS findSkuColumnOnly)
-        for i, row in enumerate(rows[:50]):
+
+        # Scanner Dinâmico (Legacy JS findSkuColumnOnly) — sem limite arbitrário
+        # de linhas: encontra o primeiro SKU em qualquer linha da planilha.
+        for row in rows:
             for j, cell in enumerate(row):
                 if cell:
                     val = str(cell).strip().upper()
@@ -356,9 +398,9 @@ class AuditorEngine:
                         break
             if sku_col != -1:
                 break
-                
+
         if sku_col == -1:
-            sku_col = 1 # Fallback para coluna B (index 1) - equivalente ao 2 no JS
+            sku_col = 2  # Paridade com legado JS: findSkuColumnOnly retorna 2
             
         for row in rows:
             if sku_col < len(row):
@@ -366,12 +408,16 @@ class AuditorEngine:
                 if not cell:
                     continue
                 val = str(cell).strip().upper()
-                if not SKU_RE.match(val):
+                if not val.startswith(("NATBRA-", "AVNBRA-")):
                     continue
+
                 if file_brand == "Natura" and val.startswith("AVNBRA-"):
                     continue
                 if file_brand == "Avon" and val.startswith("NATBRA-"):
                     continue
+
+                # Paridade V11.6: o cleanId depende do prefixo do SKU
+                list_key = f"LISTA_{num}" if val.startswith("NATBRA-") else f"lista-{num}"
                 out.setdefault(list_key, set()).add(val)
 
     # ── Parsing Pricebook ─────────────────────────────────────────────────
@@ -578,7 +624,7 @@ class AuditorEngine:
                     prohibited_state[brand_cat].add(sku)
 
                 # Listas de vitrine (só Natura/Avon, não ML)
-                if brand_cat != "ML" and re.match(r"(?i)^(LISTA_|lista-)\d+", cat_id):
+                if brand_cat != "ML" and re.match(r"(?i)^(LISTA_|lista-)", cat_id):
                     xml_lists.setdefault(cat_id, set()).add(sku)
 
                 # primary-flag
@@ -588,12 +634,10 @@ class AuditorEngine:
                 if (pf is not None and (pf.text or "").lower() == "true") or pf_attr.lower() == "true":
                     primary_skus.add(sku)
 
-            # SKUs sem categoria primária (Audit Rule: todo SKU no catálogo deve ter category-primary)
+            # SKUs sem categoria primária
             # Requisito do Legado JS: Apenas varre os SKUs que foram marcados com Assigned (assigned_skus), não todos os 'skus_in_file'
+            # Paridade V11.6: o legado NÃO filtra technical_skus aqui — esse filtro existe apenas no check Searchable.
             for sku in assigned_skus:
-                # Ignoramos SKUs técnicos (geralmente não precisam de navegação/SEO)
-                if technical_skus.get(sku):
-                    continue
                 if sku not in primary_skus:
                     cat_missing_primary.setdefault(sku, []).append(brand_cat)
 
@@ -645,6 +689,8 @@ class AuditorEngine:
         all_skus.update(job_errors.keys())
         for skus in xml_lists.values():
             all_skus.update(skus)
+        for skus in excel_lists.values():
+            all_skus.update(skus)
 
         errors: dict[str, list[dict]] = {k: [] for k in ERROR_META}
         stats = {k: {"total": 0, "natura": 0, "avon": 0} for k in ERROR_META}
@@ -664,6 +710,10 @@ class AuditorEngine:
             job_errors, has_nat, has_avn, errors, bump
         )
 
+        print(f"DEBUG: Excel LISTA_06 SKUs: {len(excel_lists.get('LISTA_06', set()))}")
+        print(f"DEBUG: XML LISTA_06 SKUs: {len(xml_lists.get('LISTA_06', set()))}")
+        print(f"DEBUG: XML LISTA_06.1 SKUs: {len(xml_lists.get('LISTA_06.1', set()))}")
+
         # Converte listas em DataFrames
         error_dfs = {code: pd.DataFrame(rows) if rows else pd.DataFrame()
                      for code, rows in errors.items()}
@@ -673,8 +723,10 @@ class AuditorEngine:
         # gerando os números da UI via 'dynamicStats' agrupados por SKU_ID únicos.
         # Caso um Produto tenha 2 erros de Listas (ex LISTA_1, LISTA_2), ele contava como 1.
         dedup_stats = {k: {"total": 0, "natura": 0, "avon": 0} for k in ERROR_META}
-        
+
         for code, rows in errors.items():
+            if code == "list" and rows:
+                print(f"DEBUG: First 10 list errors: {[r['sku'] for r in rows[:10]]}")
             unique_skus = {}
             for row in rows:
                 sku = row["sku"]
