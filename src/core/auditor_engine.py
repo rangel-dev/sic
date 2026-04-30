@@ -225,17 +225,13 @@ class AuditorEngine:
 
             # Detecta marca do arquivo
             file_brand = self._detect_brand_workbook(wb)
-            print(f"DEBUG: Planilha {Path(path).name} detectada como marca: {file_brand}")
             if file_brand == "Natura": has_nat = True
             if file_brand == "Avon":   has_avn = True
 
             # Grade de Ativação → preços e visibilidade
             grade = self._find_grade_sheet(wb)
             if grade:
-                print(f"DEBUG: Aba de GRADE encontrada em {Path(path).name}")
                 self._parse_grade(grade, file_brand, excel_prices)
-            else:
-                print(f"DEBUG: !!! Aba de GRADE NÃO ENCONTRADA em {Path(path).name}")
 
             # Listas LISTA_XX / lista-XX
             for name in wb.sheetnames:
@@ -441,7 +437,6 @@ class AuditorEngine:
                         prices[sku][pb_brand][price_type] = amt
                     except ValueError:
                         continue
-            print(f"DEBUG: Pricebook {Path(path).name} processado. Pricebooks encontrados: {pb_count}. SKUs com preço: {len(prices)}")
         except Exception as e:
             print(f"Erro ao ler Pricebook {path}: {e}")
 
@@ -586,8 +581,6 @@ class AuditorEngine:
                     if comps:
                         bundles[sku] = comps
 
-            print(f"DEBUG: Catálogo {fname} detectado como marca: {brand_cat}")
-
             # Category-assignments
             asgn_count = 0
             for asgn in root.findall(".//c:category-assignment", ns):
@@ -617,15 +610,11 @@ class AuditorEngine:
                 if (pf is not None and (pf.text or "").lower() == "true") or pf_attr.lower() == "true":
                     primary_skus.add(sku)
 
-            # SKUs sem categoria primária (Audit Rule: todo SKU no catálogo deve ter category-primary)
-            file_primary_errors = 0
+            # SKUs sem categoria primária
+            # Paridade V11.6: o legado NÃO filtra technical_skus aqui — esse filtro existe apenas no check Searchable.
             for sku in assigned_skus:
-                if technical_skus.get(sku):
-                    continue
                 if sku not in primary_skus:
                     cat_missing_primary.setdefault(sku, []).append(brand_cat)
-                    file_primary_errors += 1
-            print(f"DEBUG: {fname} -> Atribuições: {asgn_count}. Erros Primária detectados neste arquivo: {file_primary_errors}")
 
         return (online_status, searchable_status, technical_skus, xml_lists,
                 prohibited_state, cat_missing_primary, bundles, variation_bases,
@@ -739,7 +728,8 @@ class AuditorEngine:
                 continue
             pE = excel_prices.get(sku)
             is_offline = online_status.get(sku) is not True
-            if is_offline and pE is None:
+            is_on_grade = pE is not None
+            if is_offline and not is_on_grade:
                 continue
             if sku in skus_com_erro:
                 continue
