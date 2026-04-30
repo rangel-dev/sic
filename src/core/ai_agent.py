@@ -142,7 +142,7 @@ class AiAgent:
             prompt = self._build_prompt(stats, brands_found, total_excel_skus, "html", theme)
             try:
                 response = self._client.models.generate_content(
-                    model='gemini-1.5-flash',
+                    model='gemini-2.5-flash',
                     contents=prompt,
                 )
                 if response.text:
@@ -161,7 +161,7 @@ class AiAgent:
             prompt = self._build_prompt(stats, brands_found, total_excel_skus, "gchat", "light")
             try:
                 response = self._client.models.generate_content(
-                    model='gemini-1.5-flash',
+                    model='gemini-2.5-flash',
                     contents=prompt,
                 )
                 if response.text:
