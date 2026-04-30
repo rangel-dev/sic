@@ -106,20 +106,22 @@ class AiAgent:
         )
         if fmt == "html":
             prompt += (
-                f"Me responda EXCLUSIVAMENTE com um snippet HTML (sem a tag <html> ou <body>, apenas as <div> e afins).\n"
-                f"O tema escolhido é '{theme}'. Utilize cores e fontes modernas e minimalistas para esse tema (Ex: #e2e8f0 para texto no dark theme).\n"
+                "Me responda EXCLUSIVAMENTE com um snippet HTML (sem a tag <html> ou <body>).\n"
+                "NÃO utilize atributos 'style' para cores, pois o CSS será injetado pela interface.\n"
+                "Utilize tags semânticas estruturadas (<h3>, <h4>, <ul>, <li>, <strong>, <p>).\n"
                 "Estrutura esperada:\n"
-                "1. Resumo executivo (1 parágrafo identificando a quantidade de erros e marcas afetadas).\n"
-                "2. Lista de alertas detalhados agrupados por erro.\n"
-                "3. Uma recomendação final com um alerta em destaque.\n"
+                "1. Resumo executivo (1 parágrafo em <p> identificando erros e marcas).\n"
+                "2. Lista de alertas detalhados (use <h4> para o título do erro e <ul>/<li> para contexto/risco).\n"
+                "3. Uma recomendação final destacada.\n"
             )
         else:
             prompt += (
-                "Me responda EXCLUSIVAMENTE com um texto formatado em Markdown compatível com o Google Chat.\n"
+                "Me responda EXCLUSIVAMENTE com texto contendo tags HTML básicas (<b>, <br>).\n"
+                "NÃO utilize formatação Markdown (como ** ou *), pois o Google Chat Cards não suporta.\n"
                 "Estrutura esperada:\n"
-                "1. Resumo executivo curto (1 parágrafo).\n"
-                "2. Lista de problemas.\n"
-                "3. Recomendação final.\n"
+                "1. Resumo executivo curto.<br>\n"
+                "2. Lista de problemas (use <b> para destacar o erro).<br>\n"
+                "3. Recomendação final.<br>\n"
             )
         return prompt
 
@@ -142,7 +144,7 @@ class AiAgent:
             except Exception as e:
                 print(f"Gemini API erro HTML: {e}")
 
-        # Fallback para heurística caso não haja cliente ou falhe a requisição
+        # Fallback para heurística
         return self._rule_based_html(stats, theme)
 
     def generate_gchat_report(
@@ -156,7 +158,7 @@ class AiAgent:
                     contents=prompt,
                 )
                 if response.text:
-                    return response.text.replace("```markdown", "").replace("```", "").strip()
+                    return response.text.replace("```html", "").replace("```", "").strip()
             except Exception as e:
                 print(f"Gemini API erro GChat: {e}")
 
@@ -164,28 +166,21 @@ class AiAgent:
         return self._rule_based_gchat(stats)
 
     def _rule_based_html(self, stats: dict, theme: str) -> str:
-        """Heurística nativa de fallback para HTML."""
+        """Heurística nativa de fallback genérica (sem cores inline)."""
         by_type = stats.get("by_type", {})
         error_keys = [k for k, v in by_type.items() if v.get("total", 0) > 0]
         total_errors = sum(by_type[k].get("total", 0) for k in error_keys)
 
-        h3_color = "#818cf8" if theme == "dark" else "#4f46e5"
-        h4_color = "#e2e8f0" if theme == "dark" else "#1e293b"
-        strong_color = "#ffffff" if theme == "dark" else "#0f172a"
-        border_color = "rgba(129, 140, 248, 0.3)" if theme == "dark" else "rgba(79, 70, 229, 0.3)"
-        text_color = "#e2e8f0" if theme == "dark" else "#334155"
-
         if total_errors == 0:
-            return f'''<div style="color:{text_color};">
-<h3 style="font-size: 18px; font-weight: 900; color: {h3_color}; margin-bottom: 8px;">✅ Operação Saudável</h3>
-<div style="margin-bottom: 12px;"></div>
-Todas as regras de negócio foram validadas. O catálogo está 100% íntegro para todos os canais.
+            return '''<div>
+<h3>✅ Operação Saudável</h3>
+<p>Todas as regras de negócio foram validadas. O catálogo está 100% íntegro para todos os canais.</p>
 </div>'''
 
         num_categories = len(error_keys)
-        html_out = f'''<div style="color:{text_color}; font-size: 14px; line-height: 1.5;">
-Identificamos <strong style="color:{strong_color}; font-weight:900;">{total_errors} alertas</strong> distribuídos em <strong style="color:{strong_color}; font-weight:900;">{num_categories} categorias</strong>. Confira o detalhamento completo:
-<div style="margin-bottom: 16px;"></div>
+        html_out = f'''<div>
+<p>Identificamos <strong>{total_errors} alertas</strong> distribuídos em <strong>{num_categories} categorias</strong>. Confira o detalhamento completo:</p>
+<hr>
 '''
         priority = ['cross', 'ml', 'margin', 'price', 'missing', 'job', 'bundle', 'offline', 'logic', 'searchable', 'primary']
         def sort_key(k): return priority.index(k) if k in priority else 99
@@ -204,26 +199,25 @@ Identificamos <strong style="color:{strong_color}; font-weight:900;">{total_erro
 
             count = s_data.get("total", 0)
             
-            html_out += f'<h4 style="font-size: 16px; font-weight: bold; color: {h4_color}; margin-top: 16px; margin-bottom: 4px; border-bottom: 1px solid {border_color}; padding-bottom: 4px;">🚩 {meaning["title"]} ({count} SKUs - {b_str})</h4>\n'
-            html_out += f'<strong style="color:{strong_color}; font-weight:900;">Contexto:</strong> {meaning["desc"]}<br>\n'
-            html_out += f'<strong style="color:{strong_color}; font-weight:900;">Risco:</strong> {meaning["impact"]}\n'
-            html_out += '<div style="margin-bottom: 12px;"></div>\n'
+            html_out += f'<h4>🚩 {meaning["title"]} ({count} SKUs - {b_str})</h4>\n'
+            html_out += f'<ul><li><strong>Contexto:</strong> {meaning["desc"]}</li>\n'
+            html_out += f'<li><strong>Risco:</strong> {meaning["impact"]}</li></ul>\n'
 
-        html_out += f'''<span style="margin-right: 4px;">⚠️</span> <strong style="color:{strong_color}; font-weight:900;">Ação Recomendada:</strong> Priorize a correção das inconsistências de 'Alto Risco' antes do próximo push de produção.
+        html_out += '''<hr><p>⚠️ <strong>Ação Recomendada:</strong> Priorize a correção das inconsistências de 'Alto Risco' antes do próximo push de produção.</p>
 </div>'''
         return html_out
 
     def _rule_based_gchat(self, stats: dict) -> str:
-        """Heurística nativa de fallback para Google Chat."""
+        """Heurística nativa de fallback para Google Chat (usando HTML básico)."""
         by_type = stats.get("by_type", {})
         error_keys = [k for k, v in by_type.items() if v.get("total", 0) > 0]
         total_errors = sum(by_type[k].get("total", 0) for k in error_keys)
 
         if total_errors == 0:
-            return "✅ *Operação Saudável*\nTodas as regras de negócio foram validadas. O catálogo está 100% íntegro para todos os canais."
+            return "✅ <b>Operação Saudável</b><br>Todas as regras de negócio foram validadas. O catálogo está 100% íntegro para todos os canais."
 
         num_categories = len(error_keys)
-        out = f"Identificamos *{total_errors} alertas* distribuídos em *{num_categories} categorias*. Confira o detalhamento completo:\n\n"
+        out = f"Identificamos <b>{total_errors} alertas</b> distribuídos em <b>{num_categories} categorias</b>. Confira o detalhamento completo:<br><br>"
 
         priority = ['cross', 'ml', 'margin', 'price', 'missing', 'job', 'bundle', 'offline', 'logic', 'searchable', 'primary']
         def sort_key(k): return priority.index(k) if k in priority else 99
@@ -242,10 +236,10 @@ Identificamos <strong style="color:{strong_color}; font-weight:900;">{total_erro
 
             count = s_data.get("total", 0)
             
-            out += f"🚩 *{meaning['title']}* ({count} SKUs - {b_str})\n"
-            out += f"• *Contexto:* {meaning['desc']}\n"
-            out += f"• *Risco:* {meaning['impact']}\n\n"
+            out += f"🚩 <b>{meaning['title']}</b> ({count} SKUs - {b_str})<br>"
+            out += f"• <b>Contexto:</b> {meaning['desc']}<br>"
+            out += f"• <b>Risco:</b> {meaning['impact']}<br><br>"
 
-        out += "⚠️ *Ação Recomendada:* Priorize a correção das inconsistências de 'Alto Risco' antes do próximo push de produção."
+        out += "⚠️ <b>Ação Recomendada:</b> Priorize a correção das inconsistências de 'Alto Risco' antes do próximo push de produção."
         return out
 

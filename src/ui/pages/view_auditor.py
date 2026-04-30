@@ -531,24 +531,45 @@ class AuditorView(QWidget):
         self._refresh_table()
 
         # AI diagnostic
-        agent = AiAgent()
-        self._settings.sync()
+        if not hasattr(self, "_cached_ai_result_id") or self._cached_ai_result_id != id(result):
+            self._cached_ai_result_id = id(result)
+            agent = AiAgent()
+            self._settings.sync()
+            theme = str(self._settings.value("theme", "light"))
+            self._cached_ai_html = agent.generate_report(
+                result.stats,
+                brands_found=result.brands_found,
+                total_excel_skus=result.total_excel_skus,
+                theme=theme,
+            )
+
+        html = self._cached_ai_html
         theme = str(self._settings.value("theme", "light"))
-        html  = agent.generate_report(
-            result.stats,
-            brands_found=result.brands_found,
-            total_excel_skus=result.total_excel_skus,
-            theme=theme,
-        )
+        
         bg_html = "#fcfdfe" if theme == "light" else "#0e1118"
         fg_html = "#333333" if theme == "light" else "#c0cce0"
+        h3_color = "#4f46e5" if theme == "light" else "#818cf8"
+        h4_color = "#1e293b" if theme == "light" else "#e2e8f0"
+        strong_color = "#0f172a" if theme == "light" else "#ffffff"
+        border_color = "rgba(79, 70, 229, 0.3)" if theme == "light" else "rgba(129, 140, 248, 0.3)"
 
         self._ai_browser.setHtml(f"""
-        <html><body style="background:{bg_html};color:{fg_html};
-                   font-family:'Helvetica Neue', Arial, Helvetica;font-size:12px;
-                   padding:8px;line-height:1.6">
+        <html>
+        <head>
+        <style>
+            body {{ background:{bg_html}; color:{fg_html}; font-family:'Helvetica Neue', Arial, Helvetica; font-size:12px; padding:8px; line-height:1.6; }}
+            h3 {{ color: {h3_color}; font-size: 18px; font-weight: 900; margin-bottom: 8px; margin-top: 0; }}
+            h4 {{ color: {h4_color}; font-size: 16px; font-weight: bold; margin-top: 16px; margin-bottom: 4px; border-bottom: 1px solid {border_color}; padding-bottom: 4px; }}
+            strong {{ color: {strong_color}; font-weight: 900; }}
+            ul {{ margin-top: 4px; margin-bottom: 12px; padding-left: 20px; }}
+            li {{ margin-bottom: 2px; }}
+            hr {{ border: 0; height: 1px; background: {border_color}; margin: 16px 0; }}
+        </style>
+        </head>
+        <body>
         {html}
-        </body></html>""")
+        </body>
+        </html>""")
 
         total = result.stats.get("total", 0)
         color = "#ef5350" if total > 0 else "#66bb6a"
@@ -925,5 +946,30 @@ class AuditorView(QWidget):
 
     def refresh_theme(self):
         """Update UI components that have hardcoded theme colors (like HTML panels)."""
-        if self._result:
-            self._on_finished(self._result)
+        if self._result and hasattr(self, "_cached_ai_html"):
+            theme = str(self._settings.value("theme", "light"))
+            
+            bg_html = "#fcfdfe" if theme == "light" else "#0e1118"
+            fg_html = "#333333" if theme == "light" else "#c0cce0"
+            h3_color = "#4f46e5" if theme == "light" else "#818cf8"
+            h4_color = "#1e293b" if theme == "light" else "#e2e8f0"
+            strong_color = "#0f172a" if theme == "light" else "#ffffff"
+            border_color = "rgba(79, 70, 229, 0.3)" if theme == "light" else "rgba(129, 140, 248, 0.3)"
+
+            self._ai_browser.setHtml(f"""
+            <html>
+            <head>
+            <style>
+                body {{ background:{bg_html}; color:{fg_html}; font-family:'Helvetica Neue', Arial, Helvetica; font-size:12px; padding:8px; line-height:1.6; }}
+                h3 {{ color: {h3_color}; font-size: 18px; font-weight: 900; margin-bottom: 8px; margin-top: 0; }}
+                h4 {{ color: {h4_color}; font-size: 16px; font-weight: bold; margin-top: 16px; margin-bottom: 4px; border-bottom: 1px solid {border_color}; padding-bottom: 4px; }}
+                strong {{ color: {strong_color}; font-weight: 900; }}
+                ul {{ margin-top: 4px; margin-bottom: 12px; padding-left: 20px; }}
+                li {{ margin-bottom: 2px; }}
+                hr {{ border: 0; height: 1px; background: {border_color}; margin: 16px 0; }}
+            </style>
+            </head>
+            <body>
+            {self._cached_ai_html}
+            </body>
+            </html>""")
