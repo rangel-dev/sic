@@ -34,3 +34,5 @@ A Regex foi atualizada para permitir o caractere de ponto (`.`) dentro do grupo 
 1. Processar o arquivo Excel `CL08_2026_VIRADA_.xlsm`.
 2. Validar se o Dashboard agora separa as divergncias da `LISTA_20` das divergncias da `LISTA_20.2`.
 3. Confirmar que o erro "Lista Inexistente" sumiu para os casos onde o ID decimal existe no Salesforce.
+
+Commit
