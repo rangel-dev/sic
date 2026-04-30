@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 import time
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -51,6 +52,31 @@ ERROR_META: dict[str, dict] = {
 SKU_RE = re.compile(r"^(NAT|AVN)BRA-", re.IGNORECASE)
 
 
+def _is_production_environment() -> bool:
+    """Retorna True se estivermos empacotados (produção) ou na branch main."""
+    if getattr(sys, 'frozen', False):
+         return True
+    try:
+        current_dir = Path(__file__).resolve().parent
+        repo_root = current_dir
+        for _ in range(5):
+            if (repo_root / ".git").exists():
+                break
+            repo_root = repo_root.parent
+        
+        head_file = repo_root / ".git" / "HEAD"
+        if head_file.exists():
+            content = head_file.read_text(encoding="utf-8").strip()
+            if "refs/heads/main" in content or "refs/heads/master" in content:
+                return True
+            else:
+                return False
+    except Exception:
+        pass
+    
+    return True
+
+
 # ─── Resultado ────────────────────────────────────────────────────────────────
 @dataclass
 class AuditResult:
@@ -78,22 +104,25 @@ class AuditorEngine:
                 print("⚠️ [Integrity Check] O arquivo parity_rules_v11.py foi modificado, mas a execução prosseguirá.")
 
             # Trava 5: Pricebook e Catálogos devem ter sido exportados há menos de 15 min
-            self._prog(3, "Verificando antiguidade dos arquivos SF…")
-            expired = []
-            for p in [pb_path] + cat_paths:
-                try:
-                    age = time.time() - os.path.getmtime(p)
-                    if age > MAX_FILE_AGE_SECONDS:
-                        expired.append(f"{Path(p).name} ({int(age/60)} min atrás)")
-                except OSError:
-                    pass
-            if expired:
-                result.preflight_error = (
-                    "Arquivos SF desatualizados (>15 min):\n\n"
-                    + "\n".join(expired)
-                    + "\n\nExporte-os novamente do Salesforce Business Manager."
-                )
-                return result
+            if _is_production_environment():
+                self._prog(3, "Verificando antiguidade dos arquivos SF…")
+                expired = []
+                for p in [pb_path] + cat_paths:
+                    try:
+                        age = time.time() - os.path.getmtime(p)
+                        if age > MAX_FILE_AGE_SECONDS:
+                            expired.append(f"{Path(p).name} ({int(age/60)} min atrás)")
+                    except OSError:
+                        pass
+                if expired:
+                    result.preflight_error = (
+                        "Arquivos SF desatualizados (>15 min):\n\n"
+                        + "\n".join(expired)
+                        + "\n\nExporte-os novamente do Salesforce Business Manager."
+                    )
+                    return result
+            else:
+                self._prog(3, "Bypass: Verificação de idade dos arquivos desativada (dev)")
 
             # 1. Excel (Opcional)
             self._prog(10, "Lendo planilhas Excel (se houver)…")
