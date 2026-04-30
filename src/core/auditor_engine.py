@@ -241,7 +241,7 @@ class AuditorEngine:
                 if ws.sheet_state != 'visible':
                     continue
                     
-                m = re.match(r"(?i)lista[-_\s]*0*(\d+)", name)
+                m = re.match(r"(?i)lista[-_\s]*0*([0-9.]+)", name)
                 if m:
                     num = m.group(1).zfill(2)
                     self._parse_lista(ws, file_brand, num, excel_lists)
