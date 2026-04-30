@@ -944,7 +944,7 @@ class AuditorView(QWidget):
                                 {"keyValue": {"topLabel": "Erros Avon",             "content": str(avn_err)}},
                             ]
                         },
-                        {"widgets": [{"textParagraph": {"text": gchat_text[:3000]}}]},
+                        {"widgets": [{"textParagraph": {"text": gchat_text[:4000]}}]},
                     ],
                 }
             ]
