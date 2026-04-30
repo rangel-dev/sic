@@ -29,7 +29,7 @@ MAX_FILE_AGE_SECONDS = 900
 # ─── Categorias proibidas para promoção (Conflito de Margem) ─────────────────
 PROHIBITED_CATEGORIES = {
     "Natura": {"promocao-da-semana", "LISTA_01", "monte-seu-kit", "LISTA_02"},
-    "Avon":   {"desconto-progressivo", "lista-01"},
+    "Avon":   {"promocoes-desconto-progressivo", "lista-01"},
     "ML":     {"promocao-da-semana", "desconto-progressivo", "monte-seu-kit"},
 }
 
@@ -85,6 +85,7 @@ class AuditResult:
     brands_found: list[str] = field(default_factory=list)
     total_excel_skus: int = 0
     acertos: pd.DataFrame = field(default_factory=pd.DataFrame)
+    evidence: pd.DataFrame = field(default_factory=pd.DataFrame)
     error: Optional[str] = None
     preflight_error: Optional[str] = None
     integrity_error: bool = False
@@ -190,8 +191,8 @@ class AuditorEngine:
             job_errors = self._calc_job_errors(category_assignments_map, ml_job_rules)
 
             # 5. Cruzamento analítico
-            self._prog(85, "Cruzamento analítico — aplicando 12 regras…")
-            errors, stats, acertos_df = self._cross_validate(
+            self._prog(85, "Cruzamento analítico e gerando evidências…")
+            errors, stats, acertos_df, evidence_df = self._cross_validate(
                 excel_prices, excel_lists, prices_xml,
                 online_status, searchable_status, technical_skus,
                 xml_lists, prohibited_state, cat_missing_primary,
@@ -201,6 +202,7 @@ class AuditorEngine:
             result.errors   = errors
             result.stats    = stats
             result.acertos  = acertos_df
+            result.evidence = evidence_df
 
             self._prog(100, "Auditoria concluída!")
         except Exception as exc:
@@ -242,9 +244,7 @@ class AuditorEngine:
                 m = re.match(r"(?i)lista[-_\s]*0*(\d+)", name)
                 if m:
                     num = m.group(1).zfill(2)
-                    # Natura → LISTA_XX, Avon → lista-XX
-                    list_key = f"LISTA_{num}" if file_brand == "Natura" else f"lista-{num}"
-                    self._parse_lista(ws, file_brand, list_key, excel_lists)
+                    self._parse_lista(ws, file_brand, num, excel_lists)
 
             wb.close()
 
@@ -287,9 +287,15 @@ class AuditorEngine:
         return "Desconhecida"
 
     def _find_grade_sheet(self, wb):
+        """Busca a aba de grade seguindo a prioridade do legado (auditor.js:31)."""
+        names = [n.upper() for n in wb.sheetnames]
+        if "GRADE DE ATIVAÇÃO" in names:
+            return wb[wb.sheetnames[names.index("GRADE DE ATIVAÇÃO")]]
+        
+        # Fallback para qualquer aba que contenha GRADE e seja visível (melhorado)
         for name in wb.sheetnames:
             n = name.upper()
-            if "GRADE" in n or "ATIVA" in n:
+            if "GRADE DE ATIVAÇÃO" in n or n == "GRADE":
                 if wb[name].sheet_state == 'visible':
                     return wb[name]
         return None
@@ -341,8 +347,9 @@ class AuditorEngine:
             vis = str(vis_raw).strip().upper() if vis_raw else ""
 
             out[sku] = {"DE": de or 0.0, "POR": por or 0.0, "VISIBLE": vis}
+        print(f"DEBUG: Grade {file_brand} -> SKUs carregados: {len(out)}")
 
-    def _parse_lista(self, ws, file_brand: str, list_key: str, out: dict) -> None:
+    def _parse_lista(self, ws, file_brand: str, num: str, out: dict) -> None:
         sku_col = -1
         rows = list(ws.iter_rows(max_row=10000, values_only=True))
         
@@ -358,7 +365,7 @@ class AuditorEngine:
                 break
                 
         if sku_col == -1:
-            sku_col = 1 # Fallback para coluna B (index 1) - equivalente ao 2 no JS
+            sku_col = 2 # Fallback para coluna C (index 2) - igual ao utils.js legado
             
         for row in rows:
             if sku_col < len(row):
@@ -372,6 +379,10 @@ class AuditorEngine:
                     continue
                 if file_brand == "Avon" and val.startswith("NATBRA-"):
                     continue
+                
+                # Determina prefixo por SKU (Paridade com auditor.js:451)
+                prefix = "LISTA_" if val.startswith("NATBRA-") else "lista-"
+                list_key = f"{prefix}{num}"
                 out.setdefault(list_key, set()).add(val)
 
     # ── Parsing Pricebook ─────────────────────────────────────────────────
@@ -388,38 +399,48 @@ class AuditorEngine:
         ns = {"pb": PRICEBOOK_NS}
         prices: dict = {}
 
-        for pb_el in tree.findall(".//pb:pricebook", ns):
-            header = pb_el.find("pb:header", ns)
-            if header is None:
-                continue
-            pb_id = (header.get("pricebook-id") or "").lower()
-
-            # Classificação por substring (igual ao JS)
-            if "cb-br" in pb_id or "cbbrazil" in pb_id or "cbcom" in pb_id:
-                pb_brand = "ML"
-            elif "natura" in pb_id and ("brazil" in pb_id or "-br" in pb_id):
-                pb_brand = "Natura"
-            elif "avon" in pb_id and ("brazil" in pb_id or "-br" in pb_id):
-                pb_brand = "Avon"
-            else:
-                continue
-
-            # Identificação do Price Type = Legacy Rules Mismatch
-            # Legado JS: pbId.includes("lista") || pbId.includes("list") ? "DE" : "POR";
-            price_type = "DE" if "lista" in pb_id or "list" in pb_id else "POR"
-
-            for pt in pb_el.findall(".//pb:price-table", ns):
-                sku = pt.get("product-id", "").upper()
-                amt_el = pt.find("pb:amount[@quantity='1']", ns)
-                if amt_el is None or not amt_el.text:
+        try:
+            tree = etree.parse(path)
+            root = tree.getroot()
+            
+            pb_count = 0
+            # Varre todos os elementos <pricebook> no arquivo (Paridade V11.6)
+            for pb_el in root.findall(".//pb:pricebook", ns):
+                pb_count += 1
+                header = pb_el.find("pb:header", ns)
+                if header is None:
                     continue
-                try:
-                    amt = float(amt_el.text)
-                except ValueError:
+                
+                pb_id = (header.get("pricebook-id") or "").lower()
+                
+                # Identifica a marca do Pricebook (Regra flexível do legado)
+                pb_brand = "Desconhecido"
+                if any(k in pb_id for k in ["cb-br", "cbbrazil", "cbcom", "br-cb"]):
+                    pb_brand = "ML"
+                elif "natura" in pb_id and any(m in pb_id for m in ["brazil", "-br"]):
+                    pb_brand = "Natura"
+                elif "avon" in pb_id and any(m in pb_id for m in ["brazil", "-br"]):
+                    pb_brand = "Avon"
+                
+                if pb_brand == "Desconhecido":
                     continue
-
-                prices.setdefault(sku, {"Natura": {}, "Avon": {}, "ML": {}})
-                prices[sku][pb_brand][price_type] = amt
+                
+                # Tipo: DE (list) ou POR (sale)
+                price_type = "DE" if any(k in pb_id for k in ["lista", "list"]) else "POR"
+                
+                for pt in pb_el.findall(".//pb:price-table", ns):
+                    sku = pt.get("product-id", "").upper()
+                    amt_el = pt.find("pb:amount", ns)
+                    if amt_el is None or not amt_el.text:
+                        continue
+                    try:
+                        amt = float(amt_el.text)
+                        prices.setdefault(sku, {"Natura": {}, "Avon": {}, "ML": {}})
+                        prices[sku][pb_brand][price_type] = amt
+                    except ValueError:
+                        continue
+        except Exception as e:
+            print(f"Erro ao ler Pricebook {path}: {e}")
 
         return prices
 
@@ -457,14 +478,17 @@ class AuditorEngine:
 
             ns   = {"c": CATALOG_NS}
             root = tree.getroot()
+            assigned_skus = set()
+            primary_skus  = set()
             cat_id_str = (root.get("catalog-id") or "").lower()
 
-            # Classificação do catálogo por substring
-            if "cb-br" in cat_id_str or "cbbrazil" in cat_id_str or "cbcom" in cat_id_str:
+            # Classificação do catálogo por substring (Paridade V11.6 - ID + Filename)
+            fname = Path(path).name.lower()
+            if any(k in cat_id_str for k in ["cb-br", "cbbrazil", "cbcom", "br-cb"]) or "cb" in fname:
                 brand_cat = "ML"
-            elif "natura" in cat_id_str:
+            elif "natura" in cat_id_str or "natura" in fname:
                 brand_cat = "Natura"
-            elif "avon" in cat_id_str:
+            elif "avon" in cat_id_str or "avon" in fname:
                 brand_cat = "Avon"
             else:
                 brand_cat = "Desconhecido"
@@ -481,8 +505,6 @@ class AuditorEngine:
                 return None
 
             skus_in_file:  set[str] = set()
-            primary_skus:  set[str] = set()
-            assigned_skus: set[str] = set()
 
             # Regras de Job (Mirroring) - Só no catálogo ML
             if brand_cat == "ML":
@@ -562,7 +584,9 @@ class AuditorEngine:
                         bundles[sku] = comps
 
             # Category-assignments
+            asgn_count = 0
             for asgn in root.findall(".//c:category-assignment", ns):
+                asgn_count += 1
                 sku    = (asgn.get("product-id") or "").upper()
                 cat_id = (asgn.get("category-id") or "")
                 if not sku or not cat_id:
@@ -588,12 +612,9 @@ class AuditorEngine:
                 if (pf is not None and (pf.text or "").lower() == "true") or pf_attr.lower() == "true":
                     primary_skus.add(sku)
 
-            # SKUs sem categoria primária (Audit Rule: todo SKU no catálogo deve ter category-primary)
-            # Requisito do Legado JS: Apenas varre os SKUs que foram marcados com Assigned (assigned_skus), não todos os 'skus_in_file'
+            # SKUs sem categoria primária
+            # Paridade V11.6: o legado NÃO filtra technical_skus aqui — esse filtro existe apenas no check Searchable.
             for sku in assigned_skus:
-                # Ignoramos SKUs técnicos (geralmente não precisam de navegação/SEO)
-                if technical_skus.get(sku):
-                    continue
                 if sku not in primary_skus:
                     cat_missing_primary.setdefault(sku, []).append(brand_cat)
 
@@ -697,6 +718,65 @@ class AuditorEngine:
             },
         }
 
+        # ─── RELATÓRIO MESTRE DE EVIDÊNCIAS (Master Evidence Report) ──────────
+        evidence_rows = []
+        for sku in sorted(all_skus):
+            if not SKU_RE.match(sku): continue
+            
+            brand = "Natura" if sku.upper().startswith("NATBRA-") else "Avon"
+            pE = excel_prices.get(sku)
+            is_offline = online_status.get(sku) is not True
+            is_on_grade = pE is not None
+
+            # Só logamos evidências de produtos que "existem" comercialmente (Grade ou Online)
+            if is_offline and not is_on_grade: continue
+
+            # 1. Preços (Double-Blind)
+            px_all = prices_xml.get(sku, {})
+            px_brand = px_all.get(brand, {})
+            
+            pE_de  = (pE.get("de") or 0.0) if pE else 0.0
+            pE_por = (pE.get("por") or 0.0) if pE else 0.0
+            px_de  = px_brand.get("DE", 0.0)
+            px_por = px_brand.get("POR", 0.0)
+
+            # Atributo: Preço DE
+            evidence_rows.append({
+                "SKU": sku, "MARCA": brand, "FONTE": "Pricebook XML", "ATRIBUTO": "Preço DE",
+                "VALOR_EXCEL": f"R$ {pE_de:.2f}", "VALOR_SALESFORCE": f"R$ {px_de:.2f}",
+                "STATUS": "✅ OK" if abs(pE_de - px_de) <= 0.01 else "❌ ERRO"
+            })
+            # Atributo: Preço POR
+            evidence_rows.append({
+                "SKU": sku, "MARCA": brand, "FONTE": "Pricebook XML", "ATRIBUTO": "Preço POR",
+                "VALOR_EXCEL": f"R$ {pE_por:.2f}", "VALOR_SALESFORCE": f"R$ {px_por:.2f}",
+                "STATUS": "✅ OK" if abs(pE_por - px_por) <= 0.01 else "❌ ERRO"
+            })
+
+            # 2. Visibilidade (Searchable)
+            vE = (pE.get("visible") or "FALSE") if pE else "FALSE"
+            vX = searchable_status.get(sku, False)
+            vX_str = "TRUE" if vX else "FALSE"
+            
+            evidence_rows.append({
+                "SKU": sku, "MARCA": brand, "FONTE": "Catálogo XML", "ATRIBUTO": "Searchable",
+                "VALOR_EXCEL": vE, "VALOR_SALESFORCE": vX_str,
+                "STATUS": "✅ OK" if vE == vX_str else "❌ ERRO"
+            })
+
+            # 3. Listas (Categorização)
+            # Para cada lista no Excel onde o SKU aparece, verificamos se o XML reflete isso
+            for list_id, skus_in_list in excel_lists.items():
+                if sku in skus_in_list:
+                    in_xml = sku in xml_lists.get(list_id, set())
+                    evidence_rows.append({
+                        "SKU": sku, "MARCA": brand, "FONTE": "Catálogo XML", "ATRIBUTO": f"Lista ({list_id})",
+                        "VALOR_EXCEL": "Presente", "VALOR_SALESFORCE": "Presente" if in_xml else "Ausente",
+                        "STATUS": "✅ OK" if in_xml else "❌ ERRO"
+                    })
+
+        evidence_df = pd.DataFrame(evidence_rows) if evidence_rows else pd.DataFrame(columns=["SKU", "MARCA", "FONTE", "ATRIBUTO", "VALOR_EXCEL", "VALOR_SALESFORCE", "STATUS"])
+
         # ─── ACERTOS: SKUs que passaram em todas as verificações ──────────────
         skus_com_erro: set[str] = set()
         for rows in errors.values():
@@ -705,14 +785,13 @@ class AuditorEngine:
 
         acertos_rows = []
         for sku in sorted(all_skus):
-            if not SKU_RE.match(sku):
-                continue
+            if not SKU_RE.match(sku): continue
             pE = excel_prices.get(sku)
             is_offline = online_status.get(sku) is not True
-            if is_offline and pE is None:
-                continue
-            if sku in skus_com_erro:
-                continue
+            is_on_grade = pE is not None
+            if is_offline and not is_on_grade: continue
+            if sku in skus_com_erro: continue
+
             brand = "Natura" if sku.upper().startswith("NATBRA-") else "Avon"
             px = (prices_xml.get(sku) or {}).get(brand, {})
             acertos_rows.append({
@@ -724,13 +803,9 @@ class AuditorEngine:
                 "searchable": searchable_status.get(sku, False),
             })
 
-        acertos_df = (
-            pd.DataFrame(acertos_rows)
-            if acertos_rows
-            else pd.DataFrame(columns=["sku", "brand", "de_sf", "por_sf", "online", "searchable"])
-        )
+        acertos_df = pd.DataFrame(acertos_rows) if acertos_rows else pd.DataFrame(columns=["sku", "brand", "de_sf", "por_sf", "online", "searchable"])
 
-        return error_dfs, total_stats, acertos_df
+        return error_dfs, total_stats, acertos_df, evidence_df
 
     # ── Helper ────────────────────────────────────────────────────────────
     @staticmethod

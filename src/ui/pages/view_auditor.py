@@ -42,6 +42,7 @@ from src.core.brand_detector import BrandDetector
 from src.ui.components.base_widgets import Divider, DropZone, ErrorCard, SectionHeader
 from src.workers.worker_auditor import AuditorWorker
 from src.core.history_engine import HistoryEngine
+from src.core.utils import get_unique_path
 
 
 MAX_TABLE_ROWS = 500
@@ -180,11 +181,19 @@ class AuditorView(QWidget):
 
         action_row.addStretch()
 
-        self._btn_export = QPushButton("⬇  Exportar Excel")
+        self._btn_export = QPushButton("⬇  Relatório")
         self._btn_export.setObjectName("btn_secondary")
         self._btn_export.clicked.connect(self._export_excel)
         self._btn_export.setEnabled(False)
+        self._btn_export.setToolTip("Exportar apenas divergências detectadas")
         action_row.addWidget(self._btn_export)
+
+        self._btn_export_full = QPushButton("📊  Evidências (Full)")
+        self._btn_export_full.setObjectName("btn_secondary")
+        self._btn_export_full.clicked.connect(self._export_evidence)
+        self._btn_export_full.setEnabled(False)
+        self._btn_export_full.setToolTip("Exportar relatório completo de evidências (OK + ERRO)")
+        action_row.addWidget(self._btn_export_full)
 
         self._btn_webhook = QPushButton("⊕  Enviar ao Google Chat")
         self._btn_webhook.setObjectName("btn_ghost")
@@ -522,6 +531,7 @@ class AuditorView(QWidget):
         self._status_lbl.hide()
         self._btn_run.setEnabled(True)
         self._btn_export.setEnabled(True)
+        self._btn_export_full.setEnabled(True)
         self._btn_webhook.setEnabled(True)
 
         self._refresh_cards()
@@ -749,6 +759,7 @@ class AuditorView(QWidget):
         )
         if not path:
             return
+        path = get_unique_path(path)
         try:
             with pd.ExcelWriter(path, engine="openpyxl") as writer:
                 # Filter codes to export: active selections OR all non-empty ones
@@ -906,6 +917,7 @@ class AuditorView(QWidget):
         self._progress_bar.hide()
         self._status_lbl.hide()
         self._btn_export.setEnabled(False)
+        self._btn_export_full.setEnabled(False)
         self._btn_webhook.setEnabled(False)
         self._result = None
         self._active_filters.clear()
@@ -922,6 +934,25 @@ class AuditorView(QWidget):
         self._table_title.setText("Selecione um ou mais tipos de erro")
         self._table_count_lbl.setText("")
         self._btn_run.setEnabled(True)
+
+    def _export_evidence(self):
+        if not self._result or self._result.evidence.empty:
+            QMessageBox.information(self, "Evidências", "Nenhuma evidência disponível.")
+            return
+        
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar Evidências (Master Report)", "MASTER_AUDIT_REPORT.xlsx", "Excel (*.xlsx)"
+        )
+        if not path:
+            return
+        
+        path = get_unique_path(path)
+        try:
+            with pd.ExcelWriter(path, engine="openpyxl") as writer:
+                self._result.evidence.to_excel(writer, sheet_name="EVIDENCIAS_AUDITORIA", index=False)
+            QMessageBox.information(self, "Exportado", f"Relatório de Evidências salvo em:\n{path}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Erro ao Exportar", str(exc))
 
     def refresh_theme(self):
         """Update UI components that have hardcoded theme colors (like HTML panels)."""
