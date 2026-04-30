@@ -919,7 +919,8 @@ class AuditorView(QWidget):
         edited_text = self._ai_browser.toPlainText()
         
         # Converte as quebras de linha para o formato aceito pelo Google Chat Cards
-        gchat_text = edited_text.replace('\n', '<br>')
+        # Usamos <br><br> para que o texto não fique "esmagado" no Chat
+        gchat_text = edited_text.replace('\r\n', '\n').replace('\r', '\n').replace('\n', '<br><br>')
 
         payload_template = {
             "cards": [

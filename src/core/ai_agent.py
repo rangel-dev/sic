@@ -122,9 +122,10 @@ class AiAgent:
                 "Me responda EXCLUSIVAMENTE com texto contendo tags HTML básicas (<b>, <br>).\n"
                 "NÃO utilize formatação Markdown (como ** ou *), pois o Google Chat Cards não suporta.\n"
                 "Utilize EMOJIS e ÍCONES (✅, ⚠️, 🚩, 📊, 💡, 🚨) para deixar o texto visual.\n"
+                "⚠️ IMPORTANTE: Use DUAS tags <br><br> para separar parágrafos e seções, senão o texto fica muito apertado no Chat.\n"
                 "Estrutura esperada:\n"
-                "1. Resumo executivo curto.<br>\n"
-                "2. Lista de problemas (use <b> para destacar o erro).<br>\n"
+                "1. Resumo executivo curto.<br><br>\n"
+                "2. Lista de problemas (use <b> para destacar o erro e <br><br> entre os itens).<br><br>\n"
                 "3. Recomendação final.<br>\n"
             )
         return prompt
@@ -218,16 +219,16 @@ class AiAgent:
         return html_out
 
     def _rule_based_gchat(self, stats: dict) -> str:
-        """Heurística nativa de fallback para Google Chat (usando HTML básico)."""
+        """Heurística nativa de fallback para Google Chat (usando HTML básico e espaçamento duplo)."""
         by_type = stats.get("by_type", {})
         error_keys = [k for k, v in by_type.items() if v.get("total", 0) > 0]
         total_errors = sum(by_type[k].get("total", 0) for k in error_keys)
 
         if total_errors == 0:
-            return "✅ <b>Operação Saudável</b><br>Todas as regras de negócio foram validadas. O catálogo está 100% íntegro para todos os canais."
+            return "✅ <b>Operação Saudável</b><br><br>Todas as regras de negócio foram validadas. O catálogo está 100% íntegro para todos os canais."
 
         num_categories = len(error_keys)
-        out = f"Identificamos <b>{total_errors} alertas</b> distribuídos em <b>{num_categories} categorias</b>. Confira o detalhamento completo:<br><br>"
+        out = f"📊 <b>Relatório de Auditoria</b><br>Identificamos <b>{total_errors} alertas</b> distribuídos em <b>{num_categories} categorias</b>. Confira o detalhamento completo:<br><br>"
 
         priority = ['cross', 'ml', 'margin', 'price', 'missing', 'job', 'bundle', 'offline', 'logic', 'searchable', 'primary']
         def sort_key(k): return priority.index(k) if k in priority else 99
