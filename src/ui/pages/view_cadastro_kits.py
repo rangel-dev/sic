@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from src.core.cadastro_engine import KitValidationResult
 from src.core.history_engine import HistoryEngine
+from src.core.utils import get_unique_path
 from src.ui.components.base_widgets import Divider, DropZone, SectionHeader
 from src.workers.worker_cadastro import CadastroWorker
 
@@ -328,6 +329,7 @@ class CadastroKitsView(QWidget):
         )
         if not path:
             return
+        path = get_unique_path(path)
         try:
             df = pd.DataFrame(self._result.errors)
             with pd.ExcelWriter(path, engine="openpyxl") as writer:
