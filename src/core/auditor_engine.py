@@ -56,25 +56,7 @@ def _is_production_environment() -> bool:
     """Retorna True se estivermos empacotados (produção) ou na branch main."""
     if getattr(sys, 'frozen', False):
          return True
-    try:
-        current_dir = Path(__file__).resolve().parent
-        repo_root = current_dir
-        for _ in range(5):
-            if (repo_root / ".git").exists():
-                break
-            repo_root = repo_root.parent
-        
-        head_file = repo_root / ".git" / "HEAD"
-        if head_file.exists():
-            content = head_file.read_text(encoding="utf-8").strip()
-            if "refs/heads/main" in content or "refs/heads/master" in content:
-                return True
-            else:
-                return False
-    except Exception:
-        pass
-    
-    return True
+    return False
 
 
 # ─── Resultado ────────────────────────────────────────────────────────────────
@@ -243,7 +225,11 @@ class AuditorEngine:
                     
                 m = re.match(r"(?i)lista[-_\s]*0*([0-9.]+)", name)
                 if m:
-                    num = m.group(1).zfill(2)
+                    # Smart Padding: Normaliza a parte principal mantendo a sub-lista
+                    raw_id = m.group(1)
+                    parts = raw_id.split('.')
+                    parts[0] = parts[0].zfill(2)
+                    num = ".".join(parts)
                     self._parse_lista(ws, file_brand, num, excel_lists)
 
             wb.close()
