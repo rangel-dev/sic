@@ -148,8 +148,13 @@ class AiAgent:
             except Exception as e:
                 print(f"Gemini API erro HTML: {e}")
 
-        # Fallback para heurística
-        return self._rule_based_html(stats, theme)
+        # Fallback para heurística com aviso ao usuário
+        notice = (
+            "<div style='margin-top: 12px; padding-top: 8px; border-top: 1px dashed #ccc; font-size: 11px; color: #888;'>"
+            "<i>⚠️ O Gemini está temporariamente indisponível (alta demanda). Exibindo diagnóstico baseado em regras locais.</i>"
+            "</div>"
+        )
+        return self._rule_based_html(stats, theme) + notice
 
     def generate_gchat_report(
         self, stats: dict, brands_found: Optional[list[str]] = None, total_excel_skus: int = 0
@@ -166,8 +171,9 @@ class AiAgent:
             except Exception as e:
                 print(f"Gemini API erro GChat: {e}")
 
-        # Fallback
-        return self._rule_based_gchat(stats)
+        # Fallback com aviso
+        notice = "<br><br>⚠️ <i>Nota: Gemini indisponível no momento. Relatório gerado via motor de regras local.</i>"
+        return self._rule_based_gchat(stats) + notice
 
     def _rule_based_html(self, stats: dict, theme: str) -> str:
         """Heurística nativa de fallback genérica (sem cores inline)."""
