@@ -1,47 +1,45 @@
-# Melhoria no Módulo Auditor: Relatório de Evidências de Auditoria (Master Report)
+# Mdulo Auditor: Certificado de Conformidade e Evidncias (Master Audit)
 
-## 1. Contexto
-Para fins de governança e conformidade com auditorias internas e externas, o Módulo Auditor deve evoluir de um sistema focado apenas na detecção de erros para um sistema que fornece **evidências de conformidade**. Atualmente, o relatório de exportação foca apenas em divergências, omitindo os dados comparativos dos itens que foram validados com sucesso.
+## 1. Objetivo
+Transformar o processo de auditoria em um sistema de certificao de alta governana. O objetivo  assegurar que 100% da Grade de Ativao esteja ntegra antes da execuo de cargas, fornecendo uma trilha de auditoria (audit trail) profissional e irrefutvel.
 
-## 2. Objetivo
-Implementar um "Arquivão de Auditoria" (Master Success Report) que consolide todos os dados validados, comparando lado a lado as informações extraídas da **Grade de Ativação (Excel)** e do **Salesforce (XML)**, mesmo quando os valores estão corretos.
+## 2. Fluxo de Operao e Segurana (Safety Gate)
+- **Trava de Emisso:** Os documentos de conformidade (PDF e Excel) so bloqueados por padro. Sua emisso  habilitada **exclusivamente** quando o motor de auditoria retorna um status de **ZERO DIVERGNCIAS** nos pilares crticos.
+- **Protocolo de Falha:** Caso existam erros, o sistema exibe uma interface de alerta impeditiva, orientando o analista a realizar os ajustes necessrios antes de tentar uma nova certificao.
 
-## 3. Requisitos do Relatório
+## 3. Design e Identidade Visual (Padro Executivo)
 
-O novo relatório deve conter uma aba mestre denominada `EVIDENCIAS_AUDITORIA` com a seguinte estrutura de colunas:
+O Certificado em PDF deve seguir rigorosos padres de design corporativo:
+- **Tipografia:** Uso de fontes *Sans-Serif* modernas (Inter, Roboto ou Montserrat) para mxima legibilidade.
+- **Paleta de Cores:** Azul Marinho (Autoridade), Cinza Grafite (Sobriedade) e Verde Esmeralda (Sucesso/Aprovao).
+- **Elementos de Segurana:** Incluso de carimbo digital de "CONFORMIDADE GARANTIDA" e Protocolo nico de Auditoria (Hash ID).
 
-| Coluna | Descrição |
-| :--- | :--- |
-| **SKU** | Identificador único do produto (NATBRA- / AVNBRA-) |
-| **MARCA** | Natura ou Avon |
-| **FONTE** | Origem do dado (Pricebook XML ou Catálogo XML) |
-| **ATRIBUTO** | Nome do campo validado (Preço DE, Preço POR, Searchable, etc.) |
-| **VALOR_EXCEL** | Valor extraído da Grade de Ativação |
-| **VALOR_SALESFORCE** | Valor extraído do XML do Salesforce |
-| **STATUS** | Indicação visual de conformidade (ex: ✅ OK) |
+## 4. Estrutura do Sumrio Executivo (PDF)
 
-## 4. Escopo da Validação (Comparativo Lado a Lado)
+O documento deve ser organizado nas seguintes sees:
 
-Devem ser incluídos no relatório todos os atributos cruzados durante a auditoria:
+### 4.1 Cabealho de Governança
+- Identificao da Marca (Natura/Avon).
+- Data e Hora da Extrao (Timestamp).
+- Verso do Motor de Auditoria.
+- Arquivos Fontes (Nomes dos arquivos Excel e XML processados).
 
-1.  **Preços (Double-Blind):**
-    *   Preço **DE**: Valor na coluna "DE" do Excel vs Valor no Pricebook "Lista" do SF.
-    *   Preço **POR**: Valor na coluna "POR" do Excel vs Valor no Pricebook "Promocional" do SF.
-2.  **Visibilidade:**
-    *   **Searchable Flag**: Coluna "VISIBLE" (SIM/NÃO) do Excel vs atributo `searchable-flag` (true/false) do SF.
-3.  **Categorização e Listas:**
-    *   Presença em abas de lista (ex: LISTA_01) vs Atribuição em categorias equivalentes no XML.
+### 4.2 Indicadores de Conformidade
+| Indicador | Descrio Tcnica | Status |
+| :--- | :--- | :---: |
+| **Volumetria Total** | Total de SKUs processados na Grade de Ativao. | [QTD] |
+| **Audit de Preos** | 100% de paridade entre Excel (DE/POR) e Salesforce. |  OK |
+| **Audit de Visibilidade** | 100% de paridade na flag `searchable` (Searchable/Visible). |  OK |
+| **Integridade de Catlogo** | Validao de presena e categorizao primria. |  OK |
 
-## 5. Especificações Técnicas Sugeridas
+## 5. Relatrio de Evidncias Detalhado (Excel)
 
-### 5.1 Motor de Auditoria (`AuditorEngine`)
-- Criar uma nova estrutura de dados `success_log` no objeto `AuditResult`.
-- Alterar o motor para que, ao realizar um check bem-sucedido, os valores comparados sejam registrados nesta lista.
+Complementando o PDF, o sistema gera um arquivo Excel tcnico para conferncia linha a linha:
+- **Aba:** `EVIDENCIAS_MASTER`
+- **Contedo:** Tabela completa contendo `SKU`, `ATRIBUTO`, `VALOR_EXCEL`, `VALOR_SF` e o timestamp da validao.
 
-### 5.2 Interface do Usuário (UI)
-- Adicionar um checkbox ou botão secundário na tela de resultados: **"Gerar Arquivo de Evidências (Full)"**.
-- Devido ao volume de dados (pode gerar milhares de linhas), a exportação deste relatório completo deve ser sob demanda para não impactar a performance do uso diário.
-
-## 6. Valor para o Negócio
-- **Transparência Total:** Prova documental de que 100% da base foi conferida.
-- **Rastreabilidade:** Histórico de auditoria pronto para ser apresentado a auditores, garantindo a integridade financeira das campanhas.
+## 6. Valor para Auditoria (Compliance)
+Este novo formato foi desenhado para atender aos requisitos de auditorias externas, garantindo:
+1.  **Imutabilidade:** O PDF serve como um "Snapshot" do momento da validao.
+2.  **Transparncia:** Exposio clara de todos os critrios de sucesso.
+3.  **Rastreabilidade:** Registro histrico de quem e quando validou cada lote de ativao.

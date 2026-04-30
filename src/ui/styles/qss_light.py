@@ -620,4 +620,36 @@ QStatusBar {
 #nexus_greeting {
     color: #1a1a1a;
 }
+
+/* ============================================================
+   CERTIFICADO MESTRE — Botão e Label de Status
+   ============================================================ */
+QPushButton#btn_cert:enabled {
+    background-color: #059669;
+    color: #ffffff;
+    border: 1px solid #047857;
+    border-radius: 4px;
+    font-weight: 700;
+    padding: 4px 12px;
+}
+QPushButton#btn_cert:enabled:hover {
+    background-color: #047857;
+}
+QPushButton#btn_cert:disabled {
+    background-color: #d1d5db;
+    color: #9ca3af;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 4px 12px;
+}
+QLabel#cert_status_ready {
+    color: #059669;
+    font-size: 11px;
+    font-weight: 700;
+}
+QLabel#cert_status_waiting {
+    color: #d97706;
+    font-size: 11px;
+    font-style: italic;
+}
 """
