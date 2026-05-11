@@ -152,7 +152,12 @@ Identificamos <strong style="color:{strong_color}; font-weight:900;">{total_erro
         total_errors = sum(by_type[k].get("total", 0) for k in error_keys)
 
         if total_errors == 0:
-            return "✅ *Operação Saudável*\nTodas as regras de negócio foram validadas. O catálogo está 100% íntegro para todos os canais."
+            brands_str = f" ({', '.join(brands_found)})" if brands_found else ""
+            return (
+                f"✅ *Operação Saudável*{brands_str}\n"
+                f"Todas as regras de negócio foram validadas com sucesso. "
+                f"O catálogo está 100% íntegro para os canais auditados."
+            )
 
         num_categories = len(error_keys)
         out = f"Identificamos *{total_errors} alertas* distribuídos em *{num_categories} categorias*. Confira o detalhamento completo:\n\n"

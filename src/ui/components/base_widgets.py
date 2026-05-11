@@ -249,7 +249,7 @@ class DropZone(QFrame):
         self._file_label.setText(f"{status_icon}  {display}")
         self._file_label.setWordWrap(True)
         self._file_label.show()
-        if self._multiple:
+        if self._files:
             self._btn_clear.show()
 
         self.setProperty("state", "filled")
