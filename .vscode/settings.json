@@ -1,5 +1,5 @@
 {
-    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    "python.defaultInterpreterPath": "C:\\Users\\na101319\\Documents\\Python\\Portable Python-3.10.5 x64\\App\\Python\\python.exe",
     "python.analysis.extraPaths": [
         "${workspaceFolder}",
         "${workspaceFolder}/src"

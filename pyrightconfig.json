@@ -1,7 +1,5 @@
 {
-    "venvPath": ".",
-    "venv": ".venv",
-    "pythonPath": ".venv/bin/python",
+    "pythonPath": "C:/Users/na101319/Documents/Python/Portable Python-3.10.5 x64/App/Python/python.exe",
     "include": [
         "."
     ],
@@ -9,7 +7,7 @@
         "."
     ],
     "typeCheckingMode": "basic",
-    "pythonVersion": "3.13",
+    "pythonVersion": "3.10",
     "analysis": {
         "autoSearchPaths": true,
         "useLibraryCodeForTypes": true,

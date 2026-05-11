@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog xmlns="http://www.demandware.com/xml/impex/catalog/2006-10-31" catalog-id="avon-br">
+    <product product-id="AVNBRA-EXP4"><online-flag>true</online-flag></product>
+    <category-assignment product-id="AVNBRA-EXP4" category-id="lista-01"><primary-flag>true</primary-flag></category-assignment>
+</catalog>

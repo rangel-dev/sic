@@ -26,4 +26,16 @@
             <price-table product-id="NATBRA-EXP3"><amount quantity="1">50.00</amount></price-table>
         </price-tables>
     </pricebook>
+    <pricebook>
+        <header pricebook-id="br-avon-brazil-list-prices"/>
+        <price-tables>
+            <price-table product-id="AVNBRA-EXP4"><amount quantity="1">100.00</amount></price-table>
+        </price-tables>
+    </pricebook>
+    <pricebook>
+        <header pricebook-id="br-avon-brazil-sale-prices"/>
+        <price-tables>
+            <price-table product-id="AVNBRA-EXP4"><amount quantity="1">50.00</amount></price-table>
+        </price-tables>
+    </pricebook>
 </pricebooks>

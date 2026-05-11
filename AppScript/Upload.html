@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Categorization Rules Auditor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #FF8050;
+            --primary-dark: #E66A3D;
+            --bg: #0F172A;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text: #F8FAFC;
+            --text-muted: #94A3B8;
+            --success: #10B981;
+            --danger: #EF4444;
+            --border: rgba(51, 65, 85, 0.5);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: var(--text); padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 30px; }
+        h1 { font-family: 'Outfit'; font-size: 2rem; color: var(--primary); }
+        .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 20px; padding: 30px; margin-bottom: 20px; }
+        .upload-zone { border: 2px dashed var(--border); border-radius: 15px; padding: 40px; text-align: center; cursor: pointer; transition: 0.3s; }
+        .upload-zone:hover { border-color: var(--primary); background: rgba(255, 128, 80, 0.05); }
+        .btn { padding: 12px 24px; border-radius: 10px; font-weight: 700; cursor: pointer; border: none; font-family: 'Outfit'; transition: 0.2s; }
+        .btn-scope { background: rgba(255,255,255,0.05); color: var(--text-muted); font-size: 11px; margin-bottom: 5px; }
+        .btn-scope.active { background: var(--primary); color: white; border-color: var(--primary); }
+        #logWindow { background: rgba(0,0,0,0.3); border-radius: 10px; padding: 15px; font-family: monospace; font-size: 11px; color: #94A3B8; height: 120px; overflow-y: auto; margin-top: 15px; border: 1px solid var(--border); }
+        .progress-bar { height: 6px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; margin: 15px 0; }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+        th { text-align: left; padding: 10px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+        td { padding: 10px; border-bottom: 1px solid var(--border); }
+        .pill { padding: 3px 7px; border-radius: 50px; font-size: 9px; font-weight: 700; background: rgba(255,255,255,0.1); color: var(--text-muted); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Categorization Rules Auditor</h1>
+        <p style="color: var(--text-muted);">V2.0.0 | GOLD EDITION</p>
+    </header>
+
+    <div class="card">
+        <div id="step1">
+            <h3 style="margin-bottom: 10px;">1. Escopo e Dual-Sync</h3>
+            <div id="loadStatus" style="font-size: 12px; margin-bottom: 15px; color: var(--success);">⏳ Carregando Natura + Avon...</div>
+            
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                <button class="btn btn-scope active" onclick="setScope('NATURA', this)">Natura</button>
+                <button class="btn btn-scope" onclick="setScope('AVON', this)">Avon</button>
+                <button class="btn btn-scope" onclick="setScope('ML', this)">Minha Loja</button>
+                <button class="btn btn-scope" onclick="setScope('NATURA_ML', this)">Natura + ML</button>
+                <button class="btn btn-scope" onclick="setScope('AVON_ML', this)">Avon + ML</button>
+                <button class="btn btn-scope" onclick="setScope('ALL', this)">Tudo</button>
+            </div>
+        </div>
+
+        <div id="step2" style="margin-top: 25px; opacity: 0.5; pointer-events: none;">
+            <h3 style="margin-bottom: 15px;">2. Upload de XMLs</h3>
+            <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
+                <p>Arraste os XMLs aqui</p>
+                <input type="file" id="fileInput" accept=".xml" multiple style="display: none" onchange="handleFiles(this.files)">
+            </div>
+            <div id="loadedCatalogs" style="display: flex; gap: 8px; margin-top: 15px; flex-wrap: wrap;"></div>
+        </div>
+
+        <div id="statusArea" style="display: none; margin-top: 20px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px;">
+                <span id="statusText">Aguardando...</span>
+                <span id="percentText">0%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+            <div id="logWindow"></div>
+        </div>
+    </div>
+
+    <div id="resultsArea" style="display: none;" class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3>Divergências Encontradas</h3>
+            <button class="btn" style="background: var(--success); color: white; font-size: 12px;" onclick="sendToSheet()">🚀 Gerar Relatório</button>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Catálogo / ID</th>
+                    <th>Origem (Mãe)</th>
+                    <th>Diferença</th>
+                </tr>
+            </thead>
+            <tbody id="resultsTable"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    let targetIds = { natura: new Set(), avon: new Set() };
+    let currentScope = 'NATURA';
+    let catalogs = {}; 
+    let auditData = [];
+
+    const BRAND_MAP = {
+        'natura-br-storefront-catalog': 'Natura',
+        'avon-br-storefront-catalog': 'Avon',
+        'cb-br-storefront-catalog': 'Minha Loja'
+    };
+
+    window.onload = function() { autoLoadIds(); };
+
+    function autoLoadIds() {
+        google.script.run
+            .withSuccessHandler((result) => {
+                targetIds.natura = new Set(result.natura);
+                targetIds.avon = new Set(result.avon);
+                const total = targetIds.natura.size + targetIds.avon.size;
+                document.getElementById('loadStatus').innerHTML = `✅ ${result.name} | Natura (${targetIds.natura.size}) Avon (${targetIds.avon.size})`;
+                document.getElementById('step2').style.opacity = '1';
+                document.getElementById('step2').style.pointerEvents = 'all';
+                addLog(`Sincronizado: ${total} IDs carregados das duas planilhas.`, '#10b981');
+            })
+            .withFailureHandler(err => addLog("Erro no Dual-Sync: " + err, "#ef4444"))
+            .getIdsFromSheet();
+    }
+
+    function setScope(scope, btn) {
+        currentScope = scope;
+        document.querySelectorAll('.btn-scope').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (Object.keys(catalogs).length > 0) processFullAudit();
+    }
+
+    function addLog(msg, color = 'inherit') {
+        const win = document.getElementById('logWindow');
+        const now = new Date().toLocaleTimeString();
+        win.innerHTML += `<div style="color: ${color}">[${now}] ${msg}</div>`;
+        win.scrollTop = win.scrollHeight;
+    }
+
+    function updateProgress(p, text) {
+        document.getElementById('progressFill').style.width = p + '%';
+        document.getElementById('percentText').innerText = p + '%';
+        document.getElementById('statusText').innerText = text;
+    }
+
+    async function handleFiles(files) {
+        if (!files.length) return;
+        document.getElementById('statusArea').style.display = 'block';
+        catalogs = {};
+        document.getElementById('loadedCatalogs').innerHTML = '';
+        for (let i = 0; i < files.length; i++) {
+            await readFile(files[i]);
+        }
+        processFullAudit();
+    }
+
+    function readFile(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(e.target.result, "text/xml");
+                const catalogId = xmlDoc.documentElement.getAttribute('catalog-id') || 'unknown';
+                const skusMap = new Map();
+                xmlDoc.querySelectorAll('category-assignment').forEach(a => {
+                    const cId = a.getAttribute('category-id');
+                    const pId = a.getAttribute('product-id');
+                    if (!skusMap.has(cId)) skusMap.set(cId, new Set());
+                    skusMap.get(cId).add(pId.toUpperCase());
+                });
+                catalogs[catalogId] = { elements: Array.from(xmlDoc.querySelectorAll('category')), skus: skusMap };
+                const brand = BRAND_MAP[catalogId] || catalogId;
+                addLog(`Catálogo [${brand}] carregado.`, '#10b981');
+                const badge = document.createElement('span');
+                badge.className = 'pill';
+                badge.innerText = `📦 ${brand}`;
+                document.getElementById('loadedCatalogs').appendChild(badge);
+                resolve();
+            };
+            reader.readAsText(file);
+        });
+    }
+
+    function processFullAudit() {
+        updateProgress(50, "Cruzando dados...");
+        auditData = [];
+        const techNatura = 'natura-br-storefront-catalog';
+        const techAvon = 'avon-br-storefront-catalog';
+        const techML = 'cb-br-storefront-catalog';
+
+        Object.keys(catalogs).forEach(catId => {
+            let skip = false;
+            if (currentScope === 'NATURA' && catId !== techNatura) skip = true;
+            if (currentScope === 'AVON' && catId !== techAvon) skip = true;
+            if (currentScope === 'ML' && catId !== techML) skip = true;
+            if (currentScope === 'NATURA_ML' && catId !== techNatura && catId !== techML) skip = true;
+            if (currentScope === 'AVON_ML' && catId !== techAvon && catId !== techML) skip = true;
+            if (skip) return;
+
+            catalogs[catId].elements.forEach(cat => {
+                const childId = cat.getAttribute('category-id');
+                const isNatura = catId === techNatura;
+                const isAvon = catId === techAvon;
+                const isML = catId === techML;
+
+                // Isolamento de ID por Marca
+                let isTarget = false;
+                if (isNatura) isTarget = targetIds.natura.has(childId);
+                else if (isAvon) isTarget = targetIds.avon.has(childId);
+                else if (isML) {
+                    if (currentScope.includes('NATURA')) isTarget = targetIds.natura.has(childId);
+                    else if (currentScope.includes('AVON')) isTarget = targetIds.avon.has(childId);
+                    else isTarget = targetIds.natura.has(childId) || targetIds.avon.has(childId);
+                }
+                if (!isTarget) return;
+
+                const motherRefs = [];
+                cat.querySelectorAll('categorization-rule categorization-condition[attribute-id="CategoryId"]').forEach(c => {
+                    const val = c.querySelector('attribute-value')?.textContent || "";
+                    if (val) {
+                        const parts = val.split(',');
+                        motherRefs.push({ catalog: parts.length > 1 ? parts[0].trim() : catId, category: parts.length > 1 ? parts[1].trim() : parts[0].trim() });
+                    }
+                });
+
+                if (motherRefs.length === 0) return;
+
+                const childSkus = catalogs[catId].skus.get(childId) || new Set();
+                const unionMothers = new Set();
+                let canValidate = true;
+
+                motherRefs.forEach(ref => {
+                    let mCatalog = catalogs[ref.catalog];
+                    if (!mCatalog) {
+                        const techId = Object.keys(BRAND_MAP).find(k => BRAND_MAP[k].toLowerCase() === ref.catalog.toLowerCase());
+                        if (techId) mCatalog = catalogs[techId];
+                    }
+                    if (mCatalog) {
+                        const mSkus = mCatalog.skus.get(ref.category);
+                        if (mSkus) mSkus.forEach(s => unionMothers.add(s));
+                    } else { canValidate = false; }
+                });
+
+                if (!canValidate) return;
+
+                const faltam = [...unionMothers].filter(x => !childSkus.has(x));
+                const sobram = [...childSkus].filter(x => !unionMothers.has(x));
+                const diff = faltam.length + sobram.length;
+
+                auditData.push([BRAND_MAP[catId] || catId, childId, motherRefs.map(m => m.category).join(', '), diff === 0 ? "OK" : "DIVERGENTE", childSkus.size, unionMothers.size, diff, faltam.slice(0, 50).join(','), sobram.slice(0, 50).join(',')]);
+            });
+        });
+
+        renderTable();
+        updateProgress(100, "✅ Auditoria Concluída!");
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('resultsTable');
+        tbody.innerHTML = '';
+        const errors = auditData.filter(r => r[3] !== "OK");
+        if (errors.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px;">✨ Nenhuma divergência encontrada.</td></tr>';
+        } else {
+            errors.forEach(row => {
+                const tr = document.createElement('tr');
+                const fList = row[7] ? row[7].split(',').filter(x=>x) : [];
+                const sList = row[8] ? row[8].split(',').filter(x=>x) : [];
+                tr.innerHTML = `<td><span class="pill">${row[0]}</span><br><b>${row[1]}</b></td><td><small>${row[2]}</small></td><td><div style="color:var(--danger)"><b>Diff: ${row[6]}</b><br>+${fList.length} / -${sList.length}</div></td>`;
+                tbody.appendChild(tr);
+            });
+        }
+        document.getElementById('resultsArea').style.display = 'block';
+    }
+
+    function sendToSheet() {
+        addLog("Enviando resultados...");
+        google.script.run.withSuccessHandler(m => addLog(`✅ ${m}`, '#10b981')).saveAuditResults(auditData);
+    }
+</script>
+</body>
+</html>

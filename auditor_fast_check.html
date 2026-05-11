@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIC | Auditor de Sincronia de Categorias</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #FF8050;
+            --primary-dark: #E66A3D;
+            --bg: #0F172A;
+            --card-bg: #1E293B;
+            --text: #F8FAFC;
+            --text-muted: #94A3B8;
+            --success: #10B981;
+            --danger: #EF4444;
+            --border: #334155;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 40px 20px;
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 40px; }
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, var(--primary), #FFA382);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .upload-card {
+            background-color: var(--card-bg);
+            border: 2px dashed var(--border);
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            margin-bottom: 30px;
+        }
+
+        .upload-card:hover { border-color: var(--primary); background-color: rgba(255, 128, 80, 0.05); }
+        .upload-card.dragover { border-color: var(--primary); background-color: rgba(255, 128, 80, 0.1); transform: scale(1.01); }
+
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .results-section { display: none; }
+        .stats-grid { display: flex; gap: 20px; margin-bottom: 20px; }
+        .stat-card {
+            background-color: var(--card-bg);
+            padding: 15px 25px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            flex-grow: 1;
+        }
+        .stat-value { font-size: 24px; font-weight: 700; display: block; }
+        .stat-label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        th { background-color: rgba(255, 255, 255, 0.05); text-align: left; padding: 15px; font-size: 12px; color: var(--text-muted); }
+        td { padding: 15px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
+        
+        .status-pill { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+        .status-ok { background-color: rgba(16, 185, 129, 0.15); color: var(--success); }
+        .status-error { background-color: rgba(239, 68, 68, 0.15); color: var(--danger); }
+
+        .diff-list { font-family: monospace; font-size: 11px; margin-top: 10px; color: var(--text-muted); }
+        .sku-tag { color: var(--danger); display: inline-block; margin-right: 5px; }
+
+        #debugLog { font-family: monospace; font-size: 10px; color: #64748b; margin-top: 20px; padding: 10px; background: #000; border-radius: 8px; max-height: 150px; overflow-y: auto; }
+        
+        .loader {
+            display: none; width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.1);
+            border-top: 4px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Fast Auditor POC</h1>
+        <p style="color:var(--text-muted)">Validador de Sincronia de Categorias (Categorization Rules)</p>
+    </header>
+
+    <div class="upload-card" id="dropZone">
+        <p>Arraste o arquivo <strong>Catalog XML</strong> aqui</p>
+        <div style="margin: 15px 0;">ou</div>
+        <input type="file" id="fileInput" accept=".xml" style="display:none">
+        <button class="btn-primary" onclick="document.getElementById('fileInput').click()">Selecionar Arquivo</button>
+    </div>
+
+    <div class="loader" id="loader"></div>
+
+    <div class="results-section" id="resultsSection">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-value" id="totalCats">0</span>
+                    <span class="stat-label">Categorias com Regras</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="totalErrors" style="color: var(--danger);">0</span>
+                    <span class="stat-label">Divergências</span>
+                </div>
+            </div>
+            <button class="btn-primary" id="exportBtn" style="background-color: var(--success);">📥 Baixar Excel (CSV)</button>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th width="30%">Categoria Filha</th>
+                    <th width="30%">Origem (Mães)</th>
+                    <th width="15%">Status</th>
+                    <th width="25%">Divergência de SKUs</th>
+                </tr>
+            </thead>
+            <tbody id="resultsTable"></tbody>
+        </table>
+
+        <div id="debugLog"></div>
+    </div>
+</div>
+
+<script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const loader = document.getElementById('loader');
+    const resultsSection = document.getElementById('resultsSection');
+    const exportBtn = document.getElementById('exportBtn');
+    
+    let lastResults = [];
+
+    // Drag & Drop
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        handleFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+    exportBtn.addEventListener('click', exportToCSV);
+
+    function handleFile(file) {
+        if (!file) return;
+        loader.style.display = 'block';
+        resultsSection.style.display = 'none';
+        document.getElementById('debugLog').innerHTML = '';
+        
+        const reader = new FileReader();
+        reader.onload = (e) => parseXML(e.target.result);
+        reader.readAsText(file);
+    }
+
+    function log(msg) {
+        document.getElementById('debugLog').innerHTML += `> ${msg}<br>`;
+    }
+
+    function parseXML(xmlString) {
+        log("Iniciando processamento...");
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+        
+        // 1. Mapear Associações Diretas (Assignments)
+        const catMap = new Map();
+        const assignments = Array.from(xmlDoc.querySelectorAll('*')).filter(el => el.localName === 'category-assignment');
+        log(`Encontrados ${assignments.length} assignments.`);
+        
+        for (let asgn of assignments) {
+            const sku = asgn.getAttribute('product-id');
+            const catId = asgn.getAttribute('category-id');
+            if (sku && catId) {
+                if (!catMap.has(catId)) catMap.set(catId, new Set());
+                catMap.get(catId).add(sku.toUpperCase());
+            }
+        }
+
+        // 2. Mapear Regras de Categorização (Múltiplas fontes por Categoria Filha)
+        const rulesMap = new Map(); // ChildID -> Set(MotherIDs)
+        const categories = Array.from(xmlDoc.querySelectorAll('*')).filter(el => el.localName === 'category');
+        log(`Analisando ${categories.length} categorias...`);
+
+        for (let cat of categories) {
+            const childId = cat.getAttribute('category-id');
+            const ruleElements = Array.from(cat.querySelectorAll('*')).filter(el => el.localName === 'categorization-rule');
+            
+            for (let rule of ruleElements) {
+                const conditions = Array.from(rule.querySelectorAll('*')).filter(el => el.localName === 'categorization-condition');
+                for (let cond of conditions) {
+                    if (cond.getAttribute('attribute-id') === 'CategoryId') {
+                        const valEl = Array.from(cond.querySelectorAll('*')).filter(el => el.localName === 'attribute-value')[0];
+                        if (valEl) {
+                            let val = valEl.textContent.trim();
+                            let motherId = val.includes(',') ? val.split(',')[1].trim() : val;
+                            
+                            if (motherId !== childId) {
+                                if (!rulesMap.has(childId)) rulesMap.set(childId, new Set());
+                                rulesMap.get(childId).add(motherId);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        calculateDiffs(rulesMap, catMap);
+    }
+
+    function calculateDiffs(rulesMap, catMap) {
+        lastResults = [];
+        let errorCount = 0;
+
+        rulesMap.forEach((motherIds, childId) => {
+            const childSkus = catMap.get(childId) || new Set();
+            
+            // União de todas as origens
+            const unionMotherSkus = new Set();
+            motherIds.forEach(mId => {
+                const mSkus = catMap.get(mId) || new Set();
+                mSkus.forEach(s => unionMotherSkus.add(s));
+            });
+
+            const onlyInChild = [...childSkus].filter(x => !unionMotherSkus.has(x));
+            const onlyInMother = [...unionMotherSkus].filter(x => !childSkus.has(x));
+            const diffTotal = onlyInChild.length + onlyInMother.length;
+            const isOK = diffTotal === 0;
+
+            if (!isOK) errorCount++;
+
+            lastResults.push({
+                childId,
+                motherIds: [...motherIds].join(', '),
+                status: isOK ? 'OK' : 'ERRO',
+                diffTotal,
+                onlyInChild,
+                onlyInMother,
+                childCount: childSkus.size,
+                motherCount: unionMotherSkus.size
+            });
+        });
+
+        renderResults(errorCount);
+    }
+
+    function renderResults(errorCount) {
+        const tbody = document.getElementById('resultsTable');
+        tbody.innerHTML = '';
+
+        lastResults.sort((a,b) => (a.status === 'ERRO' ? -1 : 1)).forEach(res => {
+            const row = document.createElement('tr');
+            const ok = res.status === 'OK';
+            row.innerHTML = `
+                <td><strong>${res.childId}</strong><br><small>${res.childCount} SKUs atuais</small></td>
+                <td><small>${res.motherIds}</small><br><small>Deveria ter: ${res.motherCount} SKUs</small></td>
+                <td><span class="status-pill ${ok ? 'status-ok' : 'status-error'}">${ok ? 'OK' : 'DIVERGENTE'}</span></td>
+                <td>
+                    ${ok ? '-' : `<strong>${res.diffTotal} divergências</strong>`}
+                    ${!ok ? `<div class="diff-list">
+                        ${res.onlyInMother.length > 0 ? `<span style="color:#fbbf24">Faltam (${res.onlyInMother.length}):</span> ${res.onlyInMother.slice(0, 5).join(', ')}...` : ''}
+                        ${res.onlyInChild.length > 0 ? `<br><span style="color:#f87171">Sobram (${res.onlyInChild.length}):</span> ${res.onlyInChild.slice(0, 5).join(', ')}...` : ''}
+                    </div>` : ''}
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+
+        document.getElementById('totalCats').innerText = lastResults.length;
+        document.getElementById('totalErrors').innerText = errorCount;
+        loader.style.display = 'none';
+        resultsSection.style.display = 'block';
+        log("Processamento concluído.");
+    }
+
+    function exportToCSV() {
+        let csv = 'Categoria Filha;Origens;Status;Diferenca;SKUs Faltantes;SKUs Sobrando\n';
+        lastResults.forEach(r => {
+            csv += `${r.childId};${r.motherIds};${r.status};${r.diffTotal};${r.onlyInMother.join('|')};${r.onlyInChild.join('|')}\n`;
+        });
+        const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "auditoria_categorias.csv";
+        link.click();
+    }
+</script>
+
+</body>
+</html>

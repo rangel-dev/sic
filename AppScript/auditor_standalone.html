@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIC | Standalone Auditor Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #FF8050;
+            --primary-dark: #E66A3D;
+            --bg: #0F172A;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text: #F8FAFC;
+            --text-muted: #94A3B8;
+            --success: #10B981;
+            --danger: #EF4444;
+            --border: rgba(51, 65, 85, 0.5);
+            --glass: rgba(255, 255, 255, 0.03);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(255, 128, 80, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.05) 0px, transparent 50%);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container { max-width: 1000px; margin: 0 auto; }
+        
+        header { 
+            text-align: center; 
+            margin-bottom: 50px; 
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, var(--primary), #FFA382);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -1px;
+        }
+
+        /* Glass Cards */
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            margin-bottom: 30px;
+        }
+
+        /* Auth Section */
+        .auth-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--glass);
+            padding: 8px 16px;
+            border-radius: 50px;
+            border: 1px solid var(--border);
+        }
+        .user-info img { width: 32px; height: 32px; border-radius: 50%; }
+
+        /* Configuration */
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        input[type="text"] {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 20px;
+            color: white;
+            font-family: inherit;
+            width: 100%;
+            transition: border-color 0.2s;
+        }
+        input[type="text"]:focus { border-color: var(--primary); outline: none; }
+
+        /* Upload Zone */
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: 20px;
+            padding: 60px 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: rgba(255, 255, 255, 0.01);
+            position: relative;
+            overflow: hidden;
+        }
+        .upload-zone:hover { 
+            border-color: var(--primary); 
+            background: rgba(255, 128, 80, 0.03);
+            transform: translateY(-2px);
+        }
+        .upload-zone.dragover { 
+            border-color: var(--primary); 
+            background: rgba(255, 128, 80, 0.08); 
+            transform: scale(1.02); 
+        }
+
+        .upload-zone svg { width: 48px; height: 48px; color: var(--primary); margin-bottom: 15px; }
+
+        /* Buttons */
+        .btn {
+            padding: 14px 28px;
+            border-radius: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-family: 'Outfit', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 14px;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 10px 20px -5px rgba(255, 128, 80, 0.4); }
+        .btn-primary:disabled { background: #475569; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        /* Progress & Logs */
+        .status-container { margin-top: 30px; display: none; }
+        .progress-bar {
+            height: 6px; background: rgba(255,255,255,0.05);
+            border-radius: 10px; overflow: hidden; margin-bottom: 15px;
+        }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s; }
+        
+        #logWindow {
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            padding: 20px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 12px;
+            color: #94A3B8;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+        }
+        .log-entry { margin-bottom: 4px; display: flex; gap: 10px; }
+        .log-time { color: var(--primary); opacity: 0.7; }
+
+        /* Results Table */
+        .results-section { display: none; margin-top: 40px; animation: fadeInUp 0.8s ease-out; }
+        table { width: 100%; border-collapse: separate; border-spacing: 0 8px; }
+        th { text-align: left; padding: 16px; color: var(--text-muted); font-size: 12px; text-transform: uppercase; font-weight: 700; }
+        td { background: rgba(255,255,255,0.02); padding: 20px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+        td:first-child { border-left: 1px solid var(--border); border-top-left-radius: 16px; border-bottom-left-radius: 16px; }
+        td:last-child { border-right: 1px solid var(--border); border-top-right-radius: 16px; border-bottom-right-radius: 16px; }
+
+        .status-pill {
+            padding: 6px 12px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 800;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .pill-ok { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+        .pill-error { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+
+        /* Animations */
+        @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Loader */
+        .spinner { width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.1); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Tooltip-like info */
+        .info-tag { font-size: 11px; color: var(--text-muted); margin-top: 5px; display: block; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>SIC Auditor Standalone</h1>
+        <p style="color: var(--text-muted); font-size: 18px;">Validação de Sincronia de Alta Performance (148MB+ XML)</p>
+    </header>
+
+    <!-- 1. AUTH CARD -->
+    <div class="card" id="authCard">
+        <div class="auth-section">
+            <h2 style="font-family: 'Outfit'; margin-bottom: 10px;">Acesso à Planilha Online</h2>
+            <p style="color: var(--text-muted); text-align: center; max-width: 400px; margin-bottom: 20px;">
+                Conecte sua conta Google para ler os IDs de categorias e gravar o relatório de auditoria automaticamente.
+            </p>
+            <div id="g_id_signin"></div>
+            <button class="btn btn-primary" id="loginBtn" onclick="handleAuthClick()">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12.545 11v2.48h6.848C18.753 15.1 17.471 16.29 15.385 16.29c-2.823 0-5.116-2.336-5.116-5.29s2.293-5.29 5.116-5.29c1.394 0 2.52.51 3.383 1.35l2.426-2.426C19.766 3.322 17.79 2.5 15.385 2.5 10.033 2.5 5.617 6.757 5.617 12s4.416 9.5 9.768 9.5c5.577 0 9.277-3.924 9.277-9.447 0-.633-.074-1.114-.168-1.553h-11.91z"/></svg>
+                Fazer Login com Google
+            </button>
+            <div id="userInfo" class="user-info" style="display: none;">
+                <img id="userImg" src="" alt="User">
+                <span id="userName">Usuário Conectado</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. CONFIG & UPLOAD CARD -->
+    <div class="card" id="mainCard" style="opacity: 0.5; pointer-events: none; transition: opacity 0.5s;">
+        <div class="config-grid">
+            <div>
+                <label class="info-tag" style="margin-bottom: 8px; display: block;">ID DA PLANILHA GOOGLE (Extraído da URL)</label>
+                <input type="text" id="spreadsheetId" placeholder="Ex: 1A2b3C4d5E6f7G8h9I0j..." value="">
+            </div>
+            <div style="display: flex; align-items: flex-end;">
+                <button class="btn btn-primary" id="fetchIdsBtn" onclick="fetchIdsFromSheet()">
+                    🔄 Carregar IDs
+                </button>
+            </div>
+        </div>
+
+        <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <h3 style="font-family: 'Outfit'; margin-bottom: 8px;">Arraste o Catálogo XML aqui</h3>
+            <p style="color: var(--text-muted); font-size: 14px;">Ou clique para selecionar o arquivo (Suporta arquivos de 100MB+)</p>
+            <input type="file" id="fileInput" accept=".xml" style="display: none">
+        </div>
+
+        <div class="status-container" id="statusContainer">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span id="statusText" style="font-size: 13px; font-weight: 600;">Processando...</span>
+                <span id="progressPercent" style="font-size: 13px; color: var(--primary);">0%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div id="logWindow"></div>
+        </div>
+    </div>
+
+    <!-- 3. RESULTS SECTION -->
+    <div class="results-section" id="resultsSection">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <h2 style="font-family: 'Outfit';">Resultado da Auditoria</h2>
+            <button class="btn btn-primary" style="background: var(--success);" id="writeToSheetBtn" onclick="writeResultsToSheet()">
+                🚀 Gravar na Planilha
+            </button>
+        </div>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Categoria Filha</th>
+                    <th>Origens (Mães)</th>
+                    <th>Status</th>
+                    <th>Divergências</th>
+                </tr>
+            </thead>
+            <tbody id="resultsTableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- SDKs Google -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
+<script src="auditor_standalone.js"></script>
+
+</body>
+</html>
