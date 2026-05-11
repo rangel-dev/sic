@@ -884,16 +884,21 @@ class AuditorView(QWidget):
         nat_err = stats.get("by_brand", {}).get("natura", 0)
         avn_err = stats.get("by_brand", {}).get("avon",   0)
 
-        if total == 0:
-            QMessageBox.information(
+        total_global = self._result.stats.get("total", 0)
+        if total == 0 and total_global > 0:
+            res = QMessageBox.question(
                 self, "Google Chat",
-                "Nenhum erro no recorte atual. Ajuste os filtros antes de enviar."
+                "O recorte atual não possui divergências, mas a auditoria global detectou erros.\n\n"
+                "Deseja enviar um relatório de 'Operação Saudável' para este recorte?",
+                QMessageBox.Yes | QMessageBox.No
             )
-            return
+            if res == QMessageBox.No:
+                return
 
         has_filter = bool(self._active_filters) or self._brand_filter != "all"
         if has_filter:
-            subtitle = f"Recorte filtrado · {total} divergências"
+            brand_name = self._brand_filter.capitalize() if self._brand_filter != "all" else "Misto"
+            subtitle = f"Relatório Filtrado ({brand_name}) · {total} divergências"
         else:
             subtitle = f"{self._result.total_excel_skus} SKUs auditados"
 
