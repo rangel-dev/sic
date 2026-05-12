@@ -73,7 +73,7 @@ class DropZone(QFrame):
         self.setObjectName("dropzone")
         self.setAcceptDrops(True)
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(96)
+        self.setMinimumHeight(75)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
 
         layout = QVBoxLayout(self)

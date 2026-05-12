@@ -142,7 +142,7 @@ QMainWindow {
 }
 
 #page_title {
-    font-size: 32px;
+    font-size: 24px;
     font-weight: 600;
     color: #f1f5f9;
 }

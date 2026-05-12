@@ -66,8 +66,7 @@ class AuditorView(QWidget):
         root.setSpacing(0)
 
         root.addWidget(SectionHeader(
-            "✓  Auditor  — Motor de Auditoria de Catálogo",
-            "Cruza Excel × Pricebook XML × Catálogo XML em 12 regras de negócio"
+            "Auditor - Motor de Auditoria"
         ))
         root.addWidget(Divider())
 
@@ -87,18 +86,18 @@ class AuditorView(QWidget):
         top_scroll = QScrollArea()
         top_scroll.setWidgetResizable(True)
         top_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        top_scroll.setMinimumHeight(240) # Slightly reduced from 280
+        top_scroll.setMinimumHeight(190)
         top_half_layout.addWidget(top_scroll)
 
         top_widget = QWidget()
         top_scroll.setWidget(top_widget)
         top_layout = QVBoxLayout(top_widget)
-        top_layout.setContentsMargins(28, 16, 28, 12)
-        top_layout.setSpacing(12)
+        top_layout.setContentsMargins(28, 10, 28, 10)
+        top_layout.setSpacing(8)
 
         # File inputs row
         inputs_row = QHBoxLayout()
-        inputs_row.setSpacing(16)
+        inputs_row.setSpacing(12)
 
         # 1 – Pricebook XML
         pb_col = QVBoxLayout()
@@ -152,22 +151,28 @@ class AuditorView(QWidget):
 
         top_layout.addLayout(inputs_row)
 
-        # Action bar
-        action_row = QHBoxLayout()
-        action_row.setSpacing(12)
+        # Action bar container for better organization and responsivity
+        self._action_bar = QFrame()
+        self._action_bar.setFixedHeight(42)
+        self._action_bar.setObjectName("action_bar")
+        action_row = QHBoxLayout(self._action_bar)
+        action_row.setContentsMargins(12, 0, 12, 0)
+        action_row.setSpacing(8)
 
         self._btn_run = QPushButton("✓  Executar Auditoria")
         self._btn_run.setObjectName("btn_primary")
-        self._btn_run.setFixedWidth(220)
+        self._btn_run.setFixedHeight(28)
+        self._btn_run.setMinimumWidth(160)
         self._btn_run.clicked.connect(self._run)
         action_row.addWidget(self._btn_run)
 
         self._btn_clear = QPushButton("Limpar")
         self._btn_clear.setObjectName("btn_ghost")
+        self._btn_clear.setFixedHeight(28)
         self._btn_clear.clicked.connect(self._clear)
         action_row.addWidget(self._btn_clear)
 
-        action_row.addSpacing(20)
+        action_row.addSpacing(10)
 
         # Brand filter pills
         self._btn_all    = self._make_filter_pill("Todos",   "all",    True)
@@ -183,17 +188,19 @@ class AuditorView(QWidget):
 
         self._btn_export = QPushButton("⬇  Exportar Excel")
         self._btn_export.setObjectName("btn_secondary")
+        self._btn_export.setFixedHeight(28)
         self._btn_export.clicked.connect(self._export_excel)
         self._btn_export.setEnabled(False)
         action_row.addWidget(self._btn_export)
 
         self._btn_webhook = QPushButton("⊕  Enviar ao Google Chat")
         self._btn_webhook.setObjectName("btn_ghost")
+        self._btn_webhook.setFixedHeight(28)
         self._btn_webhook.clicked.connect(self._send_webhook)
         self._btn_webhook.setEnabled(False)
         action_row.addWidget(self._btn_webhook)
 
-        top_layout.addLayout(action_row)
+        top_layout.addWidget(self._action_bar)
 
         # Progress bar moved OUT of top_scroll
         top_layout.addStretch()
@@ -219,8 +226,8 @@ class AuditorView(QWidget):
         self._splitter.addWidget(top_half_widget)
 
         # ── Bottom panel: dashboard + table + AI ─────────────────────────
-        # Use a horizontal splitter for bottom results part
-        self._bottom_splitter = QSplitter(Qt.Horizontal)
+        # Use a vertical splitter for bottom results part to stack 3 blocks
+        self._bottom_splitter = QSplitter(Qt.Vertical)
         self._bottom_splitter.setHandleWidth(4)
         self._bottom_splitter.setChildrenCollapsible(False)
         self._splitter.addWidget(self._bottom_splitter)
@@ -283,14 +290,9 @@ class AuditorView(QWidget):
         diag_layout.addWidget(self._empty_state)
         diag_layout.addStretch()
 
-        # ── RIGHT PART: Vertical Splitter (Table top, AI bottom) ────────
-        right_splitter = QSplitter(Qt.Vertical)
-        right_splitter.setHandleWidth(4)
-        right_splitter.setChildrenCollapsible(False)
-        self._bottom_splitter.addWidget(right_splitter)
-
+        # ── Table Block (Middle) ────────────────────────────────────────
         table_widget = QWidget()
-        right_splitter.addWidget(table_widget)
+        self._bottom_splitter.addWidget(table_widget)
         table_layout = QVBoxLayout(table_widget)
         table_layout.setContentsMargins(10, 12, 18, 12)
         table_layout.setSpacing(12)
@@ -317,8 +319,9 @@ class AuditorView(QWidget):
         self._table.verticalHeader().setVisible(False)
         table_layout.addWidget(self._table)
 
-        # AI Panel (Bottom Right)
+        # ── AI Panel (Bottom Block) ─────────────────────────────────────
         ai_widget = QWidget()
+        self._bottom_splitter.addWidget(ai_widget)
         ai_layout = QVBoxLayout(ai_widget)
         ai_layout.setContentsMargins(10, 0, 18, 12)
         ai_layout.setSpacing(8)
@@ -343,9 +346,11 @@ class AuditorView(QWidget):
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
 
-        self._bottom_splitter.setSizes([350, 850])
-        self._bottom_splitter.setStretchFactor(0, 0)
-        self._bottom_splitter.setStretchFactor(1, 1)
+        # Distribute the 3 blocks in the bottom vertical splitter
+        self._bottom_splitter.setSizes([200, 300, 200])
+        self._bottom_splitter.setStretchFactor(0, 0) # Cards
+        self._bottom_splitter.setStretchFactor(1, 1) # Table
+        self._bottom_splitter.setStretchFactor(2, 0) # AI
 
         # Conecta validadores de bloqueio imediato nos DropZones
         self._setup_dropzone_validators()
