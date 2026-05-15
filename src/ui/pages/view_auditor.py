@@ -159,7 +159,7 @@ class AuditorView(QWidget):
 
         self._btn_run = QPushButton("✓  Executar Auditoria")
         self._btn_run.setObjectName("btn_primary")
-        self._btn_run.setFixedWidth(220)
+        self._btn_run.setFixedWidth(180)
         self._btn_run.clicked.connect(self._run)
         action_row.addWidget(self._btn_run)
 
@@ -243,8 +243,8 @@ class AuditorView(QWidget):
         self._splitter.addWidget(top_half_widget)
 
         # ── Bottom panel: dashboard + table + AI ─────────────────────────
-        # Use a horizontal splitter for bottom results part
-        self._bottom_splitter = QSplitter(Qt.Horizontal)
+        # Use a vertical splitter for bottom results part
+        self._bottom_splitter = QSplitter(Qt.Vertical)
         self._bottom_splitter.setHandleWidth(4)
         self._bottom_splitter.setChildrenCollapsible(False)
         self._splitter.addWidget(self._bottom_splitter)
@@ -307,14 +307,9 @@ class AuditorView(QWidget):
         diag_layout.addWidget(self._empty_state)
         diag_layout.addStretch()
 
-        # ── RIGHT PART: Vertical Splitter (Table top, AI bottom) ────────
-        right_splitter = QSplitter(Qt.Vertical)
-        right_splitter.setHandleWidth(4)
-        right_splitter.setChildrenCollapsible(False)
-        self._bottom_splitter.addWidget(right_splitter)
-
+        # ── RIGHT PART: Table & AI (Directly in bottom_splitter) ────────
         table_widget = QWidget()
-        right_splitter.addWidget(table_widget)
+        self._bottom_splitter.addWidget(table_widget)
         table_layout = QVBoxLayout(table_widget)
         table_layout.setContentsMargins(10, 12, 18, 12)
         table_layout.setSpacing(12)
@@ -341,8 +336,9 @@ class AuditorView(QWidget):
         self._table.verticalHeader().setVisible(False)
         table_layout.addWidget(self._table)
 
-        # AI Panel (Bottom Right)
+        # AI Panel (Bottom)
         ai_widget = QWidget()
+        self._bottom_splitter.addWidget(ai_widget)
         ai_layout = QVBoxLayout(ai_widget)
         ai_layout.setContentsMargins(10, 0, 18, 12)
         ai_layout.setSpacing(8)
@@ -357,19 +353,15 @@ class AuditorView(QWidget):
         self._ai_browser.setPlaceholderText("Diagnóstico estratégico aparecerá aqui…")
         ai_layout.addWidget(self._ai_browser)
 
-        right_splitter.addWidget(ai_widget)
-        right_splitter.setSizes([450, 250])
-        right_splitter.setStretchFactor(0, 1)
-        right_splitter.setStretchFactor(1, 0)
-
         # Splitter distributions
         self._splitter.setSizes([260, 640])
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
 
-        self._bottom_splitter.setSizes([350, 850])
+        self._bottom_splitter.setSizes([200, 450, 250])
         self._bottom_splitter.setStretchFactor(0, 0)
         self._bottom_splitter.setStretchFactor(1, 1)
+        self._bottom_splitter.setStretchFactor(2, 0)
 
         # Conecta validadores de bloqueio imediato nos DropZones
         self._setup_dropzone_validators()
@@ -435,7 +427,8 @@ class AuditorView(QWidget):
         btn.setCheckable(True)
         btn.setChecked(checked)
         btn.setObjectName("btn_ghost")
-        btn.setFixedHeight(28)
+        btn.setFixedHeight(24)
+        btn.setStyleSheet("padding: 2px 10px; font-size: 11px; font-weight: 600;")
         btn.setProperty("filter_key", key)
         btn.clicked.connect(lambda: self._set_brand_filter(key))
         return btn
@@ -554,11 +547,13 @@ class AuditorView(QWidget):
         if total == 0:
             self._btn_master_cert.setEnabled(True)
             self._cert_status_lbl.setObjectName("cert_status_ready")
-            self._cert_status_lbl.setText("✅  CERTIFICADO DISPONÍVEL")
+            self._cert_status_lbl.setText("✅")
+            self._cert_status_lbl.setToolTip("Certificado Disponível")
         else:
             self._btn_master_cert.setEnabled(False)
             self._cert_status_lbl.setObjectName("cert_status_waiting")
-            self._cert_status_lbl.setText("⏳  AGUARDANDO CONFORMIDADE")
+            self._cert_status_lbl.setText("⏳")
+            self._cert_status_lbl.setToolTip("Aguardando Conformidade")
         self._cert_status_lbl.show()
         self._cert_status_lbl.style().unpolish(self._cert_status_lbl)
         self._cert_status_lbl.style().polish(self._cert_status_lbl)
@@ -657,7 +652,7 @@ class AuditorView(QWidget):
                 card.hide()
 
         for idx, card in enumerate(visible_cards):
-            row, col = divmod(idx, 2)
+            row, col = divmod(idx, 4)
             self._cards_grid.addWidget(card, row, col)
 
         self._cards_container.setVisible(len(visible_cards) > 0)
