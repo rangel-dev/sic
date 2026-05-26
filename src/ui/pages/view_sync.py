@@ -14,6 +14,10 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
     QWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QTextEdit,
 )
 
 from src.ui.components.base_widgets import Divider, DropZone, SectionHeader, StatPill
@@ -117,26 +121,76 @@ class SyncView(QWidget):
 
         # Stats
         self._stats_w = QWidget()
-        sr = QHBoxLayout(self._stats_w)
-        sr.setContentsMargins(0, 0, 0, 0)
-        sr.setSpacing(12)
-        self._s_add    = StatPill("Adições",         "—", "#66bb6a")
-        self._s_rm     = StatPill("Remoções",         "—", "#ef5350")
-        self._s_attr   = StatPill("Atrib. Atualizados", "—", "#42a5f5")
-        self._s_lists  = StatPill("Listas Processadas",  "—", "#888888")
-        for w in (self._s_add, self._s_rm, self._s_attr, self._s_lists):
-            sr.addWidget(w)
-        sr.addStretch()
+        self._stats_layout = QVBoxLayout(self._stats_w)
+        self._stats_layout.setContentsMargins(0, 0, 0, 0)
+        
+        r1 = QHBoxLayout()
+        self._s_xml = StatPill("XML Master", "—", "#66bb6a")
+        self._s_grade = StatPill("Grade (Bruta)", "—", "#42a5f5")
+        self._s_match = StatPill("Match", "—", "#ab47bc")
+        self._s_on = StatPill("Ativados", "—", "#ef5350")
+        self._s_vis = StatPill("Vitrine", "—", "#ffa726")
+        self._s_cut = StatPill("Cortes Facão", "—", "#ff7043")
+        self._s_moff = StatPill("Mestres OFF", "—", "#8d6e63")
+        for w in (self._s_xml, self._s_grade, self._s_match, self._s_on, self._s_vis, self._s_cut, self._s_moff): r1.addWidget(w)
+        r1.addStretch()
+        self._stats_layout.addLayout(r1)
+        
+        r2 = QHBoxLayout()
+        self._s_list = StatPill("Abas Lista", "—", "#7e57c2")
+        self._s_seal = StatPill("Selos Novos", "—", "#26a69a")
+        self._s_delta = StatPill("Total Deltas", "—", "#888888")
+        for w in (self._s_list, self._s_seal, self._s_delta): r2.addWidget(w)
+        r2.addStretch()
+        self._stats_layout.addLayout(r2)
+        
         self._stats_w.hide()
         layout.addWidget(self._stats_w)
+        
+        # Lists Table
+        self._lbl_table = QLabel("Comparativo de Sincronismo por Lista")
+        self._lbl_table.setObjectName("label_section")
+        self._lbl_table.setStyleSheet("color: #7e57c2;")
+        self._lbl_table.hide()
+        layout.addWidget(self._lbl_table)
+        
+        self._table = QTableWidget()
+        self._table.setColumnCount(4)
+        self._table.setHorizontalHeaderLabels(["ID DA LISTA", "NO EXCEL (ALVO)", "NO XML (ANTIGO)", "STATUS DELTA"])
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self._table.verticalHeader().hide()
+        self._table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._table.setSelectionMode(QTableWidget.NoSelection)
+        self._table.setFixedHeight(250)
+        self._table.hide()
+        layout.addWidget(self._table)
+        
+        # Log Box
+        self._log_box = QTextEdit()
+        self._log_box.setReadOnly(True)
+        self._log_box.setFixedHeight(180)
+        self._log_box.setStyleSheet("background-color: #0b0c10; color: #e0e0e0; font-family: monospace; font-size: 11px;")
+        self._log_box.hide()
+        layout.addWidget(self._log_box)
 
         # Download
+        dl_row = QHBoxLayout()
         self._btn_dl = QPushButton("⬇  Salvar XML Delta")
         self._btn_dl.setObjectName("btn_secondary")
         self._btn_dl.setFixedWidth(180)
         self._btn_dl.clicked.connect(self._save_xml)
         self._btn_dl.hide()
-        layout.addWidget(self._btn_dl)
+        dl_row.addWidget(self._btn_dl)
+
+        self._btn_audit = QPushButton("📊  Baixar Auditoria XLSX")
+        self._btn_audit.setObjectName("btn_secondary")
+        self._btn_audit.setFixedWidth(200)
+        self._btn_audit.clicked.connect(self._save_audit)
+        self._btn_audit.hide()
+        dl_row.addWidget(self._btn_audit)
+        dl_row.addStretch()
+        
+        layout.addLayout(dl_row)
 
         layout.addStretch()
 
@@ -153,7 +207,13 @@ class SyncView(QWidget):
 
         self._btn_run.setEnabled(False)
         self._btn_dl.hide()
+        self._btn_audit.hide()
         self._stats_w.hide()
+        self._table.hide()
+        self._lbl_table.hide()
+        self._log_box.clear()
+        self._log_box.append("<b>LOG DE ATIVIDADE</b><br>")
+        self._log_box.show()
         self._warn_lbl.hide()
         self._progress_bar.setValue(0)
         self._progress_bar.show()
@@ -166,8 +226,11 @@ class SyncView(QWidget):
         self._worker.start()
 
     def _on_progress(self, pct: int, msg: str):
-        self._progress_bar.setValue(pct)
-        self._status_lbl.setText(msg)
+        if msg.startswith(">"):
+            self._log_box.append(msg)
+        else:
+            self._status_lbl.setText(msg)
+            self._progress_bar.setValue(pct)
 
     def _on_finished(self, result: SyncResult):
         self._result = result
@@ -178,17 +241,51 @@ class SyncView(QWidget):
             self._warn_lbl.show()
 
         s = result.stats
-        self._s_add.set_value(str(s.get("additions",      0)), "#66bb6a")
-        self._s_rm.set_value( str(s.get("removals",       0)), "#ef5350")
-        self._s_attr.set_value(str(s.get("attr_updates",  0)), "#42a5f5")
-        self._s_lists.set_value(str(s.get("lists_processed", 0)), "#888")
+        self._s_xml.set_value(str(s.get("xml", 0)), "#66bb6a")
+        self._s_grade.set_value(str(s.get("grade", 0)), "#42a5f5")
+        self._s_match.set_value(str(s.get("match", 0)), "#ab47bc")
+        self._s_on.set_value(str(s.get("onC", 0)), "#ef5350")
+        self._s_vis.set_value(str(s.get("visC", 0)), "#ffa726")
+        self._s_cut.set_value(str(s.get("cut", 0)), "#ff7043")
+        self._s_moff.set_value(str(s.get("mOff", 0)), "#8d6e63")
+        self._s_list.set_value(str(s.get("lists", 0)), "#7e57c2")
+        self._s_seal.set_value(str(s.get("sealC", 0)), "#26a69a")
+        self._s_delta.set_value(str(s.get("deltas", 0)), "#888888")
+
         self._stats_w.show()
+        
+        # Populate table
+        lists = s.get("lists_details", [])
+        self._table.setRowCount(len(lists))
+        for r_idx, row_data in enumerate(lists):
+            item_id = QTableWidgetItem(str(row_data["id"]))
+            item_id.setForeground(Qt.GlobalColor.cyan)
+            self._table.setItem(r_idx, 0, item_id)
+            
+            item_excel = QTableWidgetItem(f'{row_data["excel"]} itens')
+            self._table.setItem(r_idx, 1, item_excel)
+            
+            item_xml = QTableWidgetItem(f'{row_data["xml"]} itens')
+            self._table.setItem(r_idx, 2, item_xml)
+            
+            status = str(row_data["status"])
+            item_st = QTableWidgetItem(status)
+            if "✓" in status:
+                item_st.setForeground(Qt.GlobalColor.green)
+            else:
+                item_st.setForeground(Qt.GlobalColor.yellow)
+            self._table.setItem(r_idx, 3, item_st)
+            
+        self._table.show()
+        self._lbl_table.show()
+        
         self._btn_dl.show()
+        self._btn_audit.show()
 
         if p := self.parent():
             if hasattr(p, "show_status"):
                 p.show_status(
-                    f"Sync: +{s.get('additions',0)} / -{s.get('removals',0)} assignamentos"
+                    f"Sync: {s.get('deltas', 0)} Deltas gerados"
                 )
 
         # Log to History
@@ -196,7 +293,7 @@ class SyncView(QWidget):
         HistoryEngine.add_entry(
             "Sync",
             brand,
-            f"Sync finalizado: +{s.get('additions', 0)} / -{s.get('removals', 0)} modificações."
+            f"Sync finalizado: {s.get('deltas', 0)} modificações no catálogo."
         )
 
     def _on_error(self, msg: str):
@@ -216,6 +313,20 @@ class SyncView(QWidget):
                 f.write(self._result.xml_content)
             QMessageBox.information(self, "Salvo", f"XML salvo em:\n{path}")
 
+    def _save_audit(self):
+        if not self._result or not self._result.report:
+            QMessageBox.warning(self, "Auditoria", "Nenhum relatório gerado.")
+            return
+        
+        default = "Relatorio_Sincronia_Master.xlsx"
+        path, _ = QFileDialog.getSaveFileName(self, "Salvar Relatório XLSX", default, "Excel (*.xlsx)")
+        if path:
+            import pandas as pd
+            df = pd.DataFrame(self._result.report)
+            with pd.ExcelWriter(path, engine="openpyxl") as writer:
+                df.to_excel(writer, index=False, sheet_name="Auditoria")
+            QMessageBox.information(self, "Salvo", f"Relatório salvo em:\n{path}")
+
     def _clear(self):
         self._dz_excel.clear()
         self._dz_xml.clear()
@@ -223,6 +334,10 @@ class SyncView(QWidget):
         self._status_lbl.hide()
         self._warn_lbl.hide()
         self._stats_w.hide()
+        self._table.hide()
+        self._lbl_table.hide()
+        self._log_box.hide()
         self._btn_dl.hide()
+        self._btn_audit.hide()
         self._result = None
         self._btn_run.setEnabled(True)
