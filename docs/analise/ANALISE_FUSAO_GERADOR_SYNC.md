@@ -1,7 +1,8 @@
 # Análise de Negócio — Fusão dos Módulos Gerador e Sync
+
 **Documento:** BRD-001  
 **Autor:** Marcos (Analista de Negócios Jr)  
-**Data:** 2026-05-26  
+**Data:** 27-05-2026  
 **Status:** Decisões registradas — pronto para implementação  
 **Branch:** `feat/merge-sync-gerador`
 
@@ -31,6 +32,7 @@ Este documento descreve a análise de negócio para a fusão dos módulos **Gera
 | **Complexidade** | Baixa — regras simples de filtragem numérica |
 
 **Fluxo atual do usuário:**
+
 ```
 Usuário abre aba Gerador
 → Seleciona arquivo Excel
@@ -56,6 +58,7 @@ Usuário abre aba Gerador
 | **Complexidade** | Alta — regras de negócio V11.1 com múltiplos critérios |
 
 **Fluxo atual do usuário:**
+
 ```
 Usuário abre aba Sync
 → Seleciona arquivo Excel (o mesmo de antes)
@@ -71,6 +74,7 @@ Usuário abre aba Sync
 > O analista de dados usa **o mesmo arquivo Excel** como entrada em ambos os módulos, mas precisa alternar entre abas diferentes para gerar os dois artefatos XML necessários para uma única operação de catálogo.
 
 Isso causa:
+
 - **Retrabalho de seleção de arquivo** — o mesmo Excel é carregado duas vezes
 - **Risco de inconsistência** — o usuário pode usar versões diferentes do Excel em cada módulo por erro
 - **Fragmentação de contexto** — o fluxo de um ciclo de atualização está espalhado em dois lugares
@@ -176,11 +180,13 @@ As seguintes regras de negócio existentes devem ser **preservadas integralmente
 > ⚠️ Este é um plano de análise. A ordem e os detalhes técnicos devem ser revisados pelo desenvolvedor antes da execução.
 
 ### Fase 1 — Preparação (Sem alterar comportamento)
+
 - [ ] Criar `src/core/excel_reader.py` com função utilitária de leitura de Excel e detecção de marca (extrair lógica duplicada)
 - [ ] Atualizar `GeradorEngine` e `SyncEngine` para usar o utilitário (sem alterar resultados)
 - [ ] Validar que todos os testes existentes continuam passando
 
 ### Fase 2 — Nova UI Unificada
+
 - [ ] Criar `src/ui/views/exportador_view.py` (nova aba unificada — módulo Exportador)
 - [ ] Implementar seleção de Excel (aceitar múltiplos arquivos)
 - [ ] Implementar seleção de XML de catálogo (obrigatório apenas se "Catálogo" estiver marcado)
@@ -190,10 +196,11 @@ As seguintes regras de negócio existentes devem ser **preservadas integralmente
 - [ ] Implementar dois botões de download independentes no resultado
 
 ### Fase 3 — Integração e Depreciação
-- [ ] Registrar operação unificada no `history.db` com novo tipo
-- [ ] Remover abas "Gerador" e "Sync" da navegação principal
-- [ ] Atualizar documentação (`MANUAL.md`, `README.md`)
-- [ ] Teste de regressão com arquivos reais de Natura e Avon
+
+- [x] Registrar operação unificada no `history.db` com novo tipo (`"Exportador"`)
+- [x] Remover abas "Gerador" e "Sync" da navegação principal (arquivos excluídos)
+- [x] Atualizar documentação (`MANUAL.md` atualizado com seção Exportador)
+- [ ] Teste de regressão com arquivos reais de Natura e Avon *(a executar manualmente)*
 
 ---
 
