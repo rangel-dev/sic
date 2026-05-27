@@ -15,6 +15,8 @@ from typing import Callable, Optional, Dict, Set, Any
 import openpyxl
 from lxml import etree
 
+from src.core.excel_reader import dominant_brand
+
 CATALOG_NS = "http://www.demandware.com/xml/impex/catalog/2006-10-31"
 SKU_PATTERN = re.compile(r"^(NAT|AVN)BRA-", re.IGNORECASE)
 MIN_FILE_AGE_SECONDS = 600  # 10-minute golden rule
@@ -110,7 +112,7 @@ class SyncEngine:
             if "NATBRA-" in pid: nat_count += 1
             if "AVNBRA-" in pid: avn_count += 1
         
-        return "avon" if avn_count > 0 and avn_count > nat_count else "natura"
+        return dominant_brand(nat_count, avn_count)
 
     # ── Parse Excel Files ─────────────────────────────────────────────────
     def _parse_excel_files(self, paths: list[str]) -> tuple[dict[str, set[str]], dict[str, dict], str]:
@@ -201,7 +203,7 @@ class SyncEngine:
                 self._progress(19, f"> Aba [{name}]: {extracted_skus} SKUs extraídos.")
             wb.close()
 
-        brand = "avon" if avn > nat else "natura"
+        brand = dominant_brand(nat, avn)
         return excel_lists, grade_map, brand
 
     # ── Parse Catalog XML ─────────────────────────────────────────────────

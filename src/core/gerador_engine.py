@@ -11,6 +11,8 @@ from typing import Callable, Optional
 import openpyxl
 from lxml import etree
 
+from src.core.excel_reader import assert_grade_visible, dominant_brand, find_grade_sheet_name
+
 PRICEBOOK_NS = "http://www.demandware.com/xml/impex/pricebook/2006-10-31"
 
 # Targets válidos: "natura", "avon", "ambas", "ml"
@@ -170,26 +172,14 @@ class GeradorEngine:
     # ── Excel parsing ─────────────────────────────────────────────────────
     def _parse_excel(self, path: str) -> list[dict]:
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-        sheet_name = "GRADE DE ATIVAÇÃO"
 
-        if sheet_name not in wb.sheetnames:
-            found = False
-            for name in wb.sheetnames:
-                if "GRADE" in name.upper() and "ATIVA" in name.upper():
-                    sheet_name = name
-                    found = True
-                    break
-            if not found:
-                wb.close()
-                return []
-
-        ws = wb[sheet_name]
-
-        if ws.sheet_state == "hidden":
+        sheet_name = find_grade_sheet_name(wb)
+        if sheet_name is None:
             wb.close()
-            raise ValueError(f"A aba '{sheet_name}' está oculta no arquivo {Path(path).name}")
+            return []
 
-        products = self._parse_grade(ws)
+        assert_grade_visible(wb, sheet_name, Path(path).name)
+        products = self._parse_grade(wb[sheet_name])
         wb.close()
         return products
 
@@ -232,7 +222,7 @@ class GeradorEngine:
         if nat_count == 0 and avn_count == 0:
             return []
 
-        file_brand = "natura" if nat_count >= avn_count else "avon"
+        file_brand = dominant_brand(nat_count, avn_count)
 
         products: list[dict] = []
         empty_streak = 0
