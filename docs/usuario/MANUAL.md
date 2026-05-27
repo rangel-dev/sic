@@ -9,15 +9,14 @@ Guia completo passo-a-passo de como usar cada módulo e funcionalidade do SIC.
 1. [Primeiros Passos](#primeiros-passos)
 2. [Interface Principal](#interface-principal)
 3. [Módulo Início](#1-módulo-início-home)
-4. [Módulo Gerador](#2-módulo-gerador-data-generator)
-5. [Módulo Sync](#3-módulo-sync-sincronização)
-6. [Módulo Auditor](#4-módulo-auditor-quality-assurance)
-7. [Módulo Volumetria](#5-módulo-volumetria-analytics)
-8. [Módulo Cadastro](#6-módulo-cadastro-data-management)
-9. [Módulo Histórico](#7-módulo-histórico-audit-log)
-10. [Módulo Configurações](#8-módulo-configurações-settings)
-11. [Dicas & Truques](#dicas--truques)
-12. [FAQ](#faq)
+4. [Módulo Exportador](#2-módulo-exportador)
+5. [Módulo Auditor](#3-módulo-auditor-quality-assurance)
+6. [Módulo Volumetria](#4-módulo-volumetria-analytics)
+7. [Módulo Cadastro](#5-módulo-cadastro-data-management)
+8. [Módulo Histórico](#6-módulo-histórico-audit-log)
+9. [Módulo Configurações](#7-módulo-configurações-settings)
+10. [Dicas & Truques](#dicas--truques)
+11. [FAQ](#faq)
 
 ---
 
@@ -46,7 +45,7 @@ Na primeira vez que abrir:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  ⬡ SIC  │ Início │ Gerador │ Sync │ Auditor │ ... │ ⚙️ │ ◑ │
+│  ⬡ SIC  │ Início │ Exportador │ Auditor │ ... │ ⚙️ │ ◑ │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │                   Conteúdo do Módulo Ativo                 │
@@ -115,187 +114,144 @@ Vou para Módulo Auditor automaticamente
 
 ---
 
-## 2️⃣ Módulo Gerador (Data Generator)
+## 2️⃣ Módulo Exportador
 
 ### O Que É?
 
-Cria, transforma e valida dados. É o ponto de entrada para processar informações no sistema.
+Módulo unificado de exportação de catálogo. A partir de uma única grade Excel, gera um ou ambos os artefatos XML necessários para importação no Salesforce Demandware:
+
+- **Pricebook XML** — tabela de preços DE (lista) e POR (promocional) por marca
+- **Catálogo XML** — delta de atributos de produto (visibilidade, selos, listas de vitrine)
+
+A marca (Natura / Avon) é detectada automaticamente pelo prefixo do SKU. CB (Minha Loja) é sempre incluída no Pricebook.
 
 ### Como Usar — Guia Passo-a-Passo
 
 #### **Passo 1: Acesse o Módulo**
-- Clique na aba "Gerador" (2ª aba da esquerda)
+- Clique na aba "Exportador" (2ª aba da esquerda)
 
-#### **Passo 2: Prepare seu Arquivo**
-Prepare um arquivo em um destes formatos:
-- `.xml` — Arquivos XML estruturados
-- `.xlsx` — Planilhas Excel
-- `.csv` — Arquivos separados por vírgula
-- `.json` — Dados em formato JSON
+#### **Passo 2: Carregue a Grade de Ativação**
 
-#### **Passo 3: Faça Upload**
-
-**Opção A — Drag & Drop (Recomendado)**
-```
-1. Abra seu arquivo no Explorador/Finder
-2. Arraste-o para a área cinzenta que diz "Solte seu arquivo aqui"
-3. O arquivo será importado automaticamente
-```
-
-**Opção B — Clique para Selecionar**
-```
-1. Clique no botão "Selecionar Arquivo"
-2. Escolha o arquivo no seu computador
-3. Clique em "Abrir"
-```
-
-#### **Passo 4: Validação Automática**
-
-Após o upload, o sistema automaticamente:
-- ✅ Verifica o formato
-- ✅ Valida a estrutura dos dados
-- ✅ Detecta problemas comuns
-- ✅ Mostra um relatório
-
-Você verá uma barra de progresso com status:
-- 🔵 **Processando...** — Analisando dados
-- 🟢 **Sucesso** — Dados válidos
-- 🔴 **Erro** — Problemas encontrados
-
-#### **Passo 5: Revise os Resultados**
-
-Se tudo OK:
-```
-✅ Arquivo carregado com sucesso
-   📊 1,250 registros processados
-   ⏱️ Tempo: 2.5 segundos
-   
-   [Confirmar] [Cancelar]
-```
-
-Se houver erros:
-```
-⚠️ Problemas encontrados (5 erros)
-   
-   • Linha 12: Valor inválido em "Preço"
-   • Linha 45: Campo obrigatório faltando
-   • Linha 67: Formato de data incorreto
-   
-   [Detalhes] [Corrigir] [Ignorar]
-```
-
-#### **Passo 6: Confirme o Processamento**
-
-Clique em um dos botões:
-- **Confirmar** — Processa e salva os dados
-- **Cancelar** — Descarta e volta
-- **Detalhes** — Vê problemas específicos
-- **Corrigir** — Abre editor para corrigir
-
-### Exemplo Real
+Arraste ou clique na área de upload para selecionar o(s) arquivo(s) Excel:
 
 ```
-Cenário: Você tem uma planilha Excel com 500 produtos
-
-1. Abra o Gerador
-2. Arraste seu Excel aqui → solta
-3. Sistema processa (3 segundos)
-4. "✅ 500 produtos validados com sucesso"
-5. Clica Confirmar
-6. Dados prontos para auditar no Auditor
+Arraste a(s) grade(s) aqui — GRADE DE ATIVAÇÃO
+(até 2 arquivos: Natura e/ou Avon)
 ```
 
----
+- O sistema detecta a marca automaticamente e exibe badges coloridos
+- Você pode inserir uma grade Natura e uma Avon simultaneamente
+- Duas grades da mesma marca não são permitidas
 
-## 3️⃣ Módulo Sync (Sincronização)
+#### **Passo 3: Escolha os Artefatos**
 
-### O Que É?
+Marque o(s) artefato(s) que deseja gerar:
 
-Sincroniza dados entre múltiplas fontes, garantindo consistência entre sistemas.
-
-### Como Usar
-
-#### **Passo 1: Acesse Sync**
-- Clique na aba "Sync" (3ª aba)
-
-#### **Passo 2: Crie ou Selecione uma Conexão**
-
-**Se primeira vez:**
+**Pricebook XML** *(marcado por padrão)*
 ```
-Clique: [Criar Nova Conexão]
-  ↓
-Nome: "Banco Principal"
-Tipo: "Database" ou "API"
-URL: https://seu-servidor/api
-Credenciais: (usuario/senha)
-  ↓
-[Testar Conexão]
-  ↓
-✅ Conexão validada
-  ↓
-[Salvar]
-```
+[✅ Pricebook XML (preços DE e POR)]
 
-**Se já existe:**
-```
-Selecione na lista: "Banco Principal"
-```
-
-#### **Passo 3: Configure a Sincronização**
-
-```
-Origem: Dados Locais (Gerador)
-Destino: Banco Principal
-Modo: 
-  ☑ Bidirecional (sincroniza ida e volta)
-  ☐ Unidirecional (apenas enviar)
+  Modo de geração:
+  ( ) Full Grade — exporta todos os produtos da grade
+  ( ) Delta Ajustes — exporta apenas preços alterados vs. XML base
   
-Agendar:
-  ☑ Automático (cada 24h)
-  ☐ Manual (apenas quando clico)
+  Se Delta: arraste o Pricebook XML atual (base de comparação)
 ```
+
+**Catálogo XML** *(desmarcado por padrão)*
+```
+[  Catálogo XML (visibilidade, selos e listas de vitrine)]
+
+  Se marcado, aparece:
+  Catálogo(s) XML — Master Data do Salesforce (exportados há >10 min)
+  [Arraste os XMLs de Catálogo aqui]
+```
+
+> ⚠️ **Regra de Ouro:** Os XMLs de catálogo devem ter sido exportados do Salesforce há **mais de 10 minutos** para garantir que a exportação está completa.
 
 #### **Passo 4: Execute**
 
 ```
-[Sincronizar Agora]
-  ↓
-Processando...
-█████████░ 50% - Sincronizando 250/500 registros
-  ↓
-✅ Sincronização concluída
-   • 500 registros enviados
-   • 10 conflitos resolvidos
-   • Tempo: 45 segundos
-   
-   [Ver Detalhes] [Salvar Log]
+[⊗  Exportar]
 ```
 
-#### **Passo 5: Verifique o Histórico**
-
-Clique em "Ver Histórico" para:
-- Ver todas as sincronizações passadas
-- Checar se houve erros
-- Exportar logs
-
-### Exemplo Prático
+A barra de progresso mostra as etapas de cada engine ativa:
 
 ```
-Você precisa sincronizar produtos com 2 sistemas diferentes
+Se apenas Pricebook:  0% ──────────────── 100%
+Se apenas Catálogo:   0% ──────────────── 100%
+Se ambos:             0% ─── 48% ─ 50% ── 100%
+                      Pricebook  ↑  Catálogo
+```
 
-1. Gerador → Processa 500 produtos
-2. Sync → Cria conexão com Sistema A
-3. Sync → Sincroniza (automático ou manual)
-4. Sync → Cria conexão com Sistema B
-5. Sync → Sincroniza com Sistema B também
-6. Histórico → Verifica se tudo foi sincronizado
+O log de atividade (visível quando Catálogo é gerado) exibe detalhes internos do processamento.
 
-✅ Agora os 3 sistemas têm dados idênticos
+#### **Passo 5: Baixe os Resultados**
+
+Ao concluir, os resultados aparecem separadamente por artefato:
+
+**Seção Pricebook:**
+```
+Pricebook
+  Total SKUs: 1.250 | Pricebook Natura ✓ | Pricebook Avon ✓ | Pricebook Minha Loja ✓ | Modo: FULL
+
+  [⬇ Salvar Pricebook XML]
+```
+
+**Seção Catálogo:**
+```
+Catálogo
+  XML Master: 3.200 | Grade: 1.250 | Match: 1.200 | Ativados: 980 | Vitrine: 750 | Cortes Facão: 30 | ...
+
+  Comparativo de Sincronismo por Lista:
+  ┌─────────────────┬────────────────┬───────────────┬─────────────────┐
+  │ ID DA LISTA     │ NO EXCEL (ALVO)│ NO XML (ANTIGO│ STATUS DELTA    │
+  ├─────────────────┼────────────────┼───────────────┼─────────────────┤
+  │ LISTA_01        │ 450 itens      │ 430 itens     │ Delta: +20 / -0 │
+  │ LISTA_02        │ 300 itens      │ 300 itens     │ Sincronizado ✓  │
+  └─────────────────┴────────────────┴───────────────┴─────────────────┘
+
+  [⬇ Salvar Catálogo XML]   [📊 Baixar Relatório XLSX]
+```
+
+### Regras de Negócio Aplicadas Automaticamente
+
+| Regra | Descrição |
+|---|---|
+| **RN-01** | Marca detectada automaticamente por prefixo SKU (NATBRA- / AVNBRA-) |
+| **RN-02** | CB (Minha Loja) sempre incluída no Pricebook |
+| **RN-03** | Modo Delta: só produtos com preço alterado (tolerância de R$ 0,01) |
+| **RN-04** | Facão: produtos com nome em CAIXA ALTA ficam fora da vitrine |
+| **RN-05** | Mestres ativos apenas se houver pelo menos 1 variante ativa na grade |
+| **RN-06** | XMLs com menos de 10 minutos geram aviso de antiguidade |
+| **RN-07** | Selos: limpa `natg_preferencialProductSlot` se produto não tem selo na grade |
+| **RN-09** | Contaminação: arquivo Natura não inclui SKUs AVNBRA- e vice-versa |
+| **RN-10** | Aba "GRADE DE ATIVAÇÃO" oculta no Excel gera erro explícito |
+
+### Exemplo de Fluxo Completo
+
+```
+Ciclo de atualização semanal (Natura):
+
+1. Abre Exportador
+2. Arraste a grade Excel (ex: Grade_Natura_Ciclo09.xlsm)
+   → Badge: 🟧 Natura detectada ✓
+3. Marca: [✅ Pricebook] + [✅ Catálogo]
+4. Para Pricebook: seleciona modo "Full Grade"
+5. Para Catálogo: arraste os XMLs do Salesforce
+6. Clica [⊗ Exportar]
+7. Aguarda ~30 segundos
+8. Resultado:
+   → Pricebook: 1.250 SKUs gerados (Natura + CB)
+   → Catálogo: 85 deltas / 30 cortes Facão / 2 listas atualizadas
+9. Baixa Pricebook XML → importa no Demandware
+10. Baixa Catálogo XML → importa no Demandware
+11. (Opcional) Baixa Relatório XLSX → envia para auditoria
 ```
 
 ---
 
-## 4️⃣ Módulo Auditor (Quality Assurance)
+## 3️⃣ Módulo Auditor (Quality Assurance)
 
 ### O Que É?
 
@@ -426,7 +382,7 @@ Cenário: 500 produtos importados, mas com alguns erros
 
 ---
 
-## 5️⃣ Módulo Volumetria (Analytics)
+## 4️⃣ Módulo Volumetria (Analytics)
 
 ### O Que É?
 
@@ -507,7 +463,7 @@ Formato:
 
 ---
 
-## 6️⃣ Módulo Cadastro (Data Management)
+## 5️⃣ Módulo Cadastro (Data Management)
 
 ### O Que É?
 
@@ -603,7 +559,7 @@ Sistema processa e valida
 
 ---
 
-## 7️⃣ Módulo Histórico (Audit Log)
+## 6️⃣ Módulo Histórico (Audit Log)
 
 ### O Que É?
 
@@ -622,9 +578,9 @@ Você verá uma tabela cronológica:
 ┌─────────────┬───────────┬──────────────┬─────────────┐
 │ Data/Hora   │ Módulo    │ Ação         │ Status      │
 ├─────────────┼───────────┼──────────────┼─────────────┤
-│ 16 Apr 14:32│ Gerador   │ Upload: 500  │ ✅ Sucesso  │
-│ 16 Apr 14:35│ Auditor   │ Auditoria    │ ✅ Sucesso  │
-│ 16 Apr 14:40│ Sync      │ Sincronizar  │ ✅ Sucesso  │
+│ 16 Apr 14:32│ Exportador│ Pricebook 500│ ✅ Sucesso  │
+│ 16 Apr 14:35│ Exportador│ Catálogo 85d │ ✅ Sucesso  │
+│ 16 Apr 14:40│ Auditor   │ Auditoria    │ ✅ Sucesso  │
 │ 16 Apr 14:45│ Cadastro  │ Criar Reg.   │ ✅ Sucesso  │
 └─────────────┴───────────┴──────────────┴─────────────┘
 ```
@@ -713,7 +669,7 @@ O sistema registra automaticamente:
 
 ---
 
-## 8️⃣ Módulo Configurações (Settings)
+## 7️⃣ Módulo Configurações (Settings)
 
 ### O Que É?
 
@@ -866,7 +822,7 @@ Dados Locais:
 Clique nas abas no topo em qualquer momento:
 
 ```
-⬡ SIC │ Início │ Gerador │ Sync │ Auditor │ Volumetria │ Cadastro │ Histórico │ ⚙️
+⬡ SIC │ Início │ Exportador │ Auditor │ Menus CB │ Cadastro │ Histórico │ ⚙️
 ```
 
 Ou use números (se ativado em Configurações):
@@ -1074,11 +1030,11 @@ R: • Automaticamente = O app notifica de atualizações
 
 Agora que você conhece todos os módulos:
 
-1. **Comece simples:** Abra o Gerador e importe um arquivo pequeno
-2. **Pratique a auditoria:** Use o Auditor para encontrar problemas
-3. **Sincronize:** Se tiver outro sistema, configure Sync
+1. **Comece simples:** Abra o Exportador com uma grade Excel e gere um Pricebook
+2. **Combine artefatos:** Marque Pricebook e Catálogo juntos para um ciclo completo
+3. **Pratique a auditoria:** Use o Auditor para verificar consistência entre arquivos
 4. **Analise:** Use Volumetria para ver padrões dos seus dados
-5. **Monitore:** Consulte regularmente o Histórico
+5. **Monitore:** Consulte regularmente o Histórico para rastrear cada operação
 
 ---
 
