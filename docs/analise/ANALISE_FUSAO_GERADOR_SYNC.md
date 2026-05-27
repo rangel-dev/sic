@@ -2,7 +2,7 @@
 **Documento:** BRD-001  
 **Autor:** Marcos (Analista de Negócios Jr)  
 **Data:** 2026-05-26  
-**Status:** Em revisão  
+**Status:** Decisões registradas — pronto para implementação  
 **Branch:** `feat/merge-sync-gerador`
 
 ---
@@ -108,20 +108,22 @@ Isso causa:
 
 ### 4.1 Visão do Produto
 
-Criar um **módulo unificado de Processamento de Catálogo** (sugestão de nome: **"Processador"** ou **"Pipeline"**) que, a partir de uma única seleção de arquivo Excel, permita ao usuário gerar os dois artefatos XML em uma operação integrada.
+Criar um **módulo unificado** chamado **"Exportador"** que, a partir de uma única seleção de arquivo Excel, permita ao usuário gerar um ou ambos os artefatos XML (Pricebook e/ou Catálogo) em uma operação integrada.
 
 ### 4.2 Fluxo Proposto
 
 ```
-Usuário abre módulo unificado
-→ Passo 1: Seleciona arquivo(s) Excel
-→ Passo 2: Seleciona XML(s) do catálogo atual (obrigatório para Sync)
-→ Passo 3: Configurações
-     ├── Modo Pricebook: [Full] ou [Delta + arquivo base]
-     └── Gerar artefatos: [✅ Pricebook] [✅ Catálogo] (checkboxes independentes)
-→ Clica em "Processar"
-→ Progress unificado mostra etapas de cada engine
-→ Resultados: dois botões de download (Pricebook XML | Catálogo XML)
+Usuário abre módulo Exportador
+→ Passo 1: Seleciona o(s) arquivo(s) Excel
+→ Passo 2: Escolhe o(s) artefato(s) a gerar:
+     ├── [✅ Pricebook]  → habilita: Modo [Full] ou [Delta + arquivo base XML]
+     └── [  Catálogo]   → habilita: campo de seleção do(s) XML(s) do catálogo atual (obrigatório)
+→ Passo 3: Clica em "Exportar"
+→ Barra de progresso unificada exibe etapas de cada engine ativa
+→ Resultados (independentes, exibidos conforme o que foi gerado):
+     ├── [Baixar Pricebook XML]   (se Pricebook foi gerado)
+     ├── [Baixar Catálogo XML]    (se Catálogo foi gerado)
+     └── [Baixar Relatório]       (relatório do Sync — exibido separadamente, apenas se Catálogo foi gerado)
 ```
 
 ### 4.3 O Que Muda vs. O Que Permanece
@@ -132,8 +134,8 @@ Usuário abre módulo unificado
 | `SyncEngine` (classe) | **Permanece inalterada** | Regras V11.1 complexas; risco alto de regressão ao refatorar |
 | Leitura de Excel | **Extrair para módulo utilitário** | Eliminar duplicação de código e garantir consistência |
 | Detecção de marca | **Extrair para módulo utilitário** | Duplicação identificada — mesma lógica nos dois engines |
-| Aba Gerador (UI) | **Substituída pelo módulo unificado** | Não faz mais sentido como aba isolada |
-| Aba Sync (UI) | **Substituída pelo módulo unificado** | Não faz mais sentido como aba isolada |
+| Aba Gerador (UI) | **Removida — sem legado** | Substituída integralmente pelo módulo Exportador |
+| Aba Sync (UI) | **Removida — sem legado** | Substituída integralmente pelo módulo Exportador |
 | Histórico de operações | **Manter separado por tipo** | O banco `history.db` registra por tipo de operação |
 
 ---
@@ -179,7 +181,7 @@ As seguintes regras de negócio existentes devem ser **preservadas integralmente
 - [ ] Validar que todos os testes existentes continuam passando
 
 ### Fase 2 — Nova UI Unificada
-- [ ] Criar `src/ui/views/processador_view.py` (nova aba unificada)
+- [ ] Criar `src/ui/views/exportador_view.py` (nova aba unificada — módulo Exportador)
 - [ ] Implementar seleção de Excel (aceitar múltiplos arquivos)
 - [ ] Implementar seleção de XML de catálogo (obrigatório apenas se "Catálogo" estiver marcado)
 - [ ] Implementar checkboxes de artefatos: Pricebook e/ou Catálogo
@@ -195,21 +197,16 @@ As seguintes regras de negócio existentes devem ser **preservadas integralmente
 
 ---
 
-## 8. Perguntas em Aberto
+## 8. Decisões Registradas
 
-Estas questões precisam de resposta antes de iniciar a implementação:
+Questões levantadas durante a análise e respondidas pelo negócio em 2026-05-27:
 
-1. **O usuário sempre quer gerar Pricebook E Catálogo juntos, ou há cenários onde ele quer apenas um?**  
-   → Impacta o design do passo 3 (checkboxes vs. modo único)
-
-2. **A aba "Gerador" e a aba "Sync" serão completamente removidas ou mantidas como legado?**  
-   → Impacta o escopo da Fase 3
-
-3. **O nome do novo módulo deve manter referência a "Gerador" ou "Sync", ou é uma entidade nova?**  
-   → Impacta nomenclatura na UI e no histórico
-
-4. **Haverá um relatório unificado (Excel de auditoria) que combine os resultados das duas engines?**  
-   → O Sync já gera um `report` detalhado por produto; o Gerador não
+| # | Questão | Decisão | Impacto |
+|---|---|---|---|
+| 1 | O usuário sempre gera Pricebook **e** Catálogo juntos? | **Não** — há cenários onde somente o Pricebook é necessário | Checkboxes independentes confirmados; fluxo deve permitir selecionar apenas um artefato |
+| 2 | As abas "Gerador" e "Sync" são removidas ou mantidas como legado? | **Removidas — sem legado** | Fase 3 deve excluir completamente ambas as abas da navegação |
+| 3 | Qual o nome do novo módulo? | **Exportador** | UI, histórico (`history.db`) e código-fonte devem usar "exportador" como identificador |
+| 4 | O relatório de auditoria será unificado ou separado por engine? | **Separado** — cada engine mantém seu próprio relatório | O relatório do Sync é exibido individualmente no resultado; o Gerador não gera relatório |
 
 ---
 
@@ -229,4 +226,4 @@ Estas questões precisam de resposta antes de iniciar a implementação:
 
 ---
 
-*Fim do documento. Próxima revisão após alinhamento das perguntas em aberto (Seção 8).*
+*Fim do documento. Todas as decisões da Seção 8 foram registradas em 27-05-2026. Documento pronto para handoff ao desenvolvimento.*
