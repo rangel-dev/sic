@@ -155,8 +155,7 @@ class MainWindow(QMainWindow):
 
         NAV_ITEMS = [
             ("⌂",  "Início",      0),
-            ("⊕",  "Gerador",     1),
-            ("↕",  "Sync",        2),
+            ("⊗",  "Exportador",  1),
             ("✓",  "Auditor",     3),
             # Cadastro is now a dropdown with submenu items
             ("≈",  "Menus CB",    9),
@@ -251,14 +250,13 @@ class MainWindow(QMainWindow):
             page = HomeView(self)
         elif index == 1:
             QApplication.setOverrideCursor(Qt.WaitCursor)
-            from src.ui.pages.view_gerador import GeradorView
-            page = GeradorView(self)
+            from src.ui.pages.view_exportador import ExportadorView
+            page = ExportadorView(self)
             QApplication.restoreOverrideCursor()
         elif index == 2:
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            from src.ui.pages.view_sync import SyncView
-            page = SyncView(self)
-            QApplication.restoreOverrideCursor()
+            # Sync removed in Fase 3 — redirect to Exportador
+            self._switch(1)
+            return
         elif index == 3:
             QApplication.setOverrideCursor(Qt.WaitCursor)
             from src.ui.pages.view_auditor import AuditorView
@@ -320,8 +318,7 @@ class MainWindow(QMainWindow):
         # Map indices to display names
         PAGE_NAMES = {
             0: "Início",
-            1: "Gerador",
-            2: "Sync",
+            1: "Exportador",
             3: "Auditor",
             4: "Volumetria",
             5: "Cadastro → Validação de Kits",
