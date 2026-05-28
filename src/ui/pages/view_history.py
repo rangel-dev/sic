@@ -82,7 +82,7 @@ class HistoryView(QWidget):
         # Module Filter
         filters_row.addWidget(QLabel("Módulo:"))
         self._combo_module = QComboBox()
-        self._combo_module.addItems(["Todos", "Auditor", "Sync", "Gerador", "Volumetria"])
+        self._combo_module.addItems(["Todos", "Exportador", "Auditor", "Volumetria"])
         self._combo_module.currentTextChanged.connect(self._load_data)
         filters_row.addWidget(self._combo_module)
 
