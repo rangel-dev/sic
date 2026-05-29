@@ -45,6 +45,7 @@ ERROR_META: dict[str, dict] = {
     "bundle":     {"title": "Saúde de Bundles/Kits",         "impact": "Queda no Ticket Médio",       "icon": "📦", "desc": "O Kit/Bundle possui componentes que estão offline ou sem preço definido."},
     "cross":      {"title": "Cross-Brand (Invasão)",         "impact": "Erro Crítico de Governança",  "icon": "🔴", "desc": "Produto de uma marca (ex: Natura) possui preço no catálogo de outra marca (ex: Avon)."},
     "offline":    {"title": "Produto Indisponível",          "impact": "Risco de Receita",            "icon": "🔇", "desc": "O produto está na Grade de Ativação do Excel, mas está com a flag 'online=false' no SF."},
+    "online_excess": {"title": "Produto Online Fora da Grade", "impact": "Invasão de Catálogo",        "icon": "🌐", "desc": "Produto ativo no Salesforce, mas ausente na Grade de Ativação. Deveria estar Offline."},
     "job":        {"title": "Falha de Sync (ML JOB)",        "impact": "Catálogo Desatualizado",      "icon": "🔄", "desc": "As categorias da Minha Loja (ML) estão divergentes das categorias espelho da marca original."},
     "searchable": {"title": "Flag Searchable",               "impact": "Perda de Fluxo Orgânico",     "icon": "🔍", "desc": "Divergência entre a coluna VISIBLE do Excel e a flag 'searchable' do Salesforce."},
 }
@@ -652,6 +653,7 @@ class AuditorEngine:
         all_skus.update(job_errors.keys())
         for skus in xml_lists.values():
             all_skus.update(skus)
+        all_skus.update(sku for sku, online in online_status.items() if online)
 
         errors: dict[str, list[dict]] = {k: [] for k in ERROR_META}
         stats = {k: {"total": 0, "natura": 0, "avon": 0} for k in ERROR_META}

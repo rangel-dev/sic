@@ -69,6 +69,11 @@ _KB: dict[str, dict] = {
         "title": "Invasão de Marca (Cross-Brand)",
         "desc": "Detectamos SKUs de uma marca dentro do Pricebook de outra. Grave erro de importação massiva.",
         "impact": "Erro Crítico de Governança"
+    },
+    "online_excess": {
+        "title": "Produto Online Fora da Grade",
+        "desc": "Produto ativo no Salesforce mas ausente na Grade de Ativação. Indica lixo de campanha anterior ou item fora de linha ainda ligado.",
+        "impact": "Invasão de Catálogo (Venda sem estratégia comercial)"
     }
 }
 
@@ -109,7 +114,7 @@ Identificamos <strong style="color:{strong_color}; font-weight:900;">{total_erro
 """
 
         # Ordem de Criticidade (Estratégico > Operacional)
-        priority = ['cross', 'ml', 'margin', 'price', 'missing', 'job', 'bundle', 'offline', 'logic', 'searchable', 'primary']
+        priority = ['cross', 'ml', 'margin', 'price', 'missing', 'job', 'bundle', 'offline', 'online_excess', 'logic', 'searchable', 'primary']
         
         def sort_key(k):
             try:
@@ -162,7 +167,7 @@ Identificamos <strong style="color:{strong_color}; font-weight:900;">{total_erro
         num_categories = len(error_keys)
         out = f"Identificamos *{total_errors} alertas* distribuídos em *{num_categories} categorias*. Confira o detalhamento completo:\n\n"
 
-        priority = ['cross', 'ml', 'margin', 'price', 'missing', 'job', 'bundle', 'offline', 'logic', 'searchable', 'primary']
+        priority = ['cross', 'ml', 'margin', 'price', 'missing', 'job', 'bundle', 'offline', 'online_excess', 'logic', 'searchable', 'primary']
         def sort_key(k): return priority.index(k) if k in priority else 99
         sorted_keys = sorted(error_keys, key=sort_key)
 
