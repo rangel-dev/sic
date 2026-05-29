@@ -24,8 +24,16 @@ def execute_parity_rules(
         pE = excel_prices.get(sku)
         is_offline      = online_status.get(sku) is not True
         is_on_grade     = pE is not None
+        row_base        = {"sku": sku, "brand": brand}
 
         if is_offline and not is_on_grade:
+            continue
+
+        # ── Check #13: PRODUTO ONLINE FORA DA GRADE ──────────────────
+        if not is_offline and not is_on_grade:
+            if not technical_skus.get(sku) and not variation_bases.get(sku):
+                errors["online_excess"].append({**row_base, "detail": "PRODUTO ONLINE FORA DA GRADE (Deveria estar Offline)"})
+                dump_stats("online_excess", brand)
             continue
 
         px     = (prices_xml.get(sku) or {}).get(brand, {})
@@ -38,8 +46,6 @@ def execute_parity_rules(
 
         sf_ml_de  = px_ml["DE"]  if "DE"  in px_ml else px_de
         sf_ml_por = px_ml["POR"] if "POR" in px_ml else px_por
-
-        row_base = {"sku": sku, "brand": brand}
 
         # ── Check #1: PRODUTO OFFLINE (estava no Excel) ───────────────
         if is_offline and is_on_grade:

@@ -30,6 +30,7 @@ _COMPLIANCE_CHECKS = [
     ("Audit de Preços",         "Pricebook XML × Planilha Excel (DE/POR)"),
     ("Audit de Visibilidade",   "Flag searchable/online vs. coluna VISIBLE"),
     ("Integridade de Catálogo", "Categoria primária, Bundles, Cross-Brand"),
+    ("Sincronia de Catálogo",   "online-flag SF × Grade de Ativação (bidirecional)"),
 ]
 
 
