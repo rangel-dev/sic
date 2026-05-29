@@ -159,6 +159,7 @@ class MainWindow(QMainWindow):
             ("✓",  "Auditor",     3),
             # Cadastro is now a dropdown with submenu items
             ("≈",  "Menus CB",    9),
+            ("✦",  "Cupons",      13),
             ("◔",  "Histórico",   7),
         ]
 
@@ -230,9 +231,9 @@ class MainWindow(QMainWindow):
         return top_bar
 
     def _build_pages(self):
-        # 13 pages: 0-10 original + 11 = Sobre + 12 = Conversor (Pontuação)
-        self._pages = [None] * 13
-        for i in range(13):
+        # 14 pages: 0-10 original + 11 = Sobre + 12 = Conversor (Pontuação) + 13 = Cupons
+        self._pages = [None] * 14
+        for i in range(14):
             self._stack.addWidget(QWidget())  # Dummy placeholder
 
         # Pre-load only the Home view for immediate startup
@@ -294,6 +295,9 @@ class MainWindow(QMainWindow):
         elif index == 12:
             from src.ui.pages.view_cadastro_conversor import CadastroConversorView
             page = CadastroConversorView(self)
+        elif index == 13:
+            from src.ui.pages.view_cupom import CupomView
+            page = CupomView(self)
         else:
             return
 
@@ -328,6 +332,7 @@ class MainWindow(QMainWindow):
             9: "Menus CB",
             11: "Sobre",
             12: "Cadastro → Pontuação",
+            13: "Cupons",
         }
         name = PAGE_NAMES.get(index, "Módulo")
         self.statusBar().showMessage(f"Módulo ativo: {name}  |  v{VERSION}")
