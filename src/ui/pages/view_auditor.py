@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-from PySide6.QtCore import Qt, QSettings
+from PySide6.QtCore import Qt, QSettings, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -88,7 +88,7 @@ class AuditorView(QWidget):
         top_scroll = QScrollArea()
         top_scroll.setWidgetResizable(True)
         top_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        top_scroll.setMinimumHeight(240) # Slightly reduced from 280
+        top_scroll.setMinimumHeight(160)
         top_half_layout.addWidget(top_scroll)
 
         top_widget = QWidget()
@@ -217,15 +217,18 @@ class AuditorView(QWidget):
         self._btn_webhook.setEnabled(False)
         action_row.addWidget(self._btn_webhook)
 
-        top_layout.addLayout(action_row)
-
-        # Progress bar moved OUT of top_scroll
-        top_layout.addStretch()
+        # Action row moved OUT of scroll so buttons stay always visible
+        action_container = QWidget()
+        action_container_layout = QVBoxLayout(action_container)
+        action_container_layout.setContentsMargins(28, 8, 28, 4)
+        action_container_layout.setSpacing(0)
+        action_container_layout.addLayout(action_row)
+        top_half_layout.addWidget(action_container)
 
         # Fixed progress bar container at the bottom of the top half
         progress_container = QWidget()
         progress_layout = QVBoxLayout(progress_container)
-        progress_layout.setContentsMargins(28, 8, 28, 8)
+        progress_layout.setContentsMargins(28, 4, 28, 8)
         progress_layout.setSpacing(4)
         
         self._progress_bar = QProgressBar()
@@ -354,7 +357,7 @@ class AuditorView(QWidget):
         ai_layout.addWidget(self._ai_browser)
 
         # Splitter distributions
-        self._splitter.setSizes([260, 640])
+        self._splitter.setSizes([290, 610])
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
 
@@ -592,6 +595,8 @@ class AuditorView(QWidget):
                     f"{total} divergências detectadas"
                 )
 
+        QTimer.singleShot(0, self._auto_expand_results)
+
         # Log to History
         brands = " / ".join(result.brands_found) if result.brands_found else "Desconhecida"
         HistoryEngine.add_entry(
@@ -599,6 +604,30 @@ class AuditorView(QWidget):
             brands,
             f"Auditoria concluída: {result.total_excel_skus} SKUs, {total} divergências."
         )
+
+    # ── Auto-expand results ───────────────────────────────────────────────
+    def _auto_expand_results(self) -> None:
+        total_h = self._splitter.height()
+        if total_h <= 300:
+            return
+
+        top_sz = 290
+        bottom_sz = total_h - top_sz - self._splitter.handleWidth()
+        self._splitter.setSizes([top_sz, bottom_sz])
+
+        if bottom_sz <= 400:
+            return
+
+        visible_cards = sum(1 for c in self._error_cards.values() if c.isVisible())
+        if visible_cards == 0:
+            cards_sz = 120
+        else:
+            rows = (visible_cards + 3) // 4
+            cards_sz = min(rows * 88 + (rows - 1) * 10 + 24, 320)
+
+        ai_sz = 200
+        table_sz = max(bottom_sz - cards_sz - ai_sz - 2 * self._bottom_splitter.handleWidth(), 200)
+        self._bottom_splitter.setSizes([cards_sz, table_sz, ai_sz])
 
     # ── Error ─────────────────────────────────────────────────────────────
     def _on_error(self, msg: str):
