@@ -110,7 +110,7 @@ class DropZone(QFrame):
         self._btn_clear.setStyleSheet("font-size:10px; padding:0 6px;")
         self._btn_clear.clicked.connect(self.clear)
         self._btn_clear.hide()
-        layout.addWidget(self._btn_clear)
+        layout.addWidget(self._btn_clear, 0, Qt.AlignmentFlag.AlignHCenter)
 
     # ── Public API ────────────────────────────────────────────────────────
     def set_validator(self, fn: Callable[[list[str]], Optional[str]]) -> None:
