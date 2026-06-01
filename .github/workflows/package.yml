@@ -3,21 +3,9 @@ name: Build and Release SIC
 on:
   push:
     branches:
-      - main
-      - dev
-      - 'feature/*'
-    paths-ignore:
-      - '**.md'
-      - 'DOCUMENTACAO.md'
-      - 'JORNADA.md'
-      - 'README.md'
-      - 'PROJETO.md'
-      - 'MANUAL.md'
-      - 'FLUXO_TRABALHO.md'
-      - 'history.db'
-      - '.gitignore'
-    tags:
-      - 'v*'
+      - '**'          # qualquer branch (dev, main, feature, etc.)
+    paths:
+      - 'src/core/version.py'   # só dispara quando a versão muda manualmente
 
 permissions:
   contents: write
