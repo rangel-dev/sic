@@ -20,6 +20,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFileDialog,
     QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -28,7 +29,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTextBrowser,
@@ -47,6 +47,11 @@ from src.core.certificate_engine import CertificateEngine
 
 
 MAX_TABLE_ROWS = 500
+
+# Layout da tabela no scroll único: cresce até MAX linhas visíveis; acima
+# disso a própria tabela rola, mantendo a página em tamanho gerenciável.
+MIN_TABLE_VISIBLE_ROWS = 6
+MAX_TABLE_VISIBLE_ROWS = 25
 
 
 class AuditorView(QWidget):
@@ -72,30 +77,25 @@ class AuditorView(QWidget):
         ))
         root.addWidget(Divider())
 
-        # Main splitter: controls top, results bottom
-        self._splitter = QSplitter(Qt.Vertical)
-        self._splitter.setHandleWidth(4)
-        self._splitter.setChildrenCollapsible(False)
-        root.addWidget(self._splitter)
+        # ── Página de rolagem única (padrão Exportador) ───────────────────
+        # Tudo vive empilhado dentro de um único QScrollArea para que cada
+        # bloco respire em altura natural, sem ser espremido por splitters.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        root.addWidget(scroll)
 
-        # Container for the top half (so progress bar is outside scroll)
-        top_half_widget = QWidget()
-        top_half_layout = QVBoxLayout(top_half_widget)
-        top_half_layout.setContentsMargins(0, 0, 0, 0)
-        top_half_layout.setSpacing(0)
+        container = QWidget()
+        scroll.setWidget(container)
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(20)
 
-        # ── Top panel: file inputs + action bar (Scrollable) ──────────────
-        top_scroll = QScrollArea()
-        top_scroll.setWidgetResizable(True)
-        top_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        top_scroll.setMinimumHeight(160)
-        top_half_layout.addWidget(top_scroll)
-
-        top_widget = QWidget()
-        top_scroll.setWidget(top_widget)
-        top_layout = QVBoxLayout(top_widget)
-        top_layout.setContentsMargins(28, 16, 28, 12)
-        top_layout.setSpacing(12)
+        # ── Bloco 1: Arquivos de Entrada ──────────────────────────────────
+        inputs_box = QGroupBox("Arquivos de Entrada")
+        inputs_box_layout = QVBoxLayout(inputs_box)
+        inputs_box_layout.setContentsMargins(16, 18, 16, 14)
+        inputs_box_layout.setSpacing(12)
 
         # File inputs row
         inputs_row = QHBoxLayout()
@@ -151,9 +151,10 @@ class AuditorView(QWidget):
         excel_col.addWidget(self._dz_excel)
         inputs_row.addLayout(excel_col, 1)
 
-        top_layout.addLayout(inputs_row)
+        inputs_box_layout.addLayout(inputs_row)
+        layout.addWidget(inputs_box)
 
-        # Action bar
+        # ── Bloco 2: Barra de Ações (rola junto com a página) ─────────────
         action_row = QHBoxLayout()
         action_row.setSpacing(12)
 
@@ -217,53 +218,14 @@ class AuditorView(QWidget):
         self._btn_webhook.setEnabled(False)
         action_row.addWidget(self._btn_webhook)
 
-        # Action row moved OUT of scroll so buttons stay always visible
-        action_container = QWidget()
-        action_container_layout = QVBoxLayout(action_container)
-        action_container_layout.setContentsMargins(28, 8, 28, 4)
-        action_container_layout.setSpacing(0)
-        action_container_layout.addLayout(action_row)
-        top_half_layout.addWidget(action_container)
+        layout.addLayout(action_row)
 
-        # Fixed progress bar container at the bottom of the top half
-        progress_container = QWidget()
-        progress_layout = QVBoxLayout(progress_container)
-        progress_layout.setContentsMargins(28, 4, 28, 8)
-        progress_layout.setSpacing(4)
-        
-        self._progress_bar = QProgressBar()
-        self._progress_bar.setRange(0, 100)
-        self._progress_bar.hide()
-        self._progress_bar.setFixedHeight(6) # Thinner, more modern
-        progress_layout.addWidget(self._progress_bar)
-
-        self._status_lbl = QLabel("")
-        self._status_lbl.setObjectName("label_muted")
-        self._status_lbl.hide()
-        progress_layout.addWidget(self._status_lbl)
-
-        top_half_layout.addWidget(progress_container)
-        self._splitter.addWidget(top_half_widget)
-
-        # ── Bottom panel: dashboard + table + AI ─────────────────────────
-        # Use a vertical splitter for bottom results part
-        self._bottom_splitter = QSplitter(Qt.Vertical)
-        self._bottom_splitter.setHandleWidth(4)
-        self._bottom_splitter.setChildrenCollapsible(False)
-        self._splitter.addWidget(self._bottom_splitter)
-
-        # ── LEFT PART: Dashboard + AI (Inside QScrollArea) ──────────────
-        diag_scroll = QScrollArea()
-        diag_scroll.setWidgetResizable(True)
-        diag_scroll.setObjectName("diag_scroll")
-        diag_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._bottom_splitter.addWidget(diag_scroll)
-
-        diag_widget = QWidget()
-        diag_scroll.setWidget(diag_widget)
-        diag_layout = QVBoxLayout(diag_widget)
-        diag_layout.setContentsMargins(18, 12, 10, 12)
-        diag_layout.setSpacing(16)
+        # ── Bloco 3: Painel de Divergências (cards) ───────────────────────
+        cards_header = QLabel("Painel de Divergências")
+        cards_header.setStyleSheet(
+            "color:#888;font-size:11px;font-weight:700;text-transform:uppercase;"
+        )
+        layout.addWidget(cards_header)
 
         # Error card dashboard (Flow-like grid)
         self._cards_container = QWidget()
@@ -284,7 +246,7 @@ class AuditorView(QWidget):
             self._error_cards[code] = card
             card.hide()
 
-        diag_layout.addWidget(self._cards_container)
+        layout.addWidget(self._cards_container)
 
         # Empty-state (no divergences) — celebratory message shown when the
         # audit completes with zero errors. Hidden by default; toggled in
@@ -307,16 +269,9 @@ class AuditorView(QWidget):
             "</div>"
         )
         self._empty_state.hide()
-        diag_layout.addWidget(self._empty_state)
-        diag_layout.addStretch()
+        layout.addWidget(self._empty_state)
 
-        # ── RIGHT PART: Table & AI (Directly in bottom_splitter) ────────
-        table_widget = QWidget()
-        self._bottom_splitter.addWidget(table_widget)
-        table_layout = QVBoxLayout(table_widget)
-        table_layout.setContentsMargins(10, 12, 18, 12)
-        table_layout.setSpacing(12)
-
+        # ── Bloco 4: Tabela de Divergências Detalhadas ────────────────────
         table_header = QHBoxLayout()
         self._table_title = QLabel("Divergências Detalhadas")
         self._table_title.setStyleSheet("color:#888;font-size:11px;font-weight:700;text-transform:uppercase;")
@@ -325,7 +280,7 @@ class AuditorView(QWidget):
         self._table_count_lbl = QLabel("")
         self._table_count_lbl.setObjectName("label_muted")
         table_header.addWidget(self._table_count_lbl)
-        table_layout.addLayout(table_header)
+        layout.addLayout(table_header)
 
         self._table = QTableWidget(0, 5)
         self._table.setHorizontalHeaderLabels(["SKU", "Marca", "Tipo", "Detalhe", "Impt."])
@@ -337,34 +292,48 @@ class AuditorView(QWidget):
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.verticalHeader().setVisible(False)
-        table_layout.addWidget(self._table)
+        # Cresce até MAX_TABLE_VISIBLE_ROWS; acima disso usa scroll próprio
+        # (o resto da página rola no QScrollArea externo).
+        self._table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        layout.addWidget(self._table)
 
-        # AI Panel (Bottom)
-        ai_widget = QWidget()
-        self._bottom_splitter.addWidget(ai_widget)
-        ai_layout = QVBoxLayout(ai_widget)
-        ai_layout.setContentsMargins(10, 0, 18, 12)
-        ai_layout.setSpacing(8)
-
+        # ── Bloco 5: Diagnóstico Estratégico — IA ─────────────────────────
         ai_header = QLabel("Diagnóstico Estratégico — IA")
         ai_header.setStyleSheet("font-size:11px;font-weight:700;color:#888;text-transform:uppercase;")
-        ai_layout.addWidget(ai_header)
+        layout.addWidget(ai_header)
 
         self._ai_browser = QTextBrowser()
         self._ai_browser.setObjectName("ai_panel")
         self._ai_browser.setOpenExternalLinks(False)
         self._ai_browser.setPlaceholderText("Diagnóstico estratégico aparecerá aqui…")
-        ai_layout.addWidget(self._ai_browser)
+        self._ai_browser.setMinimumHeight(360)
+        self._ai_browser.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        layout.addWidget(self._ai_browser)
 
-        # Splitter distributions
-        self._splitter.setSizes([290, 610])
-        self._splitter.setStretchFactor(0, 0)
-        self._splitter.setStretchFactor(1, 1)
+        # Folga ao final: mantém os blocos no topo quando a página é curta.
+        layout.addStretch(1)
 
-        self._bottom_splitter.setSizes([200, 450, 250])
-        self._bottom_splitter.setStretchFactor(0, 0)
-        self._bottom_splitter.setStretchFactor(1, 1)
-        self._bottom_splitter.setStretchFactor(2, 0)
+        # Altura inicial da tabela (vazia)
+        self._adjust_table_height()
+
+        # ── Barra de progresso fixa (fora do scroll, sempre visível) ──────
+        progress_container = QWidget()
+        progress_layout = QVBoxLayout(progress_container)
+        progress_layout.setContentsMargins(28, 4, 28, 8)
+        progress_layout.setSpacing(4)
+
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setRange(0, 100)
+        self._progress_bar.hide()
+        self._progress_bar.setFixedHeight(6)  # Thinner, more modern
+        progress_layout.addWidget(self._progress_bar)
+
+        self._status_lbl = QLabel("")
+        self._status_lbl.setObjectName("label_muted")
+        self._status_lbl.hide()
+        progress_layout.addWidget(self._status_lbl)
+
+        root.addWidget(progress_container)
 
         # Conecta validadores de bloqueio imediato nos DropZones
         self._setup_dropzone_validators()
@@ -595,7 +564,7 @@ class AuditorView(QWidget):
                     f"{total} divergências detectadas"
                 )
 
-        QTimer.singleShot(0, self._auto_expand_results)
+        QTimer.singleShot(0, self._adjust_table_height)
 
         # Log to History
         brands = " / ".join(result.brands_found) if result.brands_found else "Desconhecida"
@@ -605,29 +574,27 @@ class AuditorView(QWidget):
             f"Auditoria concluída: {result.total_excel_skus} SKUs, {total} divergências."
         )
 
-    # ── Auto-expand results ───────────────────────────────────────────────
-    def _auto_expand_results(self) -> None:
-        total_h = self._splitter.height()
-        if total_h <= 300:
-            return
+    # ── Altura dinâmica da tabela ─────────────────────────────────────────
+    def _adjust_table_height(self) -> None:
+        """Ajusta a altura da tabela para caber até MAX_TABLE_VISIBLE_ROWS
+        linhas sem corte; acima disso a tabela ganha scroll próprio enquanto o
+        resto da página continua rolando no QScrollArea externo."""
+        rows = self._table.rowCount()
 
-        top_sz = 290
-        bottom_sz = total_h - top_sz - self._splitter.handleWidth()
-        self._splitter.setSizes([top_sz, bottom_sz])
+        header_h = self._table.horizontalHeader().height()
+        if header_h <= 0:
+            header_h = self._table.horizontalHeader().sizeHint().height()
 
-        if bottom_sz <= 400:
-            return
+        row_h = self._table.verticalHeader().defaultSectionSize()
+        if rows > 0:
+            hint = self._table.sizeHintForRow(0)
+            if hint > 0:
+                row_h = hint
 
-        visible_cards = sum(1 for c in self._error_cards.values() if c.isVisible())
-        if visible_cards == 0:
-            cards_sz = 120
-        else:
-            rows = (visible_cards + 3) // 4
-            cards_sz = min(rows * 88 + (rows - 1) * 10 + 24, 320)
-
-        ai_sz = 200
-        table_sz = max(bottom_sz - cards_sz - ai_sz - 2 * self._bottom_splitter.handleWidth(), 200)
-        self._bottom_splitter.setSizes([cards_sz, table_sz, ai_sz])
+        # Mínimo de linhas mostradas (placeholder agradável quando vazia)
+        visible_rows = min(max(rows, MIN_TABLE_VISIBLE_ROWS), MAX_TABLE_VISIBLE_ROWS)
+        frame = 2 * self._table.frameWidth()
+        self._table.setFixedHeight(header_h + row_h * visible_rows + frame)
 
     # ── Error ─────────────────────────────────────────────────────────────
     def _on_error(self, msg: str):
@@ -801,6 +768,9 @@ class AuditorView(QWidget):
 
         self._table_count_lbl.setText(count_text)
         self._table_count_lbl.setToolTip(tooltip_text)
+
+        # Ajusta a altura para caber o conteúdo (até o limite de linhas)
+        self._adjust_table_height()
 
     # ── Export ────────────────────────────────────────────────────────────
     def _export_excel(self):
