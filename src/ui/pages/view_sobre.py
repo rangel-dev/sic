@@ -299,8 +299,9 @@ class SobreView(QWidget):
 
         grid = QGridLayout()
         grid.setSpacing(20)
-        for col, contributor in enumerate(CONTRIBUTORS):
-            grid.addWidget(_ContributorCard(contributor), 0, col)
+        for i, contributor in enumerate(CONTRIBUTORS):
+            row, col = divmod(i, 2)
+            grid.addWidget(_ContributorCard(contributor), row, col)
         self._layout.addLayout(grid)
 
     # ── Helper ────────────────────────────────────────────────────────────

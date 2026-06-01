@@ -158,7 +158,8 @@ class MainWindow(QMainWindow):
             ("⊗",  "Exportador",  1),
             ("✓",  "Auditor",     3),
             # Cadastro is now a dropdown with submenu items
-            ("≈",  "Menus CB",    9),
+            # Menus CB (index 9) está oculto da barra — página preservada no
+            # stack, apenas sem botão de acesso.
             ("✦",  "Cupons",      13),
             ("◔",  "Histórico",   7),
         ]
@@ -180,7 +181,7 @@ class MainWindow(QMainWindow):
         cadastro_btn.add_submenu_item("Pontuação", 12, "▪")
         cadastro_btn.submenu_clicked.connect(lambda idx: self._switch_cadastro(idx))
         self._nav_buttons[5] = cadastro_btn  # Store with index 5 for compatibility
-        tabs_layout.insertWidget(5, cadastro_btn)  # Insert after Volumetria
+        tabs_layout.insertWidget(4, cadastro_btn)  # Posiciona Cadastro antes do Histórico
 
         layout.addWidget(tabs_container, 1)  # Expand horizontally
 

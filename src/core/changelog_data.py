@@ -44,6 +44,18 @@ CONTRIBUTORS = [
         ),
         "legacy": None,
     },
+    {
+        "name": "Cinthia Oliveira",
+        "role": "Colaboradora — Módulo Cupons",
+        "icon": "✦",
+        "color": "#22A06B",
+        "bio": (
+            "O módulo Cupons nasceu de um script inicial criado por ela. Essa primeira "
+            "versão serviu de base para o desenvolvimento do Gerador de Cupons SFCC, "
+            "transformando a sua necessidade real de trabalho em uma ferramenta da suíte."
+        ),
+        "legacy": None,
+    },
 ]
 
 # Entradas do changelog: lista do mais recente para o mais antigo.
