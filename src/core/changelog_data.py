@@ -62,6 +62,16 @@ CONTRIBUTORS = [
 # type: "feat" | "fix" | "chore"
 CHANGELOG = [
     {
+        "version": "1.2.6",
+        "date": "Junho 2026",
+        "entries": [
+            ("feat", "Exportador Unificado: os antigos Gerador e Sync agora são um único módulo. Gere Pricebook XML e Catálogo XML a partir de uma só grade Excel."),
+            ("feat", "Gerador de Cupons SFCC: novo módulo que consolida listas de cupons de múltiplas origens e gera o XML pronto para subir no Salesforce."),
+            ("feat", "Auditoria mais rigorosa: nova verificação de Sincronia Estrita de Catálogo assegura que vitrine online e catálogo estejam perfeitamente alinhados."),
+            ("fix",  "Experiência refinada: rolagem única no Auditor e diversos ajustes de layout para uma navegação mais limpa e fluida."),
+        ],
+    },
+    {
         "version": "1.1.0",
         "date": "Abril 2026",
         "entries": [

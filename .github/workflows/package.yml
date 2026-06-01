@@ -6,6 +6,7 @@ on:
       - '**'          # qualquer branch (dev, main, feature, etc.)
     paths:
       - 'src/core/version.py'   # só dispara quando a versão muda manualmente
+  workflow_dispatch:            # permite rebuild manual da versão atual (Actions → Run workflow)
 
 permissions:
   contents: write

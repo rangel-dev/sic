@@ -142,11 +142,10 @@ class SobreView(QWidget):
 
         # How it works — module cards in a horizontal strip
         modules = [
-            ("⊕", "Gerador",     "Processa planilhas Excel e gera XMLs de Pricebook para o Salesforce."),
-            ("↕", "Sync",        "Sincroniza vitrines, atributos e catálogos entre marcas e plataformas."),
+            ("⊗", "Exportador",  "Gera Pricebook XML e/ou Catálogo XML a partir de uma única grade Excel."),
             ("✓", "Auditor",     "Valida consistência de preços, categorias e regras de negócio em lote."),
             ("≡", "Cadastro",    "Valida kits e pontuação cruzando XMLs Salesforce com planilhas de controle."),
-            ("≈", "Menus CB",    "Verifica a integridade da estrutura de menus do catálogo B2C."),
+            ("✦", "Cupons",      "Consolida listas de cupons de múltiplas origens e gera o XML pronto para o SFCC."),
         ]
 
         grid = QGridLayout()
