@@ -158,7 +158,9 @@ class MainWindow(QMainWindow):
             ("⊗",  "Exportador",  1),
             ("✓",  "Auditor",     3),
             # Cadastro is now a dropdown with submenu items
-            ("≈",  "Menus CB",    9),
+            # Menus CB (index 9) está oculto da barra — página preservada no
+            # stack, apenas sem botão de acesso.
+            ("✦",  "Cupons",      13),
             ("◔",  "Histórico",   7),
         ]
 
@@ -179,7 +181,7 @@ class MainWindow(QMainWindow):
         cadastro_btn.add_submenu_item("Pontuação", 12, "▪")
         cadastro_btn.submenu_clicked.connect(lambda idx: self._switch_cadastro(idx))
         self._nav_buttons[5] = cadastro_btn  # Store with index 5 for compatibility
-        tabs_layout.insertWidget(5, cadastro_btn)  # Insert after Volumetria
+        tabs_layout.insertWidget(4, cadastro_btn)  # Posiciona Cadastro antes do Histórico
 
         layout.addWidget(tabs_container, 1)  # Expand horizontally
 
@@ -230,9 +232,9 @@ class MainWindow(QMainWindow):
         return top_bar
 
     def _build_pages(self):
-        # 13 pages: 0-10 original + 11 = Sobre + 12 = Conversor (Pontuação)
-        self._pages = [None] * 13
-        for i in range(13):
+        # 14 pages: 0-10 original + 11 = Sobre + 12 = Conversor (Pontuação) + 13 = Cupons
+        self._pages = [None] * 14
+        for i in range(14):
             self._stack.addWidget(QWidget())  # Dummy placeholder
 
         # Pre-load only the Home view for immediate startup
@@ -294,6 +296,9 @@ class MainWindow(QMainWindow):
         elif index == 12:
             from src.ui.pages.view_cadastro_conversor import CadastroConversorView
             page = CadastroConversorView(self)
+        elif index == 13:
+            from src.ui.pages.view_cupom import CupomView
+            page = CupomView(self)
         else:
             return
 
@@ -328,6 +333,7 @@ class MainWindow(QMainWindow):
             9: "Menus CB",
             11: "Sobre",
             12: "Cadastro → Pontuação",
+            13: "Cupons",
         }
         name = PAGE_NAMES.get(index, "Módulo")
         self.statusBar().showMessage(f"Módulo ativo: {name}  |  v{VERSION}")
