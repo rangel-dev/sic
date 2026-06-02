@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
   <meta charset="utf-8">
-  <title>SIC — Tabela de resultados</title>
+  <title>SIC — Tabela de resultados (Auditor)</title>
   <link rel="stylesheet" href="_shared.css">
   <style>
     .crumbs { font-size: 12px; color: var(--text-mut); margin-bottom: 14px; }
@@ -50,16 +50,6 @@
       font-size: 13px;
       flex: 1;
     }
-    .search-box .clear-btn {
-      background: var(--panel-2);
-      border: 0;
-      color: var(--text-mut);
-      width: 18px; height: 18px;
-      border-radius: 999px;
-      font-size: 11px;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-    }
 
     .filter-chip {
       display: inline-flex; align-items: center; gap: 6px;
@@ -77,6 +67,16 @@
       border-color: var(--accent);
       color: var(--accent);
     }
+    .filter-chip.danger {
+      background: rgba(248,113,113,.08);
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+    .filter-chip.warn {
+      background: rgba(251,191,36,.08);
+      border-color: var(--warning);
+      color: var(--warning);
+    }
     .filter-chip .count {
       background: rgba(255,255,255,.08);
       border-radius: 999px;
@@ -84,6 +84,8 @@
       font-size: 11px;
     }
     .filter-chip.active .count { background: var(--accent); color: #0b1220; }
+    .filter-chip.danger .count { background: var(--danger); color: #0b1220; }
+    .filter-chip.warn   .count { background: var(--warning); color: #0b1220; }
 
     .toolbar .grow { flex: 1; }
 
@@ -148,6 +150,7 @@
     tbody td.code {
       font-family: ui-monospace, monospace;
       font-weight: 600;
+      font-size: 12px;
     }
     tbody td.action {
       text-align: right;
@@ -188,7 +191,6 @@
     .page-btn:hover { background: var(--panel-2); color: var(--text); }
     .page-btn.active { background: var(--accent); color: #0b1220; border-color: var(--accent); font-weight: 700; }
 
-    /* ── Empty state (commented version below) ───────────── */
     .demo-toggle {
       display: flex;
       gap: 6px;
@@ -233,6 +235,17 @@
       font-size: 13.5px;
       line-height: 1.6;
     }
+
+    /* check badge */
+    .check-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+    .check-offline  { background: rgba(248,113,113,.12); color: var(--danger); }
+    .check-online   { background: rgba(251,191,36,.12);  color: var(--warning); }
+    .check-preco    { background: rgba(196,181,253,.12); color: var(--avon); }
   </style>
 </head>
 <body>
@@ -242,9 +255,10 @@
   <div class="logo">⬡ SIC</div>
   <div class="tabs">
     <div class="tab">⌂ Início</div>
-    <div class="tab">⊕ Operações ▾</div>
-    <div class="tab">✓ Análise ▾</div>
-    <div class="tab active">≡ Cadastros ▾</div>
+    <div class="tab">⊗ Exportador</div>
+    <div class="tab active">✓ Auditor</div>
+    <div class="tab">≡ Cadastro ▾</div>
+    <div class="tab">✦ Cupons</div>
     <div class="tab">◔ Histórico</div>
   </div>
   <div class="right">
@@ -256,24 +270,24 @@
 
 <div class="page">
 
-  <div class="crumbs"><a href="index.html">← Voltar para o índice</a> · Cadastros · Pontuação · Resultado</div>
+  <div class="crumbs"><a href="index.html">← Voltar para o índice</a> · Auditor · Divergências</div>
 
   <!-- Page header -->
   <div class="page-header">
     <div>
-      <h1>Exceções encontradas</h1>
-      <div class="subtitle">Itens da auditoria que não foram localizados na Revista CF nem na Grade. <strong style="color:var(--text)">27 registros</strong> — clique para investigar cada um.</div>
+      <h1>Divergências detectadas</h1>
+      <div class="subtitle">Resultado da última auditoria — catalog_natura · <strong style="color:var(--text)">47 registros</strong> · executada há 4 min.</div>
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn outline">⤓ Exportar Excel</button>
-      <button class="btn primary">⤓ Carga GCP (42 linhas)</button>
+      <button class="btn outline">📄 Gerar certificado</button>
     </div>
   </div>
 
   <!-- Demo toggle -->
   <div class="demo-toggle">
-    <button class="active">Com dados (27 linhas)</button>
-    <button onclick="document.getElementById('with-data').style.display='none';document.getElementById('empty').style.display='block';this.classList.add('active');this.previousElementSibling.classList.remove('active')">Empty state (0 exceções)</button>
+    <button class="active">Com divergências (47)</button>
+    <button onclick="document.getElementById('with-data').style.display='none';document.getElementById('empty').style.display='block';this.classList.add('active');this.previousElementSibling.classList.remove('active')">Catálogo íntegro (0)</button>
   </div>
 
   <div id="with-data">
@@ -282,20 +296,17 @@
     <div class="toolbar">
       <div class="search-box">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input placeholder="Buscar por código, descrição…" />
+        <input placeholder="Buscar por SKU, descrição, check…" />
         <span class="kbd">⌘F</span>
       </div>
 
-      <div class="filter-chip active">Todos <span class="count">27</span></div>
-      <div class="filter-chip">Não localizados <span class="count">22</span></div>
-      <div class="filter-chip">Ciclo errado <span class="count">5</span></div>
+      <div class="filter-chip active">Todos <span class="count">47</span></div>
+      <div class="filter-chip danger">Produto offline <span class="count">29</span></div>
+      <div class="filter-chip warn">Online fora da grade <span class="count">13</span></div>
+      <div class="filter-chip">Divergência de preço <span class="count">5</span></div>
 
       <div class="grow"></div>
 
-      <button class="btn outline" style="padding:7px 12px">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        Colunas
-      </button>
       <button class="btn outline" style="padding:7px 12px">↑↓ Ordenar</button>
     </div>
 
@@ -306,7 +317,7 @@
       <span>Aplicar a todos:</span>
       <div class="grow"></div>
       <button class="btn ghost" style="padding:5px 10px;font-size:12px">⤓ Exportar selecionados</button>
-      <button class="btn ghost" style="padding:5px 10px;font-size:12px">↻ Re-validar</button>
+      <button class="btn ghost" style="padding:5px 10px;font-size:12px">↻ Re-auditar</button>
       <button class="btn ghost" style="padding:5px 10px;font-size:12px;color:var(--danger)">✕ Ignorar</button>
     </div>
 
@@ -316,11 +327,11 @@
         <thead>
           <tr>
             <th class="checkbox"><input type="checkbox" /></th>
-            <th class="sorted">Código <span class="sort-arrow">▲</span></th>
+            <th class="sorted">SKU <span class="sort-arrow">▲</span></th>
             <th>Descrição</th>
-            <th>Status <span class="sort-arrow">↕</span></th>
-            <th>Ciclo <span class="sort-arrow">↕</span></th>
-            <th>Última verificação</th>
+            <th>Check <span class="sort-arrow">↕</span></th>
+            <th>Marca</th>
+            <th>Detalhe</th>
             <th>Ação sugerida</th>
             <th></th>
           </tr>
@@ -329,26 +340,12 @@
 
           <tr class="selected">
             <td class="checkbox"><input type="checkbox" checked /></td>
-            <td class="code">179454</td>
-            <td>BIOGRAFIA ENCONTROS FEM DES COL 100ML</td>
-            <td><span class="pill danger">Não localizado</span></td>
-            <td>202607</td>
-            <td class="muted" style="font-size:12.5px">há 4 min</td>
-            <td class="muted" style="font-size:12.5px">Verificar aba Revista CF</td>
-            <td class="action">
-              <button class="row-action" title="Detalhes">→</button>
-              <button class="row-action" title="Mais">⋯</button>
-            </td>
-          </tr>
-
-          <tr class="selected">
-            <td class="checkbox"><input type="checkbox" checked /></td>
-            <td class="code">80969</td>
-            <td>CHRONOS SABONETE PELE OLEOSA</td>
-            <td><span class="pill danger">Não localizado</span></td>
-            <td>202607</td>
-            <td class="muted" style="font-size:12.5px">há 4 min</td>
-            <td class="muted" style="font-size:12.5px">Verificar aba Revista CF</td>
+            <td class="code">NATBRA-178452</td>
+            <td>CHRONOS SABONETE PELE OLEOSA 90G</td>
+            <td><span class="check-badge check-offline">Produto offline</span></td>
+            <td><span class="pill" style="background:rgba(245,158,11,.12);color:var(--natura);font-size:11px">Natura</span></td>
+            <td class="muted" style="font-size:12px">Grade ativa, SFCC offline</td>
+            <td class="muted" style="font-size:12px">Ativar no Salesforce</td>
             <td class="action">
               <button class="row-action">→</button>
               <button class="row-action">⋯</button>
@@ -357,12 +354,26 @@
 
           <tr class="selected">
             <td class="checkbox"><input type="checkbox" checked /></td>
-            <td class="code">203377</td>
+            <td class="code">NATBRA-203401</td>
             <td>EKOS CASTANHA DESODORANTE 75G</td>
-            <td><span class="pill warning">Ciclo errado</span></td>
-            <td>202607</td>
-            <td class="muted" style="font-size:12.5px">há 4 min</td>
-            <td class="muted" style="font-size:12.5px">SKU existe em 202608</td>
+            <td><span class="check-badge check-online">Online fora da grade</span></td>
+            <td><span class="pill" style="background:rgba(245,158,11,.12);color:var(--natura);font-size:11px">Natura</span></td>
+            <td class="muted" style="font-size:12px">Online no SFCC, sem grade ativa</td>
+            <td class="muted" style="font-size:12px">Desativar no Salesforce</td>
+            <td class="action">
+              <button class="row-action">→</button>
+              <button class="row-action">⋯</button>
+            </td>
+          </tr>
+
+          <tr class="selected">
+            <td class="checkbox"><input type="checkbox" checked /></td>
+            <td class="code">AVNBRA-80969</td>
+            <td>RENEW ANTISSINAIS SÉRUM 30ML</td>
+            <td><span class="check-badge check-online">Online fora da grade</span></td>
+            <td><span class="pill" style="background:rgba(196,181,253,.12);color:var(--avon);font-size:11px">Avon</span></td>
+            <td class="muted" style="font-size:12px">Online no SFCC, campanha encerrada</td>
+            <td class="muted" style="font-size:12px">Desativar no Salesforce</td>
             <td class="action">
               <button class="row-action">→</button>
               <button class="row-action">⋯</button>
@@ -371,12 +382,12 @@
 
           <tr>
             <td class="checkbox"><input type="checkbox" /></td>
-            <td class="code">200658</td>
+            <td class="code">NATBRA-200658</td>
             <td>NATURA TODODIA HIDR EXTRA SUAVE 400ML</td>
-            <td><span class="pill danger">Não localizado</span></td>
-            <td>202607</td>
-            <td class="muted" style="font-size:12.5px">há 4 min</td>
-            <td class="muted" style="font-size:12.5px">Verificar aba Revista CF</td>
+            <td><span class="check-badge check-offline">Produto offline</span></td>
+            <td><span class="pill" style="background:rgba(245,158,11,.12);color:var(--natura);font-size:11px">Natura</span></td>
+            <td class="muted" style="font-size:12px">Grade ativa, SFCC offline</td>
+            <td class="muted" style="font-size:12px">Ativar no Salesforce</td>
             <td class="action">
               <button class="row-action">→</button>
               <button class="row-action">⋯</button>
@@ -385,12 +396,12 @@
 
           <tr>
             <td class="checkbox"><input type="checkbox" /></td>
-            <td class="code">205931</td>
+            <td class="code">AVNBRA-205931</td>
             <td>EKOS BURITI HIDRATANTE CORPORAL 250ML</td>
-            <td><span class="pill warning">Ciclo errado</span></td>
-            <td>202607</td>
-            <td class="muted" style="font-size:12.5px">há 4 min</td>
-            <td class="muted" style="font-size:12.5px">SKU existe em 202609</td>
+            <td><span class="check-badge check-preco">Divergência de preço</span></td>
+            <td><span class="pill" style="background:rgba(196,181,253,.12);color:var(--avon);font-size:11px">Avon</span></td>
+            <td class="muted" style="font-size:12px">Grade 44,90 / SFCC 45,00</td>
+            <td class="muted" style="font-size:12px">Corrigir preço no Salesforce</td>
             <td class="action">
               <button class="row-action">→</button>
               <button class="row-action">⋯</button>
@@ -399,12 +410,12 @@
 
           <tr>
             <td class="checkbox"><input type="checkbox" /></td>
-            <td class="code">200656</td>
+            <td class="code">NATBRA-200656</td>
             <td>UNA INSTANT VOLUMETRIC EYELINER</td>
-            <td><span class="pill danger">Não localizado</span></td>
-            <td>202607</td>
-            <td class="muted" style="font-size:12.5px">há 4 min</td>
-            <td class="muted" style="font-size:12.5px">Verificar aba Revista CF</td>
+            <td><span class="check-badge check-offline">Produto offline</span></td>
+            <td><span class="pill" style="background:rgba(245,158,11,.12);color:var(--natura);font-size:11px">Natura</span></td>
+            <td class="muted" style="font-size:12px">Grade ativa, SFCC offline</td>
+            <td class="muted" style="font-size:12px">Ativar no Salesforce</td>
             <td class="action">
               <button class="row-action">→</button>
               <button class="row-action">⋯</button>
@@ -413,12 +424,12 @@
 
           <tr>
             <td class="checkbox"><input type="checkbox" /></td>
-            <td class="code">259854</td>
-            <td>KIT PRESENTE NATAL — não detalhado</td>
-            <td><span class="pill danger">Não localizado</span></td>
-            <td>202607</td>
-            <td class="muted" style="font-size:12.5px">há 4 min</td>
-            <td class="muted" style="font-size:12.5px">Possível kit ZEST sem filhos</td>
+            <td class="code">AVNBRA-259854</td>
+            <td>NATURA EKOS PITANGA DESODORANTE 75G</td>
+            <td><span class="check-badge check-online">Online fora da grade</span></td>
+            <td><span class="pill" style="background:rgba(196,181,253,.12);color:var(--avon);font-size:11px">Avon</span></td>
+            <td class="muted" style="font-size:12px">Online no SFCC, sem grade ativa</td>
+            <td class="muted" style="font-size:12px">Desativar no Salesforce</td>
             <td class="action">
               <button class="row-action">→</button>
               <button class="row-action">⋯</button>
@@ -427,12 +438,12 @@
 
           <tr>
             <td class="checkbox"><input type="checkbox" /></td>
-            <td class="code">206730</td>
+            <td class="code">NATBRA-206730</td>
             <td>TODODIA AVELÃ TONIFICANTE 200ML</td>
-            <td><span class="pill danger">Não localizado</span></td>
-            <td>202607</td>
-            <td class="muted" style="font-size:12.5px">há 4 min</td>
-            <td class="muted" style="font-size:12.5px">Verificar aba Revista CF</td>
+            <td><span class="check-badge check-offline">Produto offline</span></td>
+            <td><span class="pill" style="background:rgba(245,158,11,.12);color:var(--natura);font-size:11px">Natura</span></td>
+            <td class="muted" style="font-size:12px">Grade ativa, SFCC offline</td>
+            <td class="muted" style="font-size:12px">Ativar no Salesforce</td>
             <td class="action">
               <button class="row-action">→</button>
               <button class="row-action">⋯</button>
@@ -444,13 +455,13 @@
 
       <!-- Pagination -->
       <div class="pagination">
-        <span>Mostrando <strong style="color:var(--text)">1–8</strong> de <strong style="color:var(--text)">27</strong> exceções</span>
+        <span>Mostrando <strong style="color:var(--text)">1–8</strong> de <strong style="color:var(--text)">47</strong> divergências</span>
         <div class="page-controls">
           <button class="page-btn" disabled style="opacity:.4">‹</button>
           <button class="page-btn active">1</button>
           <button class="page-btn">2</button>
           <button class="page-btn">3</button>
-          <button class="page-btn">4</button>
+          <button class="page-btn">6</button>
           <button class="page-btn">›</button>
           <span style="margin:0 10px">·</span>
           <span>20 / pág</span>
@@ -470,9 +481,9 @@
             <polyline points="22 4 12 14.01 9 11.01"/>
           </svg>
         </div>
-        <h3>Nenhuma exceção encontrada 🎉</h3>
-        <p>Todos os 27 SKUs da auditoria foram localizados na Revista CF. A carga para GCP está pronta com 42 linhas geradas.</p>
-        <button class="btn primary">⤓ Baixar Carga GCP (42 linhas)</button>
+        <h3>Catálogo 100% consistente 🎉</h3>
+        <p>Todos os 13 checks passaram sem divergências. O catálogo está perfeitamente sincronizado com o Salesforce.</p>
+        <button class="btn primary">📄 Gerar certificado de auditoria</button>
       </div>
     </div>
   </div>

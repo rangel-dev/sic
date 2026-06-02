@@ -170,12 +170,12 @@
     }
 
     /* Module color accents */
-    .clr-cad { background: rgba(96,165,250,.15); color: var(--accent); }
-    .clr-ger { background: rgba(245,158,11,.15); color: var(--natura); }
+    .clr-exp { background: rgba(245,158,11,.15);  color: var(--natura); }
     .clr-aud { background: rgba(196,181,253,.15); color: var(--avon); }
-    .clr-syn { background: rgba(56,189,248,.15); color: var(--info); }
+    .clr-cad { background: rgba(96,165,250,.15);  color: var(--accent); }
+    .clr-cup { background: rgba(34,160,107,.15);  color: #22a06b; }
     .clr-his { background: rgba(148,163,184,.18); color: var(--text-mut); }
-    .clr-set { background: rgba(74,222,128,.15); color: var(--success); }
+    .clr-set { background: rgba(74,222,128,.15);  color: var(--success); }
   </style>
 </head>
 <body>
@@ -185,9 +185,10 @@
   <div class="logo">⬡ SIC</div>
   <div class="tabs">
     <div class="tab active">⌂ Início</div>
-    <div class="tab">⊕ Operações ▾</div>
-    <div class="tab">✓ Análise ▾</div>
-    <div class="tab">≡ Cadastros ▾</div>
+    <div class="tab">⊗ Exportador</div>
+    <div class="tab">✓ Auditor</div>
+    <div class="tab">≡ Cadastro ▾</div>
+    <div class="tab">✦ Cupons</div>
     <div class="tab">◔ Histórico</div>
   </div>
   <div class="right">
@@ -212,7 +213,7 @@
     <!-- Search -->
     <div class="palette-search">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input value="conv" placeholder="O que você quer fazer? (ex: nova carga, abrir auditor, exportar…)" />
+      <input value="exp" placeholder="O que você quer fazer? (ex: exportar, auditar, gerar cupons…)" />
       <span class="esc">esc</span>
     </div>
 
@@ -222,32 +223,32 @@
       <div class="group-label">Sugestões</div>
 
       <div class="cmd-row active">
-        <div class="cmd-icon clr-cad">≡</div>
+        <div class="cmd-icon clr-exp">⊗</div>
         <div class="cmd-info">
-          <div class="cmd-title">Abrir <span class="hl">Conv</span>ersor Biosphera</div>
-          <div class="cmd-meta">Cadastros · Pontuação · página de processamento</div>
+          <div class="cmd-title">Abrir <span class="hl">Exp</span>ortador</div>
+          <div class="cmd-meta">Exportador · Gerar Pricebook XML e Catálogo XML</div>
         </div>
         <div class="cmd-shortcut">
-          <span class="kbd">⌘</span><span class="kbd">G</span>
+          <span class="kbd">⌘</span><span class="kbd">E</span>
         </div>
       </div>
 
       <div class="cmd-row">
-        <div class="cmd-icon clr-cad">▶</div>
+        <div class="cmd-icon clr-exp">▶</div>
         <div class="cmd-info">
-          <div class="cmd-title">Nova carga GCP a partir do <span class="hl">Conv</span>ersor</div>
-          <div class="cmd-meta">Atalho · pula direto para o stepper de upload</div>
+          <div class="cmd-title"><span class="hl">Exp</span>ortar Pricebook — Natura</div>
+          <div class="cmd-meta">Atalho · grade_ativacao.xlsx · modo Full</div>
         </div>
         <div class="cmd-shortcut">
-          <span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">N</span>
+          <span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">E</span>
         </div>
       </div>
 
       <div class="cmd-row">
         <div class="cmd-icon clr-his">↻</div>
         <div class="cmd-info">
-          <div class="cmd-title">Re-executar última <span class="hl">conv</span>ersão</div>
-          <div class="cmd-meta">Conversor · 27 itens · há 4 min · ciclo 202609</div>
+          <div class="cmd-title">Re-<span class="hl">exp</span>ortar última exportação</div>
+          <div class="cmd-meta">Exportador · Avon · Pricebook + Catálogo · ontem 17:42</div>
         </div>
       </div>
 
@@ -256,45 +257,53 @@
       <div class="cmd-row">
         <div class="cmd-icon clr-aud">✓</div>
         <div class="cmd-info">
-          <div class="cmd-title">Auditor — Conflitos de margem</div>
-          <div class="cmd-meta">Aberto há 22 min</div>
+          <div class="cmd-title">Auditor — 3 produtos online fora da grade</div>
+          <div class="cmd-meta">Check #13 · há 18 min · catalog_natura</div>
         </div>
       </div>
 
       <div class="cmd-row">
-        <div class="cmd-icon clr-ger">⊕</div>
+        <div class="cmd-icon clr-cup">✦</div>
         <div class="cmd-info">
-          <div class="cmd-title">Gerador — Pricebook Avon</div>
-          <div class="cmd-meta">Executado ontem 17:42</div>
+          <div class="cmd-title">Cupons SFCC — 247 cupons gerados</div>
+          <div class="cmd-meta">cupons_c09.xml · há 2 min · C09</div>
         </div>
       </div>
 
       <div class="group-label">Navegar</div>
 
       <div class="cmd-row">
-        <div class="cmd-icon clr-cad">≡</div>
+        <div class="cmd-icon clr-exp">⊗</div>
         <div class="cmd-info">
-          <div class="cmd-title">Validação de Kits</div>
-          <div class="cmd-meta">Cadastros</div>
+          <div class="cmd-title">Exportador</div>
+          <div class="cmd-meta">Pricebook XML + Catálogo XML a partir de uma grade Excel</div>
+        </div>
+      </div>
+
+      <div class="cmd-row">
+        <div class="cmd-icon clr-aud">✓</div>
+        <div class="cmd-info">
+          <div class="cmd-title">Auditor</div>
+          <div class="cmd-meta">13 checks de consistência de preços e catálogo</div>
         </div>
       </div>
 
       <div class="cmd-row">
         <div class="cmd-icon clr-cad">≡</div>
         <div class="cmd-info">
-          <div class="cmd-title">Gestor GCP</div>
-          <div class="cmd-meta">Cadastros</div>
+          <div class="cmd-title">Cadastro · Validação de Kits</div>
+          <div class="cmd-meta">Cruza XMLs Salesforce com planilhas de controle</div>
         </div>
       </div>
 
       <div class="cmd-row">
-        <div class="cmd-icon clr-syn">↕</div>
+        <div class="cmd-icon clr-cup">✦</div>
         <div class="cmd-info">
-          <div class="cmd-title">Sync com Salesforce</div>
-          <div class="cmd-meta">Operações</div>
+          <div class="cmd-title">Cupons SFCC</div>
+          <div class="cmd-meta">Consolida listas e gera XML para importação no Salesforce</div>
         </div>
         <div class="cmd-shortcut">
-          <span class="kbd">⌘</span><span class="kbd">S</span>
+          <span class="kbd">⌘</span><span class="kbd">U</span>
         </div>
       </div>
 
@@ -315,7 +324,15 @@
         <div class="cmd-icon clr-his">⤓</div>
         <div class="cmd-info">
           <div class="cmd-title">Exportar último resultado</div>
-          <div class="cmd-meta">Conversor · 42 linhas · CSV ou XLSX</div>
+          <div class="cmd-meta">Auditor · 47 divergências · Excel ou CSV</div>
+        </div>
+      </div>
+
+      <div class="cmd-row">
+        <div class="cmd-icon clr-cup">✦</div>
+        <div class="cmd-info">
+          <div class="cmd-title">Gerar cupons do ciclo atual</div>
+          <div class="cmd-meta">Cupons · C09 · consolidar listas carregadas</div>
         </div>
       </div>
 
@@ -339,7 +356,7 @@
         <div class="legend-item"><span class="kbd">⏎</span> selecionar</div>
         <div class="legend-item"><span class="kbd">esc</span> fechar</div>
       </div>
-      <div>11 resultados · 0.04 ms</div>
+      <div>13 resultados · 0.03 ms</div>
     </div>
 
   </div>
