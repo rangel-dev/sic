@@ -3,9 +3,9 @@ name: Build and Release SIC
 on:
   push:
     branches:
-      - '**'          # qualquer branch (dev, main, feature, etc.)
+      - main
     paths:
-      - 'src/core/version.py'   # só dispara quando a versão muda manualmente
+      - 'src/core/version.py'
   workflow_dispatch:            # permite rebuild manual da versão atual (Actions → Run workflow)
 
 permissions:
