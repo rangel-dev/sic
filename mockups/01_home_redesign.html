@@ -190,12 +190,12 @@
     .tl-row .when { font-size: 11.5px; color: var(--text-mut); }
 
     /* Module color accents */
-    .clr-gerador  { background: rgba(245,158,11,.15); color: var(--natura); }
-    .clr-auditor  { background: rgba(196,181,253,.15); color: var(--avon); }
-    .clr-cadastro { background: rgba(96,165,250,.15); color: var(--accent); }
-    .clr-sync     { background: rgba(56,189,248,.15); color: var(--info); }
-    .clr-success  { background: rgba(74,222,128,.15); color: var(--success); }
-    .clr-warn     { background: rgba(251,191,36,.15); color: var(--warning); }
+    .clr-exportador { background: rgba(245,158,11,.15); color: var(--natura); }
+    .clr-auditor    { background: rgba(196,181,253,.15); color: var(--avon); }
+    .clr-cadastro   { background: rgba(96,165,250,.15);  color: var(--accent); }
+    .clr-cupons     { background: rgba(34,160,107,.15);  color: #22a06b; }
+    .clr-success    { background: rgba(74,222,128,.15);  color: var(--success); }
+    .clr-warn       { background: rgba(251,191,36,.15);  color: var(--warning); }
   </style>
 </head>
 <body>
@@ -205,9 +205,10 @@
   <div class="logo">⬡ SIC</div>
   <div class="tabs">
     <div class="tab active">⌂ Início</div>
-    <div class="tab">⊕ Operações ▾</div>
-    <div class="tab">✓ Análise ▾</div>
-    <div class="tab">≡ Cadastros ▾</div>
+    <div class="tab">⊗ Exportador</div>
+    <div class="tab">✓ Auditor</div>
+    <div class="tab">≡ Cadastro ▾</div>
+    <div class="tab">✦ Cupons</div>
     <div class="tab">◔ Histórico</div>
   </div>
   <div class="right">
@@ -238,9 +239,9 @@
     <span class="dot">·</span>
     Ciclo ativo <strong style="color:var(--text)">202609</strong>
     <span class="dot">·</span>
-    Versão 1.1.4-beta
+    Versão 1.2.6
     <span class="dot">·</span>
-    Última sync há 3 min
+    Salesforce conectado
   </div>
 
   <!-- KPI grid -->
@@ -257,9 +258,9 @@
     </div>
 
     <div class="kpi">
-      <div class="label"><span class="icon clr-success">✓</span>Conformidade GCP</div>
-      <div class="value">96.2<span style="font-size:18px;color:var(--text-mut)">%</span></div>
-      <div class="delta up">▲ 2.1pp <span class="delta-meta">vs ciclo anterior</span></div>
+      <div class="label"><span class="icon clr-success">✓</span>Conformidade de Catálogo</div>
+      <div class="value">97.4<span style="font-size:18px;color:var(--text-mut)">%</span></div>
+      <div class="delta up">▲ 1.2pp <span class="delta-meta">vs ciclo anterior</span></div>
       <svg class="spark" width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none">
         <polyline fill="none" stroke="#4ade80" stroke-width="2" points="0,16 20,18 40,14 60,16 80,12 100,14 120,10 140,8 160,10 180,6 200,4"/>
         <polyline fill="rgba(74,222,128,.12)" stroke="none" points="0,34 0,16 20,18 40,14 60,16 80,12 100,14 120,10 140,8 160,10 180,6 200,4 200,34"/>
@@ -267,9 +268,9 @@
     </div>
 
     <div class="kpi">
-      <div class="label"><span class="icon clr-warn">⚠</span>Exceções pendentes</div>
-      <div class="value">27</div>
-      <div class="delta down">▼ 12 <span class="delta-meta">vs ciclo anterior</span></div>
+      <div class="label"><span class="icon clr-warn">⚠</span>Divergências pendentes</div>
+      <div class="value">13</div>
+      <div class="delta down">▼ 8 <span class="delta-meta">vs ciclo anterior</span></div>
       <svg class="spark" width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none">
         <polyline fill="none" stroke="#fbbf24" stroke-width="2" points="0,8 20,12 40,10 60,18 80,14 100,20 120,18 140,22 160,20 180,24 200,28"/>
         <polyline fill="rgba(251,191,36,.12)" stroke="none" points="0,34 0,8 20,12 40,10 60,18 80,14 100,20 120,18 140,22 160,20 180,24 200,28 200,34"/>
@@ -277,9 +278,9 @@
     </div>
 
     <div class="kpi">
-      <div class="label"><span class="icon clr-auditor">⏱</span>Tempo médio</div>
-      <div class="value">2.4<span style="font-size:18px;color:var(--text-mut)">s</span></div>
-      <div class="delta up">▲ 31% mais rápido</div>
+      <div class="label"><span class="icon clr-auditor">⏱</span>Tempo médio de auditoria</div>
+      <div class="value">2.1<span style="font-size:18px;color:var(--text-mut)">s</span></div>
+      <div class="delta up">▲ 12% mais rápido</div>
       <svg class="spark" width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none">
         <polyline fill="none" stroke="#c4b5fd" stroke-width="2" points="0,8 20,10 40,12 60,8 80,14 100,12 120,16 140,18 160,20 180,22 200,26"/>
         <polyline fill="rgba(196,181,253,.12)" stroke="none" points="0,34 0,8 20,10 40,12 60,8 80,14 100,12 120,16 140,18 160,20 180,22 200,26 200,34"/>
@@ -308,18 +309,18 @@
           <div class="op-row">
             <div class="icon-circle clr-cadastro">≡</div>
             <div>
-              <div class="title">Conversor Biosphera · Ciclo 202609</div>
-              <div class="meta">Cruzando 27 itens contra Revista CF · ETA 8s</div>
+              <div class="title">Validação de Kits · base_c09.xlsx</div>
+              <div class="meta">Cruzando 84 SKUs com XMLs Salesforce · ETA 6s</div>
             </div>
             <div class="progress"><span style="width:64%"></span></div>
             <div class="muted" style="font-size:12px;width:34px;text-align:right">64%</div>
           </div>
 
           <div class="op-row">
-            <div class="icon-circle clr-sync">↕</div>
+            <div class="icon-circle clr-exportador">⊗</div>
             <div>
-              <div class="title">Sync semanal — Salesforce</div>
-              <div class="meta">Baixando catálogo Natura · 1.2k registros</div>
+              <div class="title">Exportador — Catálogo Natura · Ciclo 202609</div>
+              <div class="meta">Gerando XML de catálogo · 3.142 SKUs processados</div>
             </div>
             <div class="progress"><span style="width:32%"></span></div>
             <div class="muted" style="font-size:12px;width:34px;text-align:right">32%</div>
@@ -337,21 +338,21 @@
         <div class="timeline-list">
 
           <div class="tl-row">
-            <div class="dot clr-success">✓</div>
+            <div class="dot clr-cupons">✦</div>
             <div>
-              <div class="title">Carga GCP gerada — 42 linhas</div>
-              <div class="meta">Cadastro · Pontuação · 27/27 itens encontrados · 0 exceções</div>
+              <div class="title">Cupons SFCC gerados — 247 cupons · C09</div>
+              <div class="meta">Cupons · 3 listas consolidadas · 12 duplicatas removidas · cupons_c09.xml</div>
             </div>
-            <div class="when">há 4 min</div>
+            <div class="when">há 2 min</div>
           </div>
 
           <div class="tl-row">
             <div class="dot clr-warn">⚠</div>
             <div>
-              <div class="title">Auditor — 3 conflitos de margem detectados</div>
-              <div class="meta">Auditor · catalog_natura · ML #178452, #203401, #80969</div>
+              <div class="title">Auditor — 3 produtos online fora da grade</div>
+              <div class="meta">Auditor · Check #13 · NATBRA-178452, NATBRA-203401, AVNBRA-80969</div>
             </div>
-            <div class="when">há 22 min</div>
+            <div class="when">há 18 min</div>
           </div>
 
           <div class="tl-row">
@@ -364,10 +365,10 @@
           </div>
 
           <div class="tl-row">
-            <div class="dot clr-gerador">⊕</div>
+            <div class="dot clr-exportador">⊗</div>
             <div>
-              <div class="title">Pricebook gerado para Avon</div>
-              <div class="meta">Gerador · 3.142 SKUs · 1.8MB · pricebook_2026-04-29.xml</div>
+              <div class="title">Exportador — Pricebook + Catálogo · Avon</div>
+              <div class="meta">Exportador · 3.142 SKUs · pricebook_avon.xml + catalog_avon.xml · 4.2MB</div>
             </div>
             <div class="when">ontem 17:42</div>
           </div>
@@ -375,8 +376,8 @@
           <div class="tl-row">
             <div class="dot clr-auditor">✓</div>
             <div>
-              <div class="title">Volumetria mensal exportada</div>
-              <div class="meta">Análise · Volumetria · abril/2026</div>
+              <div class="title">Auditoria completa — 0 divergências</div>
+              <div class="meta">Auditor · 12 checks · catalog_natura · catálogo 100% íntegro</div>
             </div>
             <div class="when">ontem 09:14</div>
           </div>
@@ -391,31 +392,31 @@
         <h4 style="margin:0 0 14px;font-size:13px;font-weight:600">Ações rápidas</h4>
         <div class="qa-grid">
           <div class="qa">
-            <div class="icon-circle clr-cadastro">≡</div>
+            <div class="icon-circle clr-exportador">⊗</div>
             <div>
-              <div class="title">Nova carga GCP</div>
-              <div class="desc">Auditoria → Carga</div>
-            </div>
-          </div>
-          <div class="qa">
-            <div class="icon-circle clr-gerador">⊕</div>
-            <div>
-              <div class="title">Gerar pricebook</div>
-              <div class="desc">Natura ou Avon</div>
+              <div class="title">Exportar catálogo</div>
+              <div class="desc">Pricebook + Catálogo XML</div>
             </div>
           </div>
           <div class="qa">
             <div class="icon-circle clr-auditor">✓</div>
             <div>
-              <div class="title">Auditar margens</div>
-              <div class="desc">Conflitos & desvios</div>
+              <div class="title">Auditar catálogo</div>
+              <div class="desc">13 checks ativos</div>
             </div>
           </div>
           <div class="qa">
-            <div class="icon-circle clr-sync">↕</div>
+            <div class="icon-circle clr-cadastro">≡</div>
             <div>
-              <div class="title">Sync agora</div>
-              <div class="desc">Forçar pull manual</div>
+              <div class="title">Validar kits</div>
+              <div class="desc">Cruzar com Salesforce</div>
+            </div>
+          </div>
+          <div class="qa">
+            <div class="icon-circle clr-cupons">✦</div>
+            <div>
+              <div class="title">Gerar cupons</div>
+              <div class="desc">Consolidar e exportar XML</div>
             </div>
           </div>
         </div>
@@ -423,12 +424,12 @@
 
       <div class="card accent-blue" style="margin-top:18px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <span class="pill info">Versão 1.1.4-beta</span>
-          <span class="muted" style="font-size:11.5px">29/04/2026</span>
+          <span class="pill info">Versão 1.2.6</span>
+          <span class="muted" style="font-size:11.5px">Junho 2026</span>
         </div>
         <div style="font-size:13px;line-height:1.6">
-          <p style="margin:0 0 8px"><strong style="color:var(--text)">Novidade:</strong> Conversor Biosphera agora prioriza aba "País" corretamente (era selecionada "Região Estratégica" por engano).</p>
-          <p style="margin:0;color:var(--text-mut)"><strong style="color:var(--text)">Ajuste:</strong> Auditor de Pontuação renomeado para Gestor GCP.</p>
+          <p style="margin:0 0 8px"><strong style="color:var(--text)">Exportador Unificado:</strong> Gerador e Sync fundidos em um único módulo — uma grade Excel, todos os XMLs.</p>
+          <p style="margin:0;color:var(--text-mut)"><strong style="color:var(--text)">Novo:</strong> Gerador de Cupons SFCC e Check #13 (produto online fora da grade).</p>
         </div>
         <a href="#" style="display:inline-block;margin-top:10px;font-size:12px">Ver notas completas →</a>
       </div>
@@ -441,11 +442,11 @@
         </div>
         <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0;border-bottom:1px solid rgba(51,65,85,.4)">
           <span class="muted">Banco local (SQLite)</span>
-          <span style="color:var(--success);font-weight:600">●  OK · 12.3 MB</span>
+          <span style="color:var(--success);font-weight:600">●  OK · 14.1 MB</span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0">
           <span class="muted">Cache</span>
-          <span style="color:var(--warning);font-weight:600">●  82% cheio</span>
+          <span style="color:var(--success);font-weight:600">●  41% cheio</span>
         </div>
       </div>
     </div>
