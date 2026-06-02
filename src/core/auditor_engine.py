@@ -552,26 +552,19 @@ class AuditorEngine:
                 prod_type_el = (get_tag_text(prod, "product-type") or "").lower()
                 prod_type = prod_type_attr if prod_type_attr else prod_type_el
 
-                has_variants = len(prod.findall("c:variants/c:variant", ns)) > 0
+                # Paridade legado (auditor.js:566): o JS usava getElementsByTagName("variant"),
+                # que é uma busca PROFUNDA. A estrutura real do SF é
+                # <product><variations><variants><variant/></variants></variations>,
+                # então o seletor de caminho direto "c:variants/c:variant" nunca casava
+                # e os pais de variação (ex.: maquiagens com variação de cor) não eram
+                # detectados — gerando falso "PRODUTO ONLINE FORA DA GRADE".
+                has_variants = len(prod.findall(".//c:variant", ns)) > 0
 
                 var_flag_text = (get_tag_text(prod, "variation-base-product") or "").lower()
                 is_var_flag_text = (get_tag_text(prod, "is-variation-base") or "").lower()
 
-                # Alguns exports do SF usam <custom-attribute attribute-id="product-type">
-                # com valor "Variation Base Product" ou "Variation Group". O get_tag_text
-                # não captura isso porque o nome do elemento é "custom-attribute", não "product-type".
-                ca_prod_type = ""
-                for ca in prod.iter():
-                    if not isinstance(ca.tag, str):
-                        continue
-                    if ca.tag.endswith("}custom-attribute") or ca.tag == "custom-attribute":
-                        if (ca.get("attribute-id") or "").lower() == "product-type":
-                            ca_prod_type = (ca.text or "").strip().lower()
-                            break
-
                 if (var_marker == "true" or "variation" in prod_type or has_variants
-                        or var_flag_text == "true" or is_var_flag_text == "true"
-                        or "variation" in ca_prod_type):
+                        or var_flag_text == "true" or is_var_flag_text == "true"):
                     variation_bases[sku] = True
 
                 # Bundles
