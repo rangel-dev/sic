@@ -1,0 +1,930 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <title>SIC — Auditor (visão completa)</title>
+  <link rel="stylesheet" href="_shared.css">
+  <style>
+
+    /* ── Crumbs ───────────────────────────────────────────── */
+    .crumbs { font-size: 12px; color: var(--text-mut); margin-bottom: 20px; }
+    .crumbs a { color: var(--text-mut); }
+
+    /* ── Smart drop zone ──────────────────────────────────── */
+    .smart-drop-area {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .smart-drop {
+      border: 2px dashed var(--border);
+      border-radius: var(--r-lg);
+      background: var(--panel);
+      padding: 22px 24px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .smart-drop:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .smart-drop.loaded {
+      border-style: solid;
+      border-color: var(--success);
+      background: rgba(74,222,128,.04);
+      cursor: default;
+    }
+    .smart-drop-icon {
+      width: 44px; height: 44px;
+      border-radius: var(--r-lg);
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+    .smart-drop.loaded .smart-drop-icon {
+      background: rgba(74,222,128,.12);
+      border-color: var(--success);
+    }
+    .smart-drop-text .title {
+      font-size: 14px; font-weight: 600;
+    }
+    .smart-drop-text .sub {
+      font-size: 12px; color: var(--text-mut); margin-top: 2px;
+    }
+    .smart-drop-text .sub kbd {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      padding: 1px 5px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    .smart-drop .grow { flex: 1; }
+    .smart-drop-count {
+      font-size: 12px; color: var(--success); font-weight: 600;
+    }
+
+    /* classified file list */
+    .file-list {
+      background: var(--panel);
+      border: 1px solid var(--success);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+    }
+    .file-list-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px; font-weight: 700;
+      letter-spacing: .8px; text-transform: uppercase;
+      color: var(--success);
+    }
+    .file-list-header .clear-btn {
+      font-size: 11px; color: var(--text-mut); font-weight: 400;
+      text-transform: none; letter-spacing: 0; cursor: pointer;
+    }
+    .file-row {
+      display: grid;
+      grid-template-columns: 28px 1fr auto auto;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 16px;
+      border-bottom: 1px solid rgba(51,65,85,.35);
+      transition: background .1s;
+    }
+    .file-row:last-child { border-bottom: 0; }
+    .file-row:hover { background: var(--panel-2); }
+    .file-icon {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700;
+      flex-shrink: 0;
+    }
+    .file-icon.xml  { background: rgba(96,165,250,.15); color: var(--accent); }
+    .file-icon.xlsx { background: rgba(74,222,128,.15); color: var(--success); }
+    .file-name { font-size: 13px; font-weight: 500; }
+    .file-size { font-size: 11.5px; color: var(--text-mut); margin-top: 1px; }
+    .file-type-badge {
+      font-size: 10.5px; font-weight: 700;
+      padding: 3px 9px; border-radius: 999px;
+      white-space: nowrap;
+    }
+    .badge-pb    { background: rgba(245,158,11,.12);  color: var(--natura); }
+    .badge-cat   { background: rgba(96,165,250,.12);  color: var(--accent); }
+    .badge-grade { background: rgba(74,222,128,.12);  color: var(--success); }
+    .file-remove {
+      width: 22px; height: 22px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; color: var(--text-dim);
+      cursor: pointer; border: 0; background: transparent;
+    }
+    .file-remove:hover { background: var(--panel-2); color: var(--danger); }
+
+    /* ── Action bar ───────────────────────────────────────── */
+    .action-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 20px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      margin-bottom: 20px;
+    }
+    .action-bar .sep {
+      width: 1px; height: 24px;
+      background: var(--border);
+      margin: 0 4px;
+      flex-shrink: 0;
+    }
+    .action-bar .grow { flex: 1; }
+    .filter-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 12px; font-weight: 600;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .filter-pill.active {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .filter-pill .dot {
+      width: 7px; height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+    .btn-cert {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--r-md);
+      font-size: 12.5px; font-weight: 600;
+      border: 1px solid var(--warning);
+      background: rgba(251,191,36,.08);
+      color: var(--warning);
+      cursor: not-allowed;
+      opacity: .6;
+    }
+    .cert-icon {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(251,191,36,.15);
+      color: var(--warning);
+    }
+
+    /* ── Execution summary bar ────────────────────────────── */
+    .exec-summary {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      padding: 12px 20px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      margin-bottom: 20px;
+    }
+    .exec-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      border-right: 1px solid var(--border);
+      padding: 0 24px;
+    }
+    .exec-stat:first-child { padding-left: 0; align-items: flex-start; }
+    .exec-stat:last-child  { border-right: 0; padding-right: 0; align-items: flex-end; }
+    .exec-stat .s-val {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -.5px;
+      line-height: 1;
+    }
+    .exec-stat .s-lbl {
+      font-size: 11px;
+      color: var(--text-mut);
+      margin-top: 3px;
+      font-weight: 500;
+    }
+    .exec-stat .s-val.danger { color: var(--danger); }
+    .exec-stat .s-val.warn   { color: var(--warning); }
+    .exec-stat .s-val.ok     { color: var(--success); }
+    .exec-stat .s-val.mut    { color: var(--text-mut); }
+
+    /* ── Section label ────────────────────────────────────── */
+    .section-lbl {
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+
+    /* ── Error cards ──────────────────────────────────────── */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .ecard {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      border-top: 3px solid transparent;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: all .15s;
+      position: relative;
+      overflow: hidden;
+    }
+    .ecard:hover { border-color: var(--border-2); border-top-color: inherit; }
+    .ecard.selected {
+      border-color: var(--accent);
+      border-top-color: var(--accent) !important;
+      background: var(--accent-soft);
+    }
+    .ecard.zero {
+      opacity: .55;
+      border-top-color: var(--success) !important;
+    }
+    .ecard.zero:hover { opacity: .75; }
+
+    /* impact colors for top border */
+    .ecard.red    { border-top-color: var(--danger); }
+    .ecard.orange { border-top-color: var(--natura); }
+    .ecard.yellow { border-top-color: var(--warning); }
+    .ecard.purple { border-top-color: var(--avon); }
+    .ecard.blue   { border-top-color: var(--info); }
+    .ecard.teal   { border-top-color: var(--success); }
+
+    .ecard-top {
+      display: flex; align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .ecard-icon { font-size: 18px; line-height: 1; }
+    .ecard-total {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -.5px;
+      line-height: 1;
+    }
+    .ecard.zero .ecard-total { color: var(--success); font-size: 15px; }
+    .ecard-title {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      line-height: 1.3;
+    }
+    .ecard-impact {
+      font-size: 10.5px;
+      color: var(--text-mut);
+    }
+    .ecard-brands {
+      display: flex; gap: 6px; margin-top: 8px;
+    }
+    .brand-chip {
+      font-size: 10px; font-weight: 700;
+      padding: 2px 7px; border-radius: 999px;
+    }
+    .brand-nat { background: rgba(245,158,11,.15); color: var(--natura); }
+    .brand-avn { background: rgba(196,181,253,.15); color: var(--avon); }
+
+    /* ── Toolbar / table area ─────────────────────────────── */
+    .table-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .table-header-left { display: flex; align-items: center; gap: 10px; }
+    .active-filter-tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px; font-weight: 600;
+      background: var(--accent-soft);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+    }
+    .active-filter-tag .x { opacity: .7; cursor: pointer; }
+    .table-count { font-size: 12px; color: var(--text-mut); }
+
+    .search-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      max-width: 340px;
+      margin-bottom: 10px;
+    }
+    .search-row svg { color: var(--text-mut); flex-shrink: 0; }
+    .search-row input {
+      background: transparent; border: 0; outline: 0;
+      color: var(--text); font-size: 13px; flex: 1;
+    }
+
+    /* ── Table ────────────────────────────────────────────── */
+    .table-wrap {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    thead th {
+      text-align: left;
+      padding: 10px 14px;
+      font-size: 10.5px;
+      letter-spacing: 1px;
+      font-weight: 700;
+      color: var(--text-mut);
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      white-space: nowrap;
+    }
+    thead th.sorted { color: var(--accent); }
+    tbody tr { border-bottom: 1px solid rgba(51,65,85,.35); transition: background .1s; }
+    tbody tr:hover { background: var(--panel-2); }
+    tbody tr:last-child { border-bottom: 0; }
+    tbody td { padding: 10px 14px; vertical-align: middle; }
+    td.code { font-family: ui-monospace, monospace; font-size: 11.5px; font-weight: 600; }
+    td.action-cell { text-align: right; white-space: nowrap; }
+    .row-btn {
+      background: transparent; border: 1px solid transparent;
+      color: var(--text-mut); width: 26px; height: 26px;
+      border-radius: 6px; cursor: pointer; font-size: 12px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .row-btn:hover { background: var(--panel); border-color: var(--border); color: var(--text); }
+
+    /* action sugerida pill */
+    .action-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 9px; border-radius: 999px;
+      font-size: 11px; font-weight: 600;
+    }
+    .action-deactivate { background: rgba(248,113,113,.1); color: var(--danger); }
+    .action-activate   { background: rgba(74,222,128,.1);  color: var(--success); }
+    .action-fix-price  { background: rgba(196,181,253,.1); color: var(--avon); }
+
+    /* ── AI panel ─────────────────────────────────────────── */
+    .ai-panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .ai-panel-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .ai-panel-header h4 {
+      margin: 0; font-size: 13px; font-weight: 600;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .ai-tag {
+      font-size: 10px; font-weight: 700;
+      padding: 2px 8px; border-radius: 4px;
+      background: var(--accent-soft); color: var(--accent);
+      letter-spacing: .5px;
+    }
+    .ai-body { padding: 20px 24px; }
+    .ai-summary {
+      font-size: 13.5px;
+      line-height: 1.7;
+      color: var(--text-mut);
+      margin-bottom: 20px;
+    }
+    .ai-summary strong { color: var(--text); }
+    .ai-section-title {
+      font-size: 11px; font-weight: 700; letter-spacing: 1px;
+      text-transform: uppercase; color: var(--text-dim);
+      margin-bottom: 10px;
+    }
+    .ai-priority-list { display: flex; flex-direction: column; gap: 8px; }
+    .ai-item {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 10px 14px;
+      border-radius: var(--r-md);
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+    }
+    .ai-item-num {
+      width: 22px; height: 22px;
+      border-radius: 999px;
+      background: var(--danger);
+      color: #fff;
+      font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .ai-item-num.warn  { background: var(--warning); color: #0b1220; }
+    .ai-item-num.info  { background: var(--info); color: #0b1220; }
+    .ai-item-title { font-size: 13px; font-weight: 600; }
+    .ai-item-desc  { font-size: 12px; color: var(--text-mut); margin-top: 2px; }
+
+    /* ── Cert state banner ────────────────────────────────── */
+    .cert-banner {
+      display: flex; align-items: center; gap: 14px;
+      padding: 12px 18px;
+      background: rgba(251,191,36,.06);
+      border: 1px solid rgba(251,191,36,.25);
+      border-radius: var(--r-md);
+      margin-top: 16px;
+      font-size: 12.5px;
+    }
+    .cert-banner .icon { font-size: 18px; }
+    .cert-banner strong { color: var(--warning); }
+
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="logo">⬡ SIC</div>
+  <div class="tabs">
+    <div class="tab">⌂ Início</div>
+    <div class="tab">⊗ Exportador</div>
+    <div class="tab active">✓ Auditor</div>
+    <div class="tab">≡ Cadastro ▾</div>
+    <div class="tab">✦ Cupons</div>
+    <div class="tab">◔ Histórico</div>
+  </div>
+  <div class="right">
+    <div class="kbd-hint"><span style="opacity:.7">Buscar…</span><span class="kbd">⌘K</span></div>
+    <button class="icon-btn">☾</button>
+    <button class="icon-btn">⚙</button>
+  </div>
+</nav>
+
+<div class="page">
+
+  <div class="crumbs"><a href="index.html">← Voltar para o índice</a></div>
+
+  <!-- ── Section header ──────────────────────────────────────────────── -->
+  <div style="margin-bottom:24px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+      <h1 style="margin:0;font-size:22px;font-weight:800;letter-spacing:-.4px">✓  Auditor — Motor de Auditoria de Catálogo</h1>
+    </div>
+    <div style="font-size:13px;color:var(--text-mut)">Cruza Excel × Pricebook XML × Catálogo XML em 13 regras de negócio</div>
+  </div>
+
+  <!-- ── Bloco 1: Arquivos de Entrada ────────────────────────────────── -->
+  <div class="section-lbl">Arquivos de Entrada</div>
+  <div class="smart-drop-area">
+
+    <!-- Zona única de soltura — estado carregado -->
+    <div class="smart-drop loaded">
+      <div class="smart-drop-icon">✓</div>
+      <div class="smart-drop-text">
+        <div class="title">6 arquivos classificados automaticamente</div>
+        <div class="sub">Solte mais arquivos para adicionar · ou <kbd>clique</kbd> para selecionar</div>
+      </div>
+      <div class="grow"></div>
+      <div class="smart-drop-count">● pronto para auditar</div>
+    </div>
+
+    <!-- Lista de arquivos classificados pelo sistema -->
+    <div class="file-list">
+      <div class="file-list-header">
+        <span>Arquivos detectados</span>
+        <span class="clear-btn">Limpar tudo</span>
+      </div>
+
+      <div class="file-row">
+        <div class="file-icon xml">XML</div>
+        <div>
+          <div class="file-name">pricebook_br-natura.xml</div>
+          <div class="file-size">4.2 MB</div>
+        </div>
+        <span class="file-type-badge badge-pb">Pricebook</span>
+        <button class="file-remove">✕</button>
+      </div>
+
+      <div class="file-row">
+        <div class="file-icon xml">XML</div>
+        <div>
+          <div class="file-name">catalog_natura-br.xml</div>
+          <div class="file-size">8.1 MB</div>
+        </div>
+        <span class="file-type-badge badge-cat">Catálogo · Natura</span>
+        <button class="file-remove">✕</button>
+      </div>
+
+      <div class="file-row">
+        <div class="file-icon xml">XML</div>
+        <div>
+          <div class="file-name">catalog_avon-br.xml</div>
+          <div class="file-size">6.3 MB</div>
+        </div>
+        <span class="file-type-badge badge-cat">Catálogo · Avon</span>
+        <button class="file-remove">✕</button>
+      </div>
+
+      <div class="file-row">
+        <div class="file-icon xml">XML</div>
+        <div>
+          <div class="file-name">catalog_cbbrazil.xml</div>
+          <div class="file-size">2.4 MB</div>
+        </div>
+        <span class="file-type-badge badge-cat">Catálogo · ML</span>
+        <button class="file-remove">✕</button>
+      </div>
+
+      <div class="file-row">
+        <div class="file-icon xlsx">XLS</div>
+        <div>
+          <div class="file-name">GRADE_NATURA_C09.xlsx</div>
+          <div class="file-size">1.9 MB · 2.847 SKUs</div>
+        </div>
+        <span class="file-type-badge badge-grade">Grade · Natura</span>
+        <button class="file-remove">✕</button>
+      </div>
+
+      <div class="file-row">
+        <div class="file-icon xlsx">XLS</div>
+        <div>
+          <div class="file-name">GRADE_AVON_C09.xlsx</div>
+          <div class="file-size">940 KB · 1.295 SKUs</div>
+        </div>
+        <span class="file-type-badge badge-grade">Grade · Avon</span>
+        <button class="file-remove">✕</button>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- ── Bloco 2: Barra de Ações ──────────────────────────────────────── -->
+  <div class="action-bar">
+    <button class="btn primary" style="gap:8px">✓  Executar Auditoria</button>
+    <button class="btn ghost">Limpar</button>
+
+    <div class="sep"></div>
+
+    <div class="filter-pill active"><div class="dot"></div> Todos</div>
+    <div class="filter-pill"><div class="dot" style="background:var(--natura)"></div> Natura</div>
+    <div class="filter-pill"><div class="dot" style="background:var(--avon)"></div> Avon</div>
+
+    <div class="grow"></div>
+
+    <button class="btn outline" style="font-size:12.5px">⬇  Relatório</button>
+    <button class="btn outline" style="font-size:12.5px">📊  Evidências (Full)</button>
+    <div class="btn-cert" title="Disponível apenas com 0 divergências">
+      🏅  Certificado Mestre
+      <span class="cert-icon">⏳</span>
+    </div>
+    <button class="btn ghost" style="font-size:12.5px">⊕  Google Chat</button>
+  </div>
+
+  <!-- ── Bloco 3: Sumário pós-execução ───────────────────────────────── -->
+  <div class="exec-summary">
+    <div class="exec-stat">
+      <div class="s-val">4.142</div>
+      <div class="s-lbl">SKUs auditados</div>
+    </div>
+    <div class="exec-stat">
+      <div class="s-val danger">42</div>
+      <div class="s-lbl">divergências</div>
+    </div>
+    <div class="exec-stat">
+      <div class="s-val ok">11 / 13</div>
+      <div class="s-lbl">checks sem falhas</div>
+    </div>
+    <div class="exec-stat">
+      <div class="s-val" style="color:var(--natura)">29</div>
+      <div class="s-lbl">Natura</div>
+    </div>
+    <div class="exec-stat">
+      <div class="s-val" style="color:var(--avon)">13</div>
+      <div class="s-lbl">Avon</div>
+    </div>
+    <div class="exec-stat">
+      <div class="s-val mut">3.2s</div>
+      <div class="s-lbl">tempo de execução</div>
+    </div>
+  </div>
+
+  <!-- ── Bloco 4: Painel de Divergências (error cards) ───────────────── -->
+  <div class="section-lbl">Painel de Divergências — clique para filtrar a tabela</div>
+
+  <div class="cards-grid">
+
+    <!-- offline: 18 erros, SELECTED -->
+    <div class="ecard red selected">
+      <div class="ecard-top">
+        <div class="ecard-icon">🔇</div>
+        <div class="ecard-total">18</div>
+      </div>
+      <div class="ecard-title">Produto Indisponível</div>
+      <div class="ecard-impact">Risco de Receita</div>
+      <div class="ecard-brands">
+        <span class="brand-chip brand-nat">Nat 12</span>
+        <span class="brand-chip brand-avn">Avn 6</span>
+      </div>
+    </div>
+
+    <!-- online_excess: 13 erros -->
+    <div class="ecard yellow">
+      <div class="ecard-top">
+        <div class="ecard-icon">🌐</div>
+        <div class="ecard-total">13</div>
+      </div>
+      <div class="ecard-title">Online Fora da Grade</div>
+      <div class="ecard-impact">Invasão de Catálogo</div>
+      <div class="ecard-brands">
+        <span class="brand-chip brand-nat">Nat 8</span>
+        <span class="brand-chip brand-avn">Avn 5</span>
+      </div>
+    </div>
+
+    <!-- price: 5 erros -->
+    <div class="ecard orange">
+      <div class="ecard-top">
+        <div class="ecard-icon">💰</div>
+        <div class="ecard-total">5</div>
+      </div>
+      <div class="ecard-title">Divergência de Preço</div>
+      <div class="ecard-impact">Risco Financeiro Alto</div>
+      <div class="ecard-brands">
+        <span class="brand-chip brand-nat">Nat 3</span>
+        <span class="brand-chip brand-avn">Avn 2</span>
+      </div>
+    </div>
+
+    <!-- missing: 4 erros -->
+    <div class="ecard red">
+      <div class="ecard-top">
+        <div class="ecard-icon">❌</div>
+        <div class="ecard-total">4</div>
+      </div>
+      <div class="ecard-title">Preço Ausente (DE/POR)</div>
+      <div class="ecard-impact">Perda Imediata de Venda</div>
+      <div class="ecard-brands">
+        <span class="brand-chip brand-nat">Nat 2</span>
+        <span class="brand-chip brand-avn">Avn 2</span>
+      </div>
+    </div>
+
+    <!-- searchable: 2 erros -->
+    <div class="ecard blue">
+      <div class="ecard-top">
+        <div class="ecard-icon">🔍</div>
+        <div class="ecard-total">2</div>
+      </div>
+      <div class="ecard-title">Flag Searchable</div>
+      <div class="ecard-impact">Perda de Fluxo Orgânico</div>
+      <div class="ecard-brands">
+        <span class="brand-chip brand-nat">Nat 2</span>
+      </div>
+    </div>
+
+    <!-- list: 0 ✓ -->
+    <div class="ecard zero teal">
+      <div class="ecard-top">
+        <div class="ecard-icon">📋</div>
+        <div class="ecard-total">✓</div>
+      </div>
+      <div class="ecard-title">Visibilidade em Listas</div>
+      <div class="ecard-impact">sem falhas</div>
+    </div>
+
+    <!-- ml: 0 ✓ -->
+    <div class="ecard zero teal">
+      <div class="ecard-top">
+        <div class="ecard-icon">⚡</div>
+        <div class="ecard-total">✓</div>
+      </div>
+      <div class="ecard-title">Conflito Canal ML</div>
+      <div class="ecard-impact">sem falhas</div>
+    </div>
+
+    <!-- margin: 0 ✓ -->
+    <div class="ecard zero teal">
+      <div class="ecard-top">
+        <div class="ecard-icon">🚨</div>
+        <div class="ecard-total">✓</div>
+      </div>
+      <div class="ecard-title">Margem de Segurança</div>
+      <div class="ecard-impact">sem falhas</div>
+    </div>
+
+    <!-- logic: 0 ✓ -->
+    <div class="ecard zero teal">
+      <div class="ecard-top">
+        <div class="ecard-icon">⚠️</div>
+        <div class="ecard-total">✓</div>
+      </div>
+      <div class="ecard-title">Erro Lógico (POR > DE)</div>
+      <div class="ecard-impact">sem falhas</div>
+    </div>
+
+    <!-- primary: 0 ✓ -->
+    <div class="ecard zero teal">
+      <div class="ecard-top">
+        <div class="ecard-icon">🏷️</div>
+        <div class="ecard-total">✓</div>
+      </div>
+      <div class="ecard-title">Categoria Primária</div>
+      <div class="ecard-impact">sem falhas</div>
+    </div>
+
+    <!-- bundle: 0 ✓ -->
+    <div class="ecard zero teal">
+      <div class="ecard-top">
+        <div class="ecard-icon">📦</div>
+        <div class="ecard-total">✓</div>
+      </div>
+      <div class="ecard-title">Saúde de Bundles/Kits</div>
+      <div class="ecard-impact">sem falhas</div>
+    </div>
+
+    <!-- cross: 0 ✓ -->
+    <div class="ecard zero teal">
+      <div class="ecard-top">
+        <div class="ecard-icon">🔴</div>
+        <div class="ecard-total">✓</div>
+      </div>
+      <div class="ecard-title">Cross-Brand (Invasão)</div>
+      <div class="ecard-impact">sem falhas</div>
+    </div>
+
+    <!-- job: 0 ✓ -->
+    <div class="ecard zero teal">
+      <div class="ecard-top">
+        <div class="ecard-icon">🔄</div>
+        <div class="ecard-total">✓</div>
+      </div>
+      <div class="ecard-title">Falha de Sync (ML JOB)</div>
+      <div class="ecard-impact">sem falhas</div>
+    </div>
+
+  </div>
+
+  <!-- ── Bloco 5: Tabela de Divergências ─────────────────────────────── -->
+  <div class="table-header">
+    <div class="table-header-left">
+      <div class="section-lbl" style="margin-bottom:0">Divergências Detalhadas</div>
+      <div class="active-filter-tag">
+        🔇 Produto Indisponível
+        <span class="x">✕</span>
+      </div>
+    </div>
+    <div class="table-count">18 erros encontrados</div>
+  </div>
+
+  <div class="search-row" style="margin-bottom:10px">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input placeholder="Buscar por SKU, detalhe…" />
+    <span class="kbd">⌘F</span>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="sorted">SKU ▲</th>
+          <th>Marca</th>
+          <th>Tipo</th>
+          <th>Detalhe</th>
+          <th>Impacto</th>
+          <th>Ação sugerida <span style="opacity:.5;font-size:9px">✦ futuro</span></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+
+        <tr>
+          <td class="code">NATBRA-178452</td>
+          <td><span class="pill" style="background:rgba(245,158,11,.12);color:var(--natura);font-size:11px;padding:2px 8px">Natura</span></td>
+          <td><span style="font-size:11.5px">🔇 Produto Indisponível</span></td>
+          <td style="font-size:12px;color:var(--text-mut)">Grade ativa · SFCC online=false</td>
+          <td><span class="pill danger" style="font-size:11px">Risco de Receita</span></td>
+          <td><span class="action-pill action-activate">→ Ativar no Salesforce</span></td>
+          <td class="action-cell"><button class="row-btn">→</button><button class="row-btn">⋯</button></td>
+        </tr>
+
+        <tr>
+          <td class="code">NATBRA-203401</td>
+          <td><span class="pill" style="background:rgba(245,158,11,.12);color:var(--natura);font-size:11px;padding:2px 8px">Natura</span></td>
+          <td><span style="font-size:11.5px">🔇 Produto Indisponível</span></td>
+          <td style="font-size:12px;color:var(--text-mut)">Grade ativa · SFCC online=false</td>
+          <td><span class="pill danger" style="font-size:11px">Risco de Receita</span></td>
+          <td><span class="action-pill action-activate">→ Ativar no Salesforce</span></td>
+          <td class="action-cell"><button class="row-btn">→</button><button class="row-btn">⋯</button></td>
+        </tr>
+
+        <tr>
+          <td class="code">NATBRA-200658</td>
+          <td><span class="pill" style="background:rgba(245,158,11,.12);color:var(--natura);font-size:11px;padding:2px 8px">Natura</span></td>
+          <td><span style="font-size:11.5px">🔇 Produto Indisponível</span></td>
+          <td style="font-size:12px;color:var(--text-mut)">Grade ativa · SFCC online=false</td>
+          <td><span class="pill danger" style="font-size:11px">Risco de Receita</span></td>
+          <td><span class="action-pill action-activate">→ Ativar no Salesforce</span></td>
+          <td class="action-cell"><button class="row-btn">→</button><button class="row-btn">⋯</button></td>
+        </tr>
+
+        <tr>
+          <td class="code">AVNBRA-80969</td>
+          <td><span class="pill" style="background:rgba(196,181,253,.12);color:var(--avon);font-size:11px;padding:2px 8px">Avon</span></td>
+          <td><span style="font-size:11.5px">🔇 Produto Indisponível</span></td>
+          <td style="font-size:12px;color:var(--text-mut)">Grade ativa · SFCC online=false</td>
+          <td><span class="pill danger" style="font-size:11px">Risco de Receita</span></td>
+          <td><span class="action-pill action-activate">→ Ativar no Salesforce</span></td>
+          <td class="action-cell"><button class="row-btn">→</button><button class="row-btn">⋯</button></td>
+        </tr>
+
+        <tr>
+          <td class="code">AVNBRA-205931</td>
+          <td><span class="pill" style="background:rgba(196,181,253,.12);color:var(--avon);font-size:11px;padding:2px 8px">Avon</span></td>
+          <td><span style="font-size:11.5px">🔇 Produto Indisponível</span></td>
+          <td style="font-size:12px;color:var(--text-mut)">Grade ativa · SFCC online=false</td>
+          <td><span class="pill danger" style="font-size:11px">Risco de Receita</span></td>
+          <td><span class="action-pill action-activate">→ Ativar no Salesforce</span></td>
+          <td class="action-cell"><button class="row-btn">→</button><button class="row-btn">⋯</button></td>
+        </tr>
+
+        <tr style="opacity:.5">
+          <td colspan="7" style="text-align:center;font-size:12px;color:var(--text-mut);padding:10px">
+            + 13 linhas adicionais · <a href="#" style="color:var(--accent)">ver todas</a>
+          </td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Bloco 6: Diagnóstico Estratégico — IA ───────────────────────── -->
+  <div class="ai-panel">
+    <div class="ai-panel-header">
+      <h4>
+        <span>Diagnóstico Estratégico</span>
+        <span class="ai-tag">IA</span>
+      </h4>
+      <button class="btn ghost" style="padding:4px 10px;font-size:12px">Copiar</button>
+    </div>
+    <div class="ai-body">
+      <div class="ai-summary">
+        A auditoria de <strong>4.142 SKUs</strong> (Natura + Avon) identificou <strong>42 divergências</strong> em 2 dos 13 checks críticos. O padrão principal é de <strong>produtos ativos na Grade mas offline no Salesforce</strong> (18 casos), o que representa risco direto de perda de receita no ciclo vigente. O segundo padrão — <strong>13 produtos online sem grade ativa</strong> (Check #13) — indica que campanhas encerradas ainda estão expostas na vitrine.
+      </div>
+
+      <div class="ai-section-title">Prioridades de ação</div>
+      <div class="ai-priority-list">
+
+        <div class="ai-item">
+          <div class="ai-item-num">1</div>
+          <div>
+            <div class="ai-item-title">Ativar 18 SKUs offline com urgência — risco de receita imediato</div>
+            <div class="ai-item-desc">12 Natura · 6 Avon · produtos planejados mas invisíveis na vitrine. Cada hora offline é perda de conversão no ciclo C09.</div>
+          </div>
+        </div>
+
+        <div class="ai-item">
+          <div class="ai-item-num warn">2</div>
+          <div>
+            <div class="ai-item-title">Desativar 13 produtos sem grade — campanhas encerradas ainda no ar</div>
+            <div class="ai-item-desc">Check #13 · 8 Natura · 5 Avon · produtos de campanhas anteriores ativos no Salesforce sem estratégia comercial vigente.</div>
+          </div>
+        </div>
+
+        <div class="ai-item">
+          <div class="ai-item-num info">3</div>
+          <div>
+            <div class="ai-item-title">Corrigir 5 divergências de preço antes do fechamento</div>
+            <div class="ai-item-desc">Preços no Pricebook não batem com a Grade. Risco de venda abaixo do planejado ou rejeição de import.</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="cert-banner">
+        <span class="icon">⏳</span>
+        <div>
+          <strong>Certificado Mestre indisponível</strong> — 42 divergências pendentes.<br>
+          <span style="color:var(--text-mut);font-size:12px">Corrija todas as divergências no Salesforce, execute a auditoria novamente e o certificado será liberado automaticamente.</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
