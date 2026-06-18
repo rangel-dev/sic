@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <title>SIC — Mockups do Redesign</title>
+  <link rel="stylesheet" href="_shared.css">
+  <style>
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+      margin-top: 28px;
+    }
+    .mock-card {
+      display: block;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      text-decoration: none;
+      color: inherit;
+      transition: all .2s;
+    }
+    .mock-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      text-decoration: none;
+      box-shadow: var(--shadow-md);
+    }
+    .mock-thumb {
+      height: 180px;
+      background: linear-gradient(135deg, var(--bg), var(--panel-2));
+      border-bottom: 1px solid var(--border);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      color: var(--accent);
+      opacity: .9;
+    }
+    .mock-thumb svg { width: 64px; height: 64px; }
+    .mock-card .body { padding: 18px 20px; }
+    .mock-card h3 {
+      margin: 0 0 6px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .mock-card p {
+      margin: 0;
+      color: var(--text-mut);
+      font-size: 12.5px;
+      line-height: 1.5;
+    }
+    .hero {
+      background: linear-gradient(135deg, var(--panel) 0%, var(--bg) 100%);
+      border: 1px solid var(--border);
+      border-radius: var(--r-xl);
+      padding: 40px 44px;
+      margin-bottom: 12px;
+    }
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -.5px;
+    }
+    .hero p {
+      margin: 0;
+      font-size: 15px;
+      color: var(--text-mut);
+      max-width: 680px;
+      line-height: 1.55;
+    }
+    .legend {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-top: 24px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-mut); }
+    .swatch { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(255,255,255,.06); }
+  </style>
+</head>
+<body>
+
+<div class="page">
+  <div class="hero">
+    <span class="pill info">Mockup · Entrega futura proposta — v1.2.6</span>
+    <h1 style="margin-top:14px">SIC — Próxima geração</h1>
+    <p>Estes mockups ilustram a evolução visual e de UX proposta para o SIC a partir do estado atual (v1.2.6). Refletem os módulos reais — Exportador, Auditor, Cadastro e Cupons — com experiências que ainda não existem no app: KPIs dinâmicos, stepper de progresso, tabela interativa de divergências e command palette (⌘K). São arquivos HTML/CSS standalone usando os mesmos tokens do <code style="color:var(--accent)">qss_dark.py</code> — a tradução para PySide6 é direta.</p>
+
+    <div class="legend">
+      <div class="legend-item"><div class="swatch" style="background:#0f172a"></div>BG #0f172a</div>
+      <div class="legend-item"><div class="swatch" style="background:#1e293b"></div>Painel #1e293b</div>
+      <div class="legend-item"><div class="swatch" style="background:#60a5fa"></div>Acento #60a5fa</div>
+      <div class="legend-item"><div class="swatch" style="background:#f59e0b"></div>Natura #f59e0b</div>
+      <div class="legend-item"><div class="swatch" style="background:#c4b5fd"></div>Avon #c4b5fd</div>
+      <div class="legend-item"><div class="swatch" style="background:#22a06b"></div>Cupons #22a06b</div>
+      <div class="legend-item"><div class="swatch" style="background:#4ade80"></div>OK #4ade80</div>
+    </div>
+  </div>
+
+  <div class="section-title"><h3>4 telas — entrega futura proposta</h3></div>
+
+  <div class="grid">
+
+    <a class="mock-card" href="01_home_redesign.html">
+      <div class="mock-thumb">
+        <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="6" y="10" width="52" height="44" rx="3"/>
+          <rect x="11" y="16" width="14" height="10" rx="2" fill="rgba(96,165,250,.15)"/>
+          <rect x="29" y="16" width="14" height="10" rx="2" fill="rgba(245,158,11,.15)"/>
+          <rect x="47" y="16" width="11" height="10" rx="2" fill="rgba(74,222,128,.15)"/>
+          <line x1="11" y1="33" x2="58" y2="33"/>
+          <line x1="11" y1="40" x2="40" y2="40"/>
+          <line x1="11" y1="46" x2="50" y2="46"/>
+        </svg>
+      </div>
+      <div class="body">
+        <h3>1 · Home / Dashboard</h3>
+        <p>KPIs reais com sparklines e delta vs ciclo anterior. Timeline com Exportador, Auditor, Cadastro e Cupons. Ações rápidas para os 4 módulos ativos.</p>
+      </div>
+    </a>
+
+    <a class="mock-card" href="02_process_page.html">
+      <div class="mock-thumb">
+        <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="14" cy="20" r="5" fill="rgba(34,160,107,.3)"/>
+          <circle cx="32" cy="20" r="5" fill="rgba(34,160,107,.15)"/>
+          <circle cx="50" cy="20" r="5"/>
+          <line x1="19" y1="20" x2="27" y2="20"/>
+          <line x1="37" y1="20" x2="45" y2="20"/>
+          <rect x="6" y="34" width="36" height="22" rx="3"/>
+          <rect x="46" y="34" width="12" height="22" rx="3" fill="rgba(34,160,107,.08)"/>
+        </svg>
+      </div>
+      <div class="body">
+        <h3>2 · ProcessPage (Cupons SFCC)</h3>
+        <p>Stepper visual, drop zones para listas de cupons, log lateral em tempo real. Mostra consolidação de múltiplas origens e geração de XML para o Salesforce.</p>
+      </div>
+    </a>
+
+    <a class="mock-card" href="03_auditor_full.html">
+      <div class="mock-thumb">
+        <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="6" y="8"  width="52" height="10" rx="2" fill="rgba(96,165,250,.08)"/>
+          <rect x="6" y="22" width="11" height="11" rx="2" fill="rgba(248,113,113,.2)"/>
+          <rect x="20" y="22" width="11" height="11" rx="2" fill="rgba(251,191,36,.2)"/>
+          <rect x="34" y="22" width="11" height="11" rx="2" fill="rgba(245,158,11,.2)"/>
+          <rect x="48" y="22" width="10" height="11" rx="2" fill="rgba(74,222,128,.1)"/>
+          <rect x="6" y="38" width="52" height="5" rx="1"/>
+          <rect x="6" y="46" width="52" height="5" rx="1"/>
+          <rect x="6" y="54" width="36" height="5" rx="1"/>
+        </svg>
+      </div>
+      <div class="body">
+        <h3>3 · Auditor — Página completa</h3>
+        <p>Inputs carregados, sumário pós-execução, painel de ErrorCards clicáveis (13 checks), tabela de divergências com ação sugerida e diagnóstico IA.</p>
+      </div>
+    </a>
+
+    <a class="mock-card" href="04_command_palette.html">
+      <div class="mock-thumb">
+        <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="10" y="14" width="44" height="36" rx="4" fill="rgba(96,165,250,.08)"/>
+          <line x1="14" y1="22" x2="50" y2="22"/>
+          <rect x="14" y="28" width="36" height="4" rx="1" fill="rgba(96,165,250,.3)"/>
+          <rect x="14" y="36" width="30" height="4" rx="1"/>
+          <rect x="14" y="44" width="24" height="4" rx="1"/>
+        </svg>
+      </div>
+      <div class="body">
+        <h3>4 · Command Palette (⌘K)</h3>
+        <p>Fuzzy search dos 4 módulos atuais — Exportador, Auditor, Cadastro, Cupons. Sugestões contextuais, recentes e atalhos de teclado para power users.</p>
+      </div>
+    </a>
+
+  </div>
+
+  <div class="section-title" style="margin-top:48px"><h3>Como ler os mockups</h3></div>
+  <div class="card flat">
+    <p style="margin:0;line-height:1.7;color:var(--text-mut)">
+      Tudo aqui é <strong style="color:var(--text)">HTML/CSS estático</strong>. As interações principais (hover em cards, toggle de estado na tabela) funcionam visualmente — não há lógica real conectada. O objetivo é validar a <em>direção visual</em> e a <em>experiência de uso</em> antes de implementar em PySide6/QSS.
+      <br><br>
+      Cada cor, raio de borda, espaçamento e fonte já existe no <code style="color:var(--accent)">qss_dark.py</code> — a tradução para Qt é direta. O que não existe ainda no app: KPIs dinâmicos com sparkline, stepper de progresso, tabela interativa de divergências e o command palette (⌘K).
+    </p>
+  </div>
+</div>
+
+</body>
+</html>
