@@ -1,4 +1,4 @@
-TESTE MANUAL — BRD-003 (Escopo Dinâmico / Check "Excesso Online")
+TESTE MANUAL — BRD-004 (Escopo Dinâmico / Check "Excesso Online")
 ===================================================================
 
 Cenário: auditoria de UMA marca só (Natura), igual ao que o analista faz
@@ -13,7 +13,7 @@ COMO TESTAR NO APP
 4. Catálogos (XML) -> catalogo_natura.xml, catalogo_avon.xml, catalogo_ml.xml
 5. Rode a auditoria.
 
-RESULTADO ESPERADO (depois do ajuste do BRD-003)
+RESULTADO ESPERADO (depois do ajuste do BRD-004)
 --------------------------------------------------
 ✔ Aviso amarelo acima do Painel de Divergências:
   "Fora do escopo desta execução — grade não carregada para: Avon (1 SKU online ignorado)"
@@ -32,7 +32,7 @@ RESULTADO ESPERADO (depois do ajuste do BRD-003)
 
 COMO RECONFERIR O "ANTES" (comportamento antigo, com falso positivo)
 -----------------------------------------------------------------------
-Se quiser comparar com o comportamento ANTES do BRD-003: faça
+Se quiser comparar com o comportamento ANTES do BRD-004: faça
 `git stash` nas mudanças, rode o mesmo teste, e veja AVNBRA-9001
 aparecendo (incorretamente) no card "Produto Online Fora da Grade"
 junto com NATBRA-9002. Depois `git stash pop` para voltar.

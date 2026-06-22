@@ -1,6 +1,6 @@
 # Análise de Negócio — Auditor: Ajuste Fino de Escopo Dinâmico (Excesso Online)
 
-**Documento:** BRD-003
+**Documento:** BRD-004
 **Autor:** Marcos (Analista de Negócios Jr)
 **Data:** 22-06-2026
 **Status:** Aprovado para implementação
