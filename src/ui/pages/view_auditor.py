@@ -220,7 +220,7 @@ class AuditorView(QWidget):
 
         layout.addLayout(action_row)
 
-        # Aviso informativo: marca(s) fora do escopo desta execução (BRD-003)
+        # Aviso informativo: marca(s) fora do escopo desta execução (BRD-004)
         self._scope_skip_lbl = QLabel()
         self._scope_skip_lbl.setObjectName("scope_skip_banner")
         self._scope_skip_lbl.setWordWrap(True)
@@ -675,7 +675,7 @@ class AuditorView(QWidget):
 
     def _refresh_scope_skip_banner(self, scope_skipped: dict) -> None:
         """Avisa quando uma marca foi ignorada no Check 'Excesso Online' por
-        não ter grade carregada nesta execução (BRD-003 — escopo dinâmico)."""
+        não ter grade carregada nesta execução (BRD-004 — escopo dinâmico)."""
         if not scope_skipped:
             self._scope_skip_lbl.hide()
             return

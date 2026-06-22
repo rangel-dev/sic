@@ -31,7 +31,7 @@ def execute_parity_rules(
 
         # ── Check #13: PRODUTO ONLINE FORA DA GRADE ──────────────────
         if not is_offline and not is_on_grade:
-            # Ajuste de Escopo Dinâmico (BRD-003): marca sem grade carregada nesta
+            # Ajuste de Escopo Dinâmico (BRD-004): marca sem grade carregada nesta
             # execução não é "esquecida online", é fora do escopo da auditoria.
             if brand == "Natura" and not has_nat:
                 scope_skipped["Natura"] += 1
