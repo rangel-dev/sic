@@ -1,0 +1,42 @@
+TESTE MANUAL — BRD-004 (Escopo Dinâmico / Check "Excesso Online")
+===================================================================
+
+Cenário: auditoria de UMA marca só (Natura), igual ao que o analista faz
+no dia a dia quando ainda não recebeu a grade da Avon.
+
+COMO TESTAR NO APP
+-------------------
+1. Abra o módulo Auditor.
+2. Excel (Grade)   -> carregue SOMENTE:  grade_natura.xlsx
+   (NÃO carregue nenhum arquivo de grade da Avon — esse é o ponto do teste)
+3. Pricebook       -> pricebook.xml
+4. Catálogos (XML) -> catalogo_natura.xml, catalogo_avon.xml, catalogo_ml.xml
+5. Rode a auditoria.
+
+RESULTADO ESPERADO (depois do ajuste do BRD-004)
+--------------------------------------------------
+✔ Aviso amarelo acima do Painel de Divergências:
+  "Fora do escopo desta execução — grade não carregada para: Avon (1 SKU online ignorado)"
+
+✔ Card "Produto Online Fora da Grade" mostra 1 SKU: NATBRA-9002
+  (esse é um erro REAL — está online no XML mas não está na Grade Natura,
+   que FOI carregada. Continua sendo pego, como deve ser.)
+
+✔ AVNBRA-9001 NÃO aparece em nenhum card de erro.
+  (está online no XML Avon, mas como a grade Avon não foi carregada,
+   o sistema entende que Avon está fora do escopo desta execução —
+   não é mais tratado como "produto esquecido online".)
+
+✔ NATBRA-9001 não aparece em nenhum erro (caso de controle: está na
+  grade, preço e searchable batem certinho).
+
+COMO RECONFERIR O "ANTES" (comportamento antigo, com falso positivo)
+-----------------------------------------------------------------------
+Se quiser comparar com o comportamento ANTES do BRD-004: faça
+`git stash` nas mudanças, rode o mesmo teste, e veja AVNBRA-9001
+aparecendo (incorretamente) no card "Produto Online Fora da Grade"
+junto com NATBRA-9002. Depois `git stash pop` para voltar.
+
+REGENERAR OS ARQUIVOS
+-----------------------
+Caso precise recriar este conjunto: scratch/gen_test_escopo_dinamico.py
