@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog xmlns="http://www.demandware.com/xml/impex/catalog/2006-10-31" catalog-id="natura-br-storefront-catalog">
+
+    <!-- Caso de controle: está na grade, online, preço e searchable corretos -> sem erro -->
+    <product product-id="NATBRA-9001">
+        <online-flag>true</online-flag>
+        <searchable-flag>true</searchable-flag>
+        <display-name>Hidratante Corporal Exemplo</display-name>
+    </product>
+
+    <!-- Caso real de "esquecido online": Natura TEM grade carregada (has_nat=True),
+         então este SKU deve continuar gerando o erro online_excess normalmente. -->
+    <product product-id="NATBRA-9002">
+        <online-flag>true</online-flag>
+        <searchable-flag>true</searchable-flag>
+        <display-name>Perfume Campanha Encerrada Exemplo</display-name>
+    </product>
+
+</catalog>
