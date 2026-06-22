@@ -8,6 +8,8 @@ import hashlib
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from src.core.version import VERSION
+
 if TYPE_CHECKING:
     from src.core.auditor_engine import AuditResult
 
@@ -37,7 +39,7 @@ _COMPLIANCE_CHECKS = [
 class CertificateEngine:
     """Gera o PDF Certificado de Conformidade a partir de um AuditResult limpo."""
 
-    ENGINE_VERSION = "V11.6"
+    ENGINE_VERSION = f"v{VERSION}"
 
     # ── API pública ───────────────────────────────────────────────────────────
 
@@ -90,8 +92,8 @@ class CertificateEngine:
         self._draw_header(pdf, result.brands_found, ts)
         self._draw_provenance_block(pdf, ts, source_files, protocol_id)
         self._draw_summary_stats(pdf, result)
-        self._draw_compliance_table(pdf)
-        self._draw_security_stamp(pdf, protocol_id)
+        table_bottom = self._draw_compliance_table(pdf)
+        self._draw_security_stamp(pdf, protocol_id, y_start=table_bottom + 4)
         self._draw_footer(pdf, ts)
 
         pdf.output(output_path)
@@ -229,7 +231,8 @@ class CertificateEngine:
         pdf.set_text_color(*_GRAPHITE)
 
     # ── Seção 4: Tabela de conformidade ───────────────────────────────────────
-    def _draw_compliance_table(self, pdf) -> None:
+    def _draw_compliance_table(self, pdf) -> float:
+        """Desenha a tabela e retorna a coordenada Y onde ela termina."""
         y_start  = 88
         row_h    = 11
         col_widths = [52, 108, 22]
@@ -277,10 +280,10 @@ class CertificateEngine:
         pdf.set_draw_color(*_BORDER_CLR)
         pdf.rect(_MARGIN, y_start, sum(col_widths), table_h, style="D")
         pdf.set_text_color(*_GRAPHITE)
+        return y_start + table_h
 
     # ── Seção 5: Carimbo de segurança ─────────────────────────────────────────
-    def _draw_security_stamp(self, pdf, protocol_id: str) -> None:
-        y_start = 142
+    def _draw_security_stamp(self, pdf, protocol_id: str, y_start: float) -> None:
         height  = 62
         inner_x = _MARGIN + 6
         inner_w = _PAGE_W - _MARGIN * 2 - 12
@@ -324,7 +327,7 @@ class CertificateEngine:
             5.5,
             (
                 f"Este documento certifica que 100% dos SKUs processados na Grade de "
-                f"Ativação foram validados pelo Motor de Auditoria SIC {self.ENGINE_VERSION}\n"
+                f"Ativação foram validados pelo Motor de Auditoria SIC {self.ENGINE_VERSION}. "
                 f"A emissão deste certificado é automática e condicionada à conformidade total."
             ),
             align="C",
