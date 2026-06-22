@@ -14,7 +14,7 @@ def execute_parity_rules(
     all_skus, excel_prices, online_status, prices_xml,
     bundles, variation_bases, searchable_status, technical_skus,
     excel_lists, xml_lists, cat_missing_primary, prohibited_state,
-    job_errors, has_nat, has_avn, errors, dump_stats, scope_skipped
+    job_errors, has_nat, has_avn, errors, dump_stats
 ):
     for sku in all_skus:
         if not SKU_RE.match(sku):
@@ -31,14 +31,6 @@ def execute_parity_rules(
 
         # ── Check #13: PRODUTO ONLINE FORA DA GRADE ──────────────────
         if not is_offline and not is_on_grade:
-            # Ajuste de Escopo Dinâmico (BRD-004): marca sem grade carregada nesta
-            # execução não é "esquecida online", é fora do escopo da auditoria.
-            if brand == "Natura" and not has_nat:
-                scope_skipped["Natura"] += 1
-                continue
-            if brand == "Avon" and not has_avn:
-                scope_skipped["Avon"] += 1
-                continue
             if not technical_skus.get(sku) and not variation_bases.get(sku):
                 errors["online_excess"].append({**row_base, "detail": "PRODUTO ONLINE FORA DA GRADE (Deveria estar Offline)"})
                 dump_stats("online_excess", brand)

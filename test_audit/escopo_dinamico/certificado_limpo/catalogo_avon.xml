@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<catalog xmlns="http://www.demandware.com/xml/impex/catalog/2006-10-31" catalog-id="avon-br-storefront-catalog">
-    <!-- Online, sem grade Avon carregada -> ignorado (scope_skipped), não bloqueia o Certificado -->
-    <product product-id="AVNBRA-9001">
-        <online-flag>true</online-flag>
-        <searchable-flag>true</searchable-flag>
-        <display-name>Batom Avon Exemplo</display-name>
-    </product>
-</catalog>

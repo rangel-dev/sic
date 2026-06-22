@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<catalog xmlns="http://www.demandware.com/xml/impex/catalog/2006-10-31" catalog-id="natura-br-storefront-catalog">
-    <product product-id="NATBRA-9001">
-        <online-flag>true</online-flag>
-        <searchable-flag>true</searchable-flag>
-        <display-name>Hidratante Corporal Exemplo</display-name>
-    </product>
-</catalog>
