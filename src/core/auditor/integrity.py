@@ -2,16 +2,16 @@ import hashlib
 import os
 
 # DO NOT CHANGE THIS HASH.
-# Doing so overrides the integrity of the V11.6 logic parity.
-EXPECTED_V11_HASH = "c2d368ecaee808bf56579205bd7e2c6c4aa90a6eb2296ec65249840e477f40c3"
+# Doing so overrides the integrity of the certified V12 logic parity.
+EXPECTED_V12_HASH = "336d2a838f26188bcdf08afc1f4f68951c3d3711c4869ce991c64352a159d968"
 
 def verify_core_integrity() -> bool:
     """
-    Checks if parity_rules_v11.py has been modified by calculating its SHA256.
+    Checks if parity_rules_v12.py has been modified by calculating its SHA256.
     Returns True if intact, False if tampered with.
     """
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    rules_path = os.path.join(current_dir, "parity_rules_v11.py")
+    rules_path = os.path.join(current_dir, "parity_rules_v12.py")
     
     if not os.path.exists(rules_path):
         return False
@@ -23,4 +23,4 @@ def verify_core_integrity() -> bool:
         content = f.read().replace(b"\r\n", b"\n")
         sha256_hash.update(content)
             
-    return sha256_hash.hexdigest() == EXPECTED_V11_HASH
+    return sha256_hash.hexdigest() == EXPECTED_V12_HASH
