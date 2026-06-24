@@ -17,7 +17,7 @@ import pandas as pd
 from lxml import etree
 
 from src.core.auditor.integrity import verify_core_integrity
-from src.core.auditor.parity_rules_v11 import execute_parity_rules
+from src.core.auditor.parity_rules_v12 import execute_parity_rules
 
 # ─── Namespaces ───────────────────────────────────────────────────────────────
 PRICEBOOK_NS = "http://www.demandware.com/xml/impex/pricebook/2006-10-31"
@@ -65,7 +65,6 @@ def _is_production_environment() -> bool:
 class AuditResult:
     errors: dict[str, pd.DataFrame] = field(default_factory=dict)
     stats: dict = field(default_factory=dict)
-    scope_skipped: dict = field(default_factory=dict)
     brands_found: list[str] = field(default_factory=list)
     total_excel_skus: int = 0
     acertos: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -86,7 +85,7 @@ class AuditorEngine:
         try:
             # 0. Verificação de Lacre de Paridade
             if not verify_core_integrity():
-                print("⚠️ [Integrity Check] O arquivo parity_rules_v11.py foi modificado, mas a execução prosseguirá.")
+                print("⚠️ [Integrity Check] O arquivo parity_rules_v12.py foi modificado, mas a execução prosseguirá.")
 
             # Trava 5: Pricebook e Catálogos devem ter sido exportados há menos de 15 min
             if _is_production_environment():
@@ -176,7 +175,7 @@ class AuditorEngine:
 
             # 5. Cruzamento analítico
             self._prog(85, "Cruzamento analítico e gerando evidências…")
-            errors, stats, acertos_df, evidence_df, scope_skipped = self._cross_validate(
+            errors, stats, acertos_df, evidence_df = self._cross_validate(
                 excel_prices, excel_lists, prices_xml,
                 online_status, searchable_status, technical_skus,
                 xml_lists, prohibited_state, cat_missing_primary,
@@ -187,7 +186,6 @@ class AuditorEngine:
             result.stats         = stats
             result.acertos       = acertos_df
             result.evidence      = evidence_df
-            result.scope_skipped = scope_skipped
 
             self._prog(100, "Auditoria concluída!")
         except Exception as exc:
@@ -665,7 +663,6 @@ class AuditorEngine:
 
         errors: dict[str, list[dict]] = {k: [] for k in ERROR_META}
         stats = {k: {"total": 0, "natura": 0, "avon": 0} for k in ERROR_META}
-        scope_skipped = {"Natura": 0, "Avon": 0}
 
         def bump(code, brand):
             stats[code]["total"] += 1
@@ -679,7 +676,7 @@ class AuditorEngine:
             all_skus, excel_prices, online_status, prices_xml,
             bundles, variation_bases, searchable_status, technical_skus,
             excel_lists, xml_lists, cat_missing_primary, prohibited_state,
-            job_errors, has_nat, has_avn, errors, bump, scope_skipped
+            job_errors, has_nat, has_avn, errors, bump
         )
 
         # Converte listas em DataFrames
@@ -802,7 +799,7 @@ class AuditorEngine:
 
         acertos_df = pd.DataFrame(acertos_rows) if acertos_rows else pd.DataFrame(columns=["sku", "brand", "de_sf", "por_sf", "online", "searchable"])
 
-        return error_dfs, total_stats, acertos_df, evidence_df, scope_skipped
+        return error_dfs, total_stats, acertos_df, evidence_df
 
     # ── Helper ────────────────────────────────────────────────────────────
     @staticmethod

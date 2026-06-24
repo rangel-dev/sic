@@ -220,17 +220,6 @@ class AuditorView(QWidget):
 
         layout.addLayout(action_row)
 
-        # Aviso informativo: marca(s) fora do escopo desta execução (BRD-004)
-        self._scope_skip_lbl = QLabel()
-        self._scope_skip_lbl.setObjectName("scope_skip_banner")
-        self._scope_skip_lbl.setWordWrap(True)
-        self._scope_skip_lbl.setStyleSheet(
-            "background:#fff8e1;color:#8a6d00;border:1px solid #ffe082;"
-            "border-radius:6px;padding:8px 12px;font-size:12px;"
-        )
-        self._scope_skip_lbl.hide()
-        layout.addWidget(self._scope_skip_lbl)
-
         # ── Bloco 3: Painel de Divergências (cards) ───────────────────────
         cards_header = QLabel("Painel de Divergências")
         cards_header.setStyleSheet(
@@ -422,8 +411,6 @@ class AuditorView(QWidget):
             btn.setChecked(btn.property("filter_key") == key)
         self._refresh_cards()
         self._refresh_table()
-        if self._result:
-            self._refresh_scope_skip_banner(self._result.scope_skipped)
 
     # ── Run ───────────────────────────────────────────────────────────────
     def _run(self):
@@ -497,7 +484,6 @@ class AuditorView(QWidget):
         self._table.setRowCount(0)
         self._ai_browser.clear()
         self._empty_state.hide()
-        self._scope_skip_lbl.hide()
         self._progress_bar.setValue(0)
         self._progress_bar.show()
         self._status_lbl.show()
@@ -545,7 +531,6 @@ class AuditorView(QWidget):
         self._cert_status_lbl.style().polish(self._cert_status_lbl)
 
         self._refresh_cards()
-        self._refresh_scope_skip_banner(result.scope_skipped)
 
         # Default: show all errors (clear selection)
         self._active_filters.clear()
@@ -672,31 +657,6 @@ class AuditorView(QWidget):
         # divergences (not when filters merely hide everything).
         total_errors = self._result.stats.get("total", 0)
         self._empty_state.setVisible(total_errors == 0)
-
-    def _refresh_scope_skip_banner(self, scope_skipped: dict) -> None:
-        """Avisa quando uma marca foi ignorada no Check 'Excesso Online' por
-        não ter grade carregada nesta execução (BRD-004 — escopo dinâmico)."""
-        if not scope_skipped:
-            self._scope_skip_lbl.hide()
-            return
-
-        parts = []
-        for brand, key in (("Natura", "natura"), ("Avon", "avon")):
-            if self._brand_filter != "all" and self._brand_filter != key:
-                continue
-            n = scope_skipped.get(brand, 0)
-            if n > 0:
-                parts.append(f"{brand} ({n} SKU{'s' if n != 1 else ''} online ignorado{'s' if n != 1 else ''})")
-
-        if not parts:
-            self._scope_skip_lbl.hide()
-            return
-
-        self._scope_skip_lbl.setText(
-            "⚠️ Fora do escopo desta execução — grade não carregada para: "
-            + " · ".join(parts)
-        )
-        self._scope_skip_lbl.show()
 
     def _refresh_table(self):
         if not self._result:
@@ -996,7 +956,6 @@ class AuditorView(QWidget):
         self._btn_avon.setChecked(False)
         self._cards_container.hide()
         self._empty_state.hide()
-        self._scope_skip_lbl.hide()
         for card in self._error_cards.values():
             card.hide()
             card.update_counts(0, 0, 0)
