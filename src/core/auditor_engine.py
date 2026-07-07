@@ -37,6 +37,7 @@ PROHIBITED_CATEGORIES = {
 ERROR_META: dict[str, dict] = {
     "price":      {"title": "Divergência de Preço",         "impact": "Risco Financeiro Alto",       "icon": "💰", "desc": "Preço no Excel (DE/POR) não bate com o valor no Pricebook do Salesforce."},
     "list":       {"title": "Visibilidade em Listas",        "impact": "Baixa Conversão",             "icon": "📋", "desc": "SKU está na aba de lista (ex: LISTA_01) no Excel, mas não está na categoria equivalente no XML."},
+    "list_excess": {"title": "Excesso em Lista de Vitrine",  "impact": "Lixo de Catálogo",            "icon": "🗑️", "desc": "SKU está na categoria de lista (ex: LISTA_01) no Salesforce, mas foi removido da aba equivalente no Excel."},
     "ml":         {"title": "Conflito Canal ML",             "impact": "Conflito Estratégico",        "icon": "⚡", "desc": "Preço no catálogo 'Minha Loja' diverge do preço da marca principal (Natura/Avon)."},
     "margin":     {"title": "Margem de Segurança",           "impact": "Perda Operacional (Crítico)", "icon": "🚨", "desc": "Produto em promoção (POR < DE) dentro de uma categoria onde descontos são proibidos."},
     "logic":      {"title": "Erro Lógico (POR > DE)",        "impact": "Erro de Cadastro",            "icon": "⚠️", "desc": "O preço promocional (POR) está maior que o preço de lista (DE)."},
