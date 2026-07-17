@@ -239,6 +239,60 @@ class AuditorView(QWidget):
 
         layout.addLayout(action_row)
 
+        # ── Bloco 2.5: Painel dedicado de Composição de Kits (BRD-007) ────
+        # Reproduz a experiência da antiga tela Cadastro → Validação de Kits:
+        # KPIs (analisados/corretos/divergências), tabela SKU Pai/Status/Detalhe
+        # e download do XML de Correção. Só aparece quando o BO é anexado.
+        # Fica ANTES do painel genérico de divergências (Bloco 3), por pedido
+        # explícito — é a informação mais rica e específica de kits.
+        self._kit_panel = QWidget()
+        kit_layout = QVBoxLayout(self._kit_panel)
+        kit_layout.setContentsMargins(0, 0, 0, 0)
+        kit_layout.setSpacing(10)
+
+        kit_header = QLabel("Composição de Kits (BO)")
+        kit_header.setStyleSheet(
+            "font-size:11px;font-weight:700;color:#888;text-transform:uppercase;"
+        )
+        kit_layout.addWidget(kit_header)
+
+        kit_stats_row = QHBoxLayout()
+        kit_stats_row.setSpacing(12)
+        self._kit_stat_total = self._make_stat_card("0", "Kits Analisados", "#00a1e0")
+        self._kit_stat_ok    = self._make_stat_card("0", "Kits Corretos",   "#2ecc71")
+        self._kit_stat_erro  = self._make_stat_card("0", "Divergências",    "#e74c3c")
+        for card in (self._kit_stat_total, self._kit_stat_ok, self._kit_stat_erro):
+            kit_stats_row.addWidget(card)
+        kit_layout.addLayout(kit_stats_row)
+
+        self._kit_table = QTableWidget(0, 3)
+        self._kit_table.setHorizontalHeaderLabels(["SKU Pai", "Status", "Detalhe"])
+        self._kit_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self._kit_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self._kit_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self._kit_table.setAlternatingRowColors(True)
+        self._kit_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._kit_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._kit_table.verticalHeader().setVisible(False)
+        self._kit_table.setMinimumHeight(220)
+        kit_layout.addWidget(self._kit_table)
+
+        kit_btn_row = QHBoxLayout()
+        kit_btn_row.setSpacing(12)
+        self._btn_kit_report = QPushButton("⬇  Relatório de Kits")
+        self._btn_kit_report.setObjectName("btn_secondary")
+        self._btn_kit_report.clicked.connect(self._export_kit_report)
+        kit_btn_row.addWidget(self._btn_kit_report)
+        self._btn_kit_correction = QPushButton("⬇  XML de Correção")
+        self._btn_kit_correction.setObjectName("btn_secondary")
+        self._btn_kit_correction.clicked.connect(self._export_kit_correction)
+        kit_btn_row.addWidget(self._btn_kit_correction)
+        kit_btn_row.addStretch()
+        kit_layout.addLayout(kit_btn_row)
+
+        self._kit_panel.hide()
+        layout.addWidget(self._kit_panel)
+
         # ── Bloco 3: Painel de Divergências (cards) ───────────────────────
         cards_header = QLabel("Painel de Divergências")
         cards_header.setStyleSheet(
@@ -431,6 +485,32 @@ class AuditorView(QWidget):
         self._refresh_cards()
         self._refresh_table()
 
+    # ── Stat cards do painel de kits (BRD-007) ────────────────────────────
+    @staticmethod
+    def _make_stat_card(value: str, label: str, color: str) -> QWidget:
+        card = QWidget()
+        card.setStyleSheet(f"background:{color};border-radius:8px;padding:10px;")
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(2)
+        val_lbl = QLabel(value)
+        val_lbl.setAlignment(Qt.AlignCenter)
+        val_lbl.setObjectName("_val")
+        val_lbl.setStyleSheet("font-size:28px;font-weight:700;color:white;background:transparent;")
+        lay.addWidget(val_lbl)
+        name_lbl = QLabel(label)
+        name_lbl.setAlignment(Qt.AlignCenter)
+        name_lbl.setStyleSheet("font-size:11px;color:white;background:transparent;")
+        lay.addWidget(name_lbl)
+        return card
+
+    @staticmethod
+    def _set_stat(card: QWidget, value: int):
+        lbl = card.findChild(QLabel, "_val")
+        if lbl:
+            lbl.setText(str(value))
+
     # ── Run ───────────────────────────────────────────────────────────────
     def _run(self):
         excel_paths = self._dz_excel.file_paths
@@ -567,6 +647,9 @@ class AuditorView(QWidget):
         self._active_filters.clear()
         self._refresh_table()
 
+        # Painel dedicado de kits (BRD-007)
+        self._refresh_kit_panel()
+
         # AI diagnostic
         agent = AiAgent()
         self._settings.sync()
@@ -604,6 +687,85 @@ class AuditorView(QWidget):
             brands,
             f"Auditoria concluída: {result.total_excel_skus} SKUs, {total} divergências."
         )
+
+    # ── Painel dedicado de kits (BRD-007) ─────────────────────────────────
+    def _refresh_kit_panel(self):
+        """Popula o painel de Composição de Kits a partir de result.kit_data.
+        Reproduz a antiga tela de Validação de Kits (KPIs + tabela + correção)."""
+        kd = getattr(self._result, "kit_data", None) if self._result else None
+        if kd is None:
+            self._kit_panel.hide()
+            return
+
+        stats = kd.stats
+        self._set_stat(self._kit_stat_total, stats.get("total", 0))
+        self._set_stat(self._kit_stat_ok,    stats.get("ok", 0))
+        self._set_stat(self._kit_stat_erro,  stats.get("erro", 0))
+
+        rows = kd.rows
+        self._kit_table.setRowCount(0)
+        if rows:
+            self._kit_table.setRowCount(len(rows))
+            for i, e in enumerate(rows):
+                pai_item     = QTableWidgetItem(str(e.get("pai", "")))
+                status_val   = str(e.get("status", ""))
+                status_item  = QTableWidgetItem(status_val)
+                detalhe_item = QTableWidgetItem(str(e.get("detail", "")))
+                if "Ausente" in status_val:
+                    status_item.setForeground(QColor("#ff7b72"))
+                elif "Divergente" in status_val:
+                    status_item.setForeground(QColor("#e2b93d"))
+                self._kit_table.setItem(i, 0, pai_item)
+                self._kit_table.setItem(i, 1, status_item)
+                self._kit_table.setItem(i, 2, detalhe_item)
+        else:
+            self._kit_table.setRowCount(1)
+            ok_item = QTableWidgetItem("✅ Sucesso")
+            ok_item.setForeground(QColor("#2ecc71"))
+            self._kit_table.setItem(0, 0, QTableWidgetItem(""))
+            self._kit_table.setItem(0, 1, ok_item)
+            self._kit_table.setItem(0, 2, QTableWidgetItem("Todos os kits conferem!"))
+
+        has_errors = stats.get("erro", 0) > 0
+        self._btn_kit_report.setEnabled(has_errors)
+        self._btn_kit_correction.setEnabled(bool(kd.correction_xml))
+        self._kit_panel.show()
+
+    def _export_kit_report(self):
+        kd = getattr(self._result, "kit_data", None) if self._result else None
+        if kd is None or not kd.rows:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Salvar Relatório de Kits", "Relatorio_Kits.xlsx", "Excel (*.xlsx)"
+        )
+        if not path:
+            return
+        path = get_unique_path(path)
+        try:
+            df = pd.DataFrame(
+                [{"SKU Pai": r.get("pai", ""), "Status": r.get("status", ""),
+                  "Detalhe": r.get("detail", "")} for r in kd.rows]
+            )
+            with pd.ExcelWriter(path, engine="openpyxl") as writer:
+                df.to_excel(writer, sheet_name="Divergencias_Kits", index=False)
+            QMessageBox.information(self, "Exportado", f"Relatório salvo em:\n{path}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Erro ao Exportar", str(exc))
+
+    def _export_kit_correction(self):
+        kd = getattr(self._result, "kit_data", None) if self._result else None
+        if kd is None or not kd.correction_xml:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Salvar XML de Correção", "CORRECAO_KITS_BRASIL.xml", "XML (*.xml)"
+        )
+        if not path:
+            return
+        try:
+            Path(path).write_text(kd.correction_xml, encoding="utf-8")
+            QMessageBox.information(self, "Exportado", f"XML salvo em:\n{path}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Erro ao Exportar", str(exc))
 
     # ── Altura dinâmica da tabela ─────────────────────────────────────────
     def _adjust_table_height(self) -> None:
@@ -989,6 +1151,8 @@ class AuditorView(QWidget):
         self._btn_avon.setChecked(False)
         self._cards_container.hide()
         self._empty_state.hide()
+        self._kit_panel.hide()
+        self._kit_table.setRowCount(0)
         for card in self._error_cards.values():
             card.hide()
             card.update_counts(0, 0, 0)

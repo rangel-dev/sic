@@ -6,28 +6,40 @@ do BO (COD_VENDA_PAI / FILHO / QUANTIDADE), reportando divergências de
 composição e de quantidade.
 
 A regra de comparação é portada, sem alterações, do antigo módulo
-Cadastro → Validação de Kits (cadastro_engine.py). A diferença é estrutural:
-em vez de rodar numa tela isolada, é chamada pelo AuditorEngine quando a
-planilha do BO é anexada (upload opcional). As linhas retornadas já seguem o
-schema de erro do Auditor ({sku, brand, detail}) para fluir pelo dashboard,
-tabela e exportações existentes.
+Cadastro → Validação de Kits (cadastro_engine.py) — os números batem 1:1 com
+aquela tela. A diferença é estrutural: roda dentro do Auditor quando a planilha
+do BO é anexada (upload opcional). Além das linhas no schema de erro do Auditor
+({sku, brand, detail}), devolve os dados ricos que a tela antiga exibia (KPIs
+analisados/corretos/divergências e o XML de Correção) via `KitAuditData`.
 """
 from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
-from pathlib import Path
+from dataclasses import dataclass, field
 
 import pandas as pd
 
 _NS = "http://www.demandware.com/xml/impex/catalog/2006-10-31"
 
 
+@dataclass
+class KitAuditData:
+    """Resultado rico da validação de kits, para o painel dedicado no Auditor."""
+    rows: list[dict] = field(default_factory=list)   # [{sku, pai, brand, status, detail}]
+    stats: dict = field(default_factory=dict)         # {total, ok, erro}
+    correction_xml: str = ""
+
+
 def _so_numeros(val) -> str:
-    """Mantém apenas a parte numérica de um SKU (portado do CadastroEngine)."""
+    """Mantém apenas a parte numérica de um SKU. Remove primeiro o artefato
+    '.0' de célula numérica lida como float (ex.: '73667.0' → '73667'),
+    senão o ponto sai e o '0' final infla o código ('736670')."""
     if val is None:
         return ""
-    return re.sub(r"\D", "", str(val).strip())
+    s = str(val).strip()
+    s = re.sub(r"\.0+$", "", s)
+    return re.sub(r"\D", "", s)
 
 
 def _brand_from_pid(raw_pid: str) -> str:
@@ -51,7 +63,7 @@ def _find_col_ci(keys: list[str], needle: str, fallback_idx: int) -> str:
 
 
 def _read_bo_excel(path: str) -> dict[str, list[dict]]:
-    """{pai_num: [{num, qty}]} lido da planilha do BO."""
+    """{pai_num: [{id, num, qty}]} lido da planilha do BO."""
     df = pd.read_excel(path, sheet_name=0, dtype=str, skiprows=3)
     keys = list(df.columns)
 
@@ -68,7 +80,9 @@ def _read_bo_excel(path: str) -> dict[str, list[dict]]:
         except (ValueError, TypeError):
             qty = 0
         if pai_num and filho_num:
-            bo_mapa.setdefault(pai_num, []).append({"num": filho_num, "qty": qty})
+            bo_mapa.setdefault(pai_num, []).append(
+                {"id": "NATBRA-" + filho_num, "num": filho_num, "qty": qty}
+            )
     return bo_mapa
 
 
@@ -107,19 +121,47 @@ def _read_kits_from_xml(paths: list[str]) -> list[dict]:
     return products
 
 
-def validate_kits(bo_path: str, cat_paths: list[str]) -> list[dict]:
+def _build_correction_xml(kits: list[dict]) -> str:
+    """Gera o XML de Correção (composição do BO) para os kits divergentes.
+    Portado fielmente de cadastro_engine.CadastroEngine._build_correction_xml."""
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<catalog xmlns="http://www.demandware.com/xml/impex/catalog/2006-10-31"'
+        ' catalog-id="natura-br-storefront-catalog">',
+    ]
+    for kit in kits:
+        lines.append(f'  <product product-id="{kit["pid"]}">')
+        lines.append("    <bundled-products>")
+        for f in kit["filhos"]:
+            lines.append(f'      <bundled-product product-id="{f["id"]}">')
+            lines.append(f"        <quantity>{f['qty']}</quantity>")
+            lines.append("      </bundled-product>")
+        lines.append("    </bundled-products>")
+        lines.append("  </product>")
+    lines.append("</catalog>")
+    return "\n".join(lines)
+
+
+def validate_kits(bo_path: str, cat_paths: list[str]) -> KitAuditData:
     """
     Cruza os bundles dos catálogos contra a planilha do BO.
 
-    Retorna linhas no schema do Auditor: {sku, brand, detail}. Cada divergência
-    (kit ausente no BO, filho ausente de um lado, quantidade divergente) vira
-    uma linha — mesma granularidade da tela antiga de Validação de Kits.
+    Retorna `KitAuditData` com:
+      - rows: linhas de divergência {sku, pai, brand, status, detail}. `sku`
+        (NATBRA- completo) e `brand` alimentam o dashboard genérico; `pai`
+        (numérico) e `status` alimentam o painel dedicado de kits.
+      - stats: {total kits analisados, ok, erro} — idêntico à tela antiga.
+      - correction_xml: XML de correção dos kits divergentes (composição do BO).
     """
     bo_mapa  = _read_bo_excel(bo_path)
     products = _read_kits_from_xml(cat_paths)
 
     rows: list[dict] = []
+    kits_para_corrigir: list[dict] = []
+    stats = {"total": 0, "ok": 0, "erro": 0}
+
     for prod in products:
+        stats["total"] += 1
         pid_num   = prod["pid_num"]
         brand     = _brand_from_pid(prod["raw_pid"])
         sku       = (prod["raw_pid"] or pid_num).upper()
@@ -127,26 +169,43 @@ def validate_kits(bo_path: str, cat_paths: list[str]) -> list[dict]:
 
         filhos_bo = bo_mapa.get(pid_num)
         if filhos_bo is None:
-            rows.append({"sku": sku, "brand": brand,
-                         "detail": "Kit ausente no BO: não consta na planilha do BO."})
+            rows.append({"sku": sku, "pai": pid_num, "brand": brand,
+                         "status": "Ausente no BO",
+                         "detail": "Este kit não consta na planilha do BO."})
+            stats["erro"] += 1
             continue
+
+        erro_no_kit = False
 
         # SF → BO
         for f_sf in filhos_sf:
             match = next((f for f in filhos_bo if f["num"] == f_sf["num"]), None)
             if match is None:
-                rows.append({"sku": sku, "brand": brand,
+                rows.append({"sku": sku, "pai": pid_num, "brand": brand,
+                             "status": "Divergente",
                              "detail": f"Filho {f_sf['num']} está no SF mas NÃO no BO."})
+                erro_no_kit = True
             elif match["qty"] != f_sf["qty"]:
-                rows.append({"sku": sku, "brand": brand,
+                rows.append({"sku": sku, "pai": pid_num, "brand": brand,
+                             "status": "Divergente",
                              "detail": (f"Filho {f_sf['num']} com Qtd errada: "
-                                        f"SF={f_sf['qty']} / BO={match['qty']}.")})
+                                        f"SF={f_sf['qty']} / BO={match['qty']}")})
+                erro_no_kit = True
 
         # BO → SF (reverse check)
         sf_nums = {f["num"] for f in filhos_sf}
         for f_bo in filhos_bo:
             if f_bo["num"] not in sf_nums:
-                rows.append({"sku": sku, "brand": brand,
+                rows.append({"sku": sku, "pai": pid_num, "brand": brand,
+                             "status": "Divergente",
                              "detail": f"Filho {f_bo['num']} está no BO mas falta no Salesforce."})
+                erro_no_kit = True
 
-    return rows
+        if erro_no_kit:
+            stats["erro"] += 1
+            kits_para_corrigir.append({"pid": "NATBRA-" + pid_num, "filhos": filhos_bo})
+        else:
+            stats["ok"] += 1
+
+    correction_xml = _build_correction_xml(kits_para_corrigir)
+    return KitAuditData(rows=rows, stats=stats, correction_xml=correction_xml)
