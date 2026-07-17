@@ -43,6 +43,7 @@ ERROR_META: dict[str, dict] = {
     "missing":    {"title": "Preço Ausente (DE/POR)",        "impact": "Perda Imediata de Venda",     "icon": "❌", "desc": "O produto não possui preço de lista (DE) ou preço promocional (POR) definido no Salesforce."},
     "primary":    {"title": "Categoria Primária",            "impact": "Impacto SEO e Filtros",       "icon": "🏷️", "desc": "O produto está no catálogo mas não possui uma categoria marcada como 'Primária'."},
     "bundle":     {"title": "Saúde de Bundles/Kits",         "impact": "Queda no Ticket Médio",       "icon": "📦", "desc": "O Kit/Bundle possui componentes que estão offline ou sem preço definido."},
+    "kit":        {"title": "Composição de Kits (BO)",       "impact": "Kit Cadastrado Errado",       "icon": "🧩", "desc": "Divergência entre a composição/quantidade do Kit no Salesforce e a planilha do BO. Só validado quando a planilha do BO é anexada."},
     "cross":      {"title": "Cross-Brand (Invasão)",         "impact": "Erro Crítico de Governança",  "icon": "🔴", "desc": "Produto de uma marca (ex: Natura) possui preço no catálogo de outra marca (ex: Avon)."},
     "offline":    {"title": "Produto Indisponível",          "impact": "Risco de Receita",            "icon": "🔇", "desc": "O produto está na Grade de Ativação do Excel, mas está com a flag 'online=false' no SF."},
     "online_excess": {"title": "Produto Online Fora da Grade", "impact": "Invasão de Catálogo",        "icon": "🌐", "desc": "Produto ativo no Salesforce, mas ausente na Grade de Ativação. Deveria estar Offline."},
@@ -80,7 +81,15 @@ class AuditorEngine:
         self._prog = progress_callback or (lambda p, m: None)
 
     # ── Entrada ───────────────────────────────────────────────────────────
-    def run(self, excel_paths: list[str], pb_path: str, cat_paths: list[str]) -> AuditResult:
+    def run(self, excel_paths: list[str], pb_path: str, cat_paths: list[str],
+            bo_path: Optional[str] = None) -> AuditResult:
+        # Modo só-kit (BRD-007): planilha BO anexada SEM Pricebook → valida
+        # apenas a composição de kits (catálogo × BO). Não exige pricebook nem
+        # os 3 catálogos, e não toca no fluxo completo (que roda quando há
+        # pricebook). Detecção automática pelos arquivos presentes.
+        if bo_path and not pb_path:
+            return self._run_kit_only(cat_paths, bo_path)
+
         result = AuditResult()
         try:
             # 0. Verificação de Lacre de Paridade
@@ -173,6 +182,17 @@ class AuditorEngine:
             self._prog(78, "Verificando sync de Jobs ML…")
             job_errors = self._calc_job_errors(category_assignments_map, ml_job_rules)
 
+            # 4.5 Composição de Kits (BRD-007) — opcional, só se planilha BO anexada.
+            # Falha na leitura do BO não deve abortar a auditoria: é um check extra.
+            kit_rows: list[dict] = []
+            if bo_path:
+                self._prog(82, "Validando composição de Kits (planilha BO)…")
+                try:
+                    from src.core.auditor.kit_validation import validate_kits
+                    kit_rows = validate_kits(bo_path, cat_paths)
+                except Exception as kit_exc:  # noqa: BLE001
+                    print(f"⚠️ [Kit Validation] Falha ao validar kits (ignorado): {kit_exc}")
+
             # 5. Cruzamento analítico
             self._prog(85, "Cruzamento analítico e gerando evidências…")
             errors, stats, acertos_df, evidence_df = self._cross_validate(
@@ -180,7 +200,7 @@ class AuditorEngine:
                 online_status, searchable_status, technical_skus,
                 xml_lists, prohibited_state, cat_missing_primary,
                 bundles, variation_bases, job_errors,
-                has_nat, has_avn,
+                has_nat, has_avn, kit_rows,
             )
             result.errors   = errors
             result.stats    = stats
@@ -189,6 +209,44 @@ class AuditorEngine:
 
             self._prog(100, "Auditoria concluída!")
         except Exception as exc:
+            result.error = str(exc)
+        return result
+
+    # ── Modo só-kit (BRD-007) ─────────────────────────────────────────────
+    def _run_kit_only(self, cat_paths: list[str], bo_path: str) -> AuditResult:
+        """
+        Valida apenas a composição de kits (catálogo XML × planilha BO), sem
+        exigir Pricebook nem os 3 catálogos. Reaproveita a maquinaria de
+        dedup/estatística de `_cross_validate` passando os demais insumos
+        vazios, de modo que só o card 'kit' é populado.
+        """
+        result = AuditResult()
+        try:
+            if not verify_core_integrity():
+                print("⚠️ [Integrity Check] parity_rules alterado; execução prosseguirá.")
+
+            self._prog(20, "Validando composição de Kits (planilha BO)…")
+            try:
+                from src.core.auditor.kit_validation import validate_kits
+                kit_rows = validate_kits(bo_path, cat_paths)
+            except Exception as kit_exc:  # noqa: BLE001
+                result.error = f"Falha ao validar a planilha do BO: {kit_exc}"
+                return result
+
+            self._prog(80, "Consolidando divergências de kit…")
+            errors, stats, acertos_df, evidence_df = self._cross_validate(
+                {}, {}, {}, {}, {}, {}, {},
+                {"Natura": set(), "Avon": set(), "ML": set()}, {},
+                {}, {}, {}, False, False, kit_rows,
+            )
+            result.errors       = errors
+            result.stats        = stats
+            result.acertos      = acertos_df
+            result.evidence     = evidence_df
+            result.brands_found = sorted({r["brand"] for r in kit_rows})
+
+            self._prog(100, "Validação de Kits concluída!")
+        except Exception as exc:  # noqa: BLE001
             result.error = str(exc)
         return result
 
@@ -649,6 +707,7 @@ class AuditorEngine:
         xml_lists, prohibited_state, cat_missing_primary,
         bundles, variation_bases, job_errors,
         has_nat: bool, has_avn: bool,
+        kit_rows: Optional[list[dict]] = None,
     ):
         # Universo de SKUs = união de tudo (igual ao JS)
         all_skus: set[str] = set()
@@ -678,6 +737,13 @@ class AuditorEngine:
             excel_lists, xml_lists, cat_missing_primary, prohibited_state,
             job_errors, has_nat, has_avn, errors, bump
         )
+
+        # Composição de Kits (BRD-007): injeta as divergências do cruzamento
+        # XML × planilha BO fora do motor lacrado, para que fluam pela mesma
+        # dedup/estatística/DataFrame dos demais checks.
+        for row in (kit_rows or []):
+            errors["kit"].append(row)
+            bump("kit", row.get("brand", "Natura"))
 
         # Converte listas em DataFrames
         error_dfs = {code: pd.DataFrame(rows) if rows else pd.DataFrame()
