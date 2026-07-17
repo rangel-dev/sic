@@ -73,6 +73,7 @@ class AuditResult:
     error: Optional[str] = None
     preflight_error: Optional[str] = None
     integrity_error: bool = False
+    kit_data: Optional[object] = None   # KitAuditData (BRD-007) — painel dedicado de kits
 
 
 # ─── Engine ───────────────────────────────────────────────────────────────────
@@ -189,7 +190,9 @@ class AuditorEngine:
                 self._prog(82, "Validando composição de Kits (planilha BO)…")
                 try:
                     from src.core.auditor.kit_validation import validate_kits
-                    kit_rows = validate_kits(bo_path, cat_paths)
+                    kit_data = validate_kits(bo_path, cat_paths)
+                    result.kit_data = kit_data
+                    kit_rows = kit_data.rows
                 except Exception as kit_exc:  # noqa: BLE001
                     print(f"⚠️ [Kit Validation] Falha ao validar kits (ignorado): {kit_exc}")
 
@@ -228,10 +231,12 @@ class AuditorEngine:
             self._prog(20, "Validando composição de Kits (planilha BO)…")
             try:
                 from src.core.auditor.kit_validation import validate_kits
-                kit_rows = validate_kits(bo_path, cat_paths)
+                kit_data = validate_kits(bo_path, cat_paths)
             except Exception as kit_exc:  # noqa: BLE001
                 result.error = f"Falha ao validar a planilha do BO: {kit_exc}"
                 return result
+            result.kit_data = kit_data
+            kit_rows = kit_data.rows
 
             self._prog(80, "Consolidando divergências de kit…")
             errors, stats, acertos_df, evidence_df = self._cross_validate(
