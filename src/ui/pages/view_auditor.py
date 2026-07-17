@@ -61,6 +61,7 @@ class AuditorView(QWidget):
         self._result: Optional[AuditResult]   = None
         self._active_filters: set[str]        = set()  # error codes
         self._brand_filter:  str = "all"       # "all", "natura", "avon"
+        self._last_kit_only: bool = False      # última execução foi modo só-kit (BRD-007)
         self._error_cards: dict[str, ErrorCard] = {}
         self._settings = QSettings("SIC", "SIC_Suite")
         self._setup_ui()
@@ -152,6 +153,24 @@ class AuditorView(QWidget):
         inputs_row.addLayout(excel_col, 1)
 
         inputs_box_layout.addLayout(inputs_row)
+
+        # 4 – Planilha BO (Kits) — opcional (BRD-007)
+        bo_col = QVBoxLayout()
+        bo_lbl = QLabel("Planilha BO (Kits)  —  opcional")
+        bo_lbl.setObjectName("label_section")
+        bo_col.addWidget(bo_lbl)
+        self._dz_bo = DropZone(
+            "Excel do BO (opcional)\n(COD_VENDA_PAI / FILHO / QUANTIDADE)",
+            "Excel (*.xlsx *.xlsm *.xls)",
+        )
+        self._dz_bo.setToolTip(
+            "Opcional. Se anexada, o Auditor valida a composição dos Kits\n"
+            "(Pai/Filho/Quantidade) do Salesforce contra a planilha do BO.\n"
+            "Sem ela, a auditoria roda normalmente, apenas sem o check de Kits."
+        )
+        bo_col.addWidget(self._dz_bo)
+        inputs_box_layout.addLayout(bo_col)
+
         layout.addWidget(inputs_box)
 
         # ── Bloco 2: Barra de Ações (rola junto com a página) ─────────────
@@ -417,12 +436,20 @@ class AuditorView(QWidget):
         excel_paths = self._dz_excel.file_paths
         pb_path     = self._dz_pb.file_path
         cat_paths   = self._dz_cat.file_paths
+        bo_path     = self._dz_bo.file_path
+
+        # Modo só-kit (BRD-007): planilha BO anexada SEM Pricebook → valida
+        # apenas a composição de kits (catálogo × BO). Exige somente catálogos
+        # (1+) e a planilha BO; dispensa Pricebook e a regra dos 3 catálogos.
+        # Com Pricebook presente, segue a auditoria completa de sempre.
+        kit_only = bool(bo_path) and not pb_path
+        self._last_kit_only = kit_only
 
         missing = []
-        if not pb_path:
-            missing.append("Pricebook XML")
         if not cat_paths:
             missing.append("Catálogo(s) XML")
+        if not kit_only and not pb_path:
+            missing.append("Pricebook XML")
 
         if missing:
             QMessageBox.warning(
@@ -431,8 +458,9 @@ class AuditorView(QWidget):
             )
             return
 
-        # Trava 1: Quantidade exata de catálogos
-        if len(cat_paths) != 3:
+        # Trava 1: Quantidade exata de catálogos — só na auditoria completa.
+        # No modo só-kit qualquer quantidade (1+) é aceita.
+        if not kit_only and len(cat_paths) != 3:
             QMessageBox.warning(
                 self, "Quantidade Inválida",
                 f"Quantidade Inválida: A auditoria requer exatamente 3 catálogos "
@@ -494,7 +522,7 @@ class AuditorView(QWidget):
             card.update_counts(0, 0, 0)
             card.set_selected(False)
 
-        self._worker = AuditorWorker(excel_paths, pb_path, cat_paths, self)
+        self._worker = AuditorWorker(excel_paths, pb_path, cat_paths, bo_path, self)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
         self._worker.error_msg.connect(self._on_error)
@@ -516,7 +544,10 @@ class AuditorView(QWidget):
         self._btn_webhook.setEnabled(True)
 
         total = result.stats.get("total", 0)
-        if total == 0:
+        # Certificado Mestre só faz sentido na auditoria completa: atesta
+        # conformidade do catálogo inteiro. Numa execução só-kit ele seria
+        # enganoso, então fica desabilitado nesse modo.
+        if total == 0 and not self._last_kit_only:
             self._btn_master_cert.setEnabled(True)
             self._cert_status_lbl.setObjectName("cert_status_ready")
             self._cert_status_lbl.setText("✅")
@@ -938,6 +969,7 @@ class AuditorView(QWidget):
         self._dz_pb.clear()
         self._dz_cat.clear()
         self._dz_excel.clear()
+        self._dz_bo.clear()
         self._table.setRowCount(0)
         self._ai_browser.clear()
         self._progress_bar.setValue(0)
@@ -949,6 +981,7 @@ class AuditorView(QWidget):
         self._btn_master_cert.setEnabled(False)
         self._cert_status_lbl.hide()
         self._result = None
+        self._last_kit_only = False
         self._active_filters.clear()
         self._brand_filter  = "all"
         self._btn_all.setChecked(True)

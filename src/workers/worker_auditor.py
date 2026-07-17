@@ -17,17 +17,19 @@ class AuditorWorker(QThread):
         excel_paths: list[str],
         pb_path: str,
         cat_paths: list[str],
+        bo_path: str | None = None,
         parent=None,
     ):
         super().__init__(parent)
         self._excel_paths = excel_paths
         self._pb_path     = pb_path
         self._cat_paths   = cat_paths
+        self._bo_path     = bo_path
 
     def run(self) -> None:
         engine = AuditorEngine(progress_callback=self._on_progress)
         result: AuditResult = engine.run(
-            self._excel_paths, self._pb_path, self._cat_paths
+            self._excel_paths, self._pb_path, self._cat_paths, self._bo_path
         )
         if result.preflight_error:
             self.error_msg.emit(result.preflight_error)
