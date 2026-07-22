@@ -17,6 +17,7 @@ import pandas as pd
 from lxml import etree
 
 from src.core.auditor.integrity import verify_core_integrity
+from src.core.auditor.kit_validation import _so_numeros
 from src.core.auditor.parity_rules_v11 import execute_parity_rules
 
 # ─── Namespaces ───────────────────────────────────────────────────────────────
@@ -43,7 +44,6 @@ ERROR_META: dict[str, dict] = {
     "missing":    {"title": "Preço Ausente (DE/POR)",        "impact": "Perda Imediata de Venda",     "icon": "❌", "desc": "O produto não possui preço de lista (DE) ou preço promocional (POR) definido no Salesforce."},
     "primary":    {"title": "Categoria Primária",            "impact": "Impacto SEO e Filtros",       "icon": "🏷️", "desc": "O produto está no catálogo mas não possui uma categoria marcada como 'Primária'."},
     "bundle":     {"title": "Saúde de Bundles/Kits",         "impact": "Queda no Ticket Médio",       "icon": "📦", "desc": "O Kit/Bundle possui componentes que estão offline ou sem preço definido."},
-    "kit":        {"title": "Composição de Kits (BO)",       "impact": "Kit Cadastrado Errado",       "icon": "🧩", "desc": "Divergência entre a composição/quantidade do Kit no Salesforce e a planilha do BO. Só validado quando a planilha do BO é anexada."},
     "cross":      {"title": "Cross-Brand (Invasão)",         "impact": "Erro Crítico de Governança",  "icon": "🔴", "desc": "Produto de uma marca (ex: Natura) possui preço no catálogo de outra marca (ex: Avon)."},
     "offline":    {"title": "Produto Indisponível",          "impact": "Risco de Receita",            "icon": "🔇", "desc": "O produto está na Grade de Ativação do Excel, mas está com a flag 'online=false' no SF."},
     "online_excess": {"title": "Produto Online Fora da Grade", "impact": "Invasão de Catálogo",        "icon": "🌐", "desc": "Produto ativo no Salesforce, mas ausente na Grade de Ativação. Deveria estar Offline."},
@@ -89,7 +89,7 @@ class AuditorEngine:
         # os 3 catálogos, e não toca no fluxo completo (que roda quando há
         # pricebook). Detecção automática pelos arquivos presentes.
         if bo_path and not pb_path:
-            return self._run_kit_only(cat_paths, bo_path)
+            return self._run_kit_only(excel_paths, cat_paths, bo_path)
 
         result = AuditResult()
         try:
@@ -120,7 +120,7 @@ class AuditorEngine:
 
             # 1. Excel (Opcional)
             self._prog(10, "Lendo planilhas Excel (se houver)…")
-            excel_prices, excel_lists, excel_brands, has_nat, has_avn = self._parse_excels(excel_paths)
+            excel_prices, excel_lists, excel_brands, has_nat, has_avn, grade_cm = self._parse_excels(excel_paths)
             result.total_excel_skus = len(excel_prices)
 
             # Regra de Ouro (Gold Rule) V11.6 & Detecção de Marcas
@@ -185,14 +185,14 @@ class AuditorEngine:
 
             # 4.5 Composição de Kits (BRD-007) — opcional, só se planilha BO anexada.
             # Falha na leitura do BO não deve abortar a auditoria: é um check extra.
-            kit_rows: list[dict] = []
+            # Totalmente desacoplado do total/estatísticas da auditoria tradicional
+            # (result.stats) — só alimenta o painel dedicado via result.kit_data,
+            # não conta para Certificado Mestre, empty-state ou webhook.
             if bo_path:
                 self._prog(82, "Validando composição de Kits (planilha BO)…")
                 try:
                     from src.core.auditor.kit_validation import validate_kits
-                    kit_data = validate_kits(bo_path, cat_paths)
-                    result.kit_data = kit_data
-                    kit_rows = kit_data.rows
+                    result.kit_data = validate_kits(bo_path, cat_paths, grade_cm)
                 except Exception as kit_exc:  # noqa: BLE001
                     print(f"⚠️ [Kit Validation] Falha ao validar kits (ignorado): {kit_exc}")
 
@@ -203,7 +203,7 @@ class AuditorEngine:
                 online_status, searchable_status, technical_skus,
                 xml_lists, prohibited_state, cat_missing_primary,
                 bundles, variation_bases, job_errors,
-                has_nat, has_avn, kit_rows,
+                has_nat, has_avn,
             )
             result.errors   = errors
             result.stats    = stats
@@ -216,22 +216,30 @@ class AuditorEngine:
         return result
 
     # ── Modo só-kit (BRD-007) ─────────────────────────────────────────────
-    def _run_kit_only(self, cat_paths: list[str], bo_path: str) -> AuditResult:
+    def _run_kit_only(self, excel_paths: list[str], cat_paths: list[str],
+                      bo_path: str) -> AuditResult:
         """
         Valida apenas a composição de kits (catálogo XML × planilha BO), sem
-        exigir Pricebook nem os 3 catálogos. Reaproveita a maquinaria de
-        dedup/estatística de `_cross_validate` passando os demais insumos
-        vazios, de modo que só o card 'kit' é populado.
+        exigir Pricebook nem os 3 catálogos. Chama `_cross_validate` com os
+        demais insumos vazios só para reaproveitar sua maquinaria de
+        acertos/evidências (stats fica zerado — kit não conta nesse total,
+        ver result.kit_data).
+
+        A Grade de Ativação (excel_paths) é lida para obter o whitelist e o CM
+        ativo do ciclo (BRD-007), que guiam o cruzamento SKU+CM contra o BO.
         """
         result = AuditResult()
         try:
             if not verify_core_integrity():
                 print("⚠️ [Integrity Check] parity_rules alterado; execução prosseguirá.")
 
+            self._prog(15, "Lendo Grade de Ativação (whitelist + CM)…")
+            _, _, _, _, _, grade_cm = self._parse_excels(excel_paths)
+
             self._prog(20, "Validando composição de Kits (planilha BO)…")
             try:
                 from src.core.auditor.kit_validation import validate_kits
-                kit_data = validate_kits(bo_path, cat_paths)
+                kit_data = validate_kits(bo_path, cat_paths, grade_cm)
             except Exception as kit_exc:  # noqa: BLE001
                 result.error = f"Falha ao validar a planilha do BO: {kit_exc}"
                 return result
@@ -242,7 +250,7 @@ class AuditorEngine:
             errors, stats, acertos_df, evidence_df = self._cross_validate(
                 {}, {}, {}, {}, {}, {}, {},
                 {"Natura": set(), "Avon": set(), "ML": set()}, {},
-                {}, {}, {}, False, False, kit_rows,
+                {}, {}, {}, False, False,
             )
             result.errors       = errors
             result.stats        = stats
@@ -263,9 +271,11 @@ class AuditorEngine:
           excel_lists  : {list_id: set(skus)}   (LISTA_01 para Natura, lista-01 para Avon)
           brands_found : lista de marcas
           has_nat, has_avn : bool
+          grade_cm     : {sku_numérico: cm_ativo}  (BRD-007 — whitelist + SKU+CM)
         """
         excel_prices = {}
         excel_lists  = {}
+        grade_cm: dict[str, str] = {}
         has_nat = has_avn = False
 
         for path in paths:
@@ -276,10 +286,10 @@ class AuditorEngine:
             if file_brand == "Natura": has_nat = True
             if file_brand == "Avon":   has_avn = True
 
-            # Grade de Ativação → preços e visibilidade
+            # Grade de Ativação → preços, visibilidade e CM (Código de Material)
             grade = self._find_grade_sheet(wb)
             if grade:
-                self._parse_grade(grade, file_brand, excel_prices)
+                self._parse_grade(grade, file_brand, excel_prices, grade_cm)
 
             # Listas LISTA_XX / lista-XX
             for name in wb.sheetnames:
@@ -299,7 +309,7 @@ class AuditorEngine:
             wb.close()
 
         brands = (["Natura"] if has_nat else []) + (["Avon"] if has_avn else [])
-        return excel_prices, excel_lists, brands, has_nat, has_avn
+        return excel_prices, excel_lists, brands, has_nat, has_avn, grade_cm
 
     def _detect_brand_workbook(self, wb) -> str:
         """Varre toda a aba GRADE ou a primeira disponível e conta NATBRA/AVNBRA (Robust like JS)."""
@@ -350,9 +360,10 @@ class AuditorEngine:
                     return wb[name]
         return None
 
-    def _parse_grade(self, ws, file_brand: str, out: dict) -> None:
+    def _parse_grade(self, ws, file_brand: str, out: dict,
+                     grade_cm: Optional[dict] = None) -> None:
         rows = list(ws.iter_rows(max_row=10000, values_only=True))
-        sku_col = de_col = por_col = vis_col = None
+        sku_col = de_col = por_col = vis_col = cm_col = None
         sku_start = None
 
         for i, row in enumerate(rows[:60]):
@@ -365,6 +376,8 @@ class AuditorEngine:
                     de_col = j
                 elif vu == "POR":
                     por_col = j
+                elif vu == "CM":            # Código de Material (exato; não casa "CMV")
+                    cm_col = j
                 elif "VISIBLE" in vu or "VISIBILIDADE" in vu:
                     vis_col = j
                 if sku_col is None and SKU_RE.match(v):
@@ -397,6 +410,14 @@ class AuditorEngine:
             vis = str(vis_raw).strip().upper() if vis_raw else ""
 
             out[sku] = {"DE": de or 0.0, "POR": por or 0.0, "VISIBLE": vis}
+
+            # CM (Código de Material) ativo do ciclo → whitelist + identidade SKU+CM
+            # da validação de kits (BRD-007). Chave = SKU numérico.
+            if grade_cm is not None and cm_col is not None and cm_col < len(row):
+                cm_val = _so_numeros(row[cm_col])
+                sku_num = _so_numeros(sku)
+                if sku_num and cm_val:
+                    grade_cm[sku_num] = cm_val
         print(f"DEBUG: Grade {file_brand} -> SKUs carregados: {len(out)}")
 
     def _parse_lista(self, ws, file_brand: str, num: str, out: dict) -> None:
@@ -712,7 +733,6 @@ class AuditorEngine:
         xml_lists, prohibited_state, cat_missing_primary,
         bundles, variation_bases, job_errors,
         has_nat: bool, has_avn: bool,
-        kit_rows: Optional[list[dict]] = None,
     ):
         # Universo de SKUs = união de tudo (igual ao JS)
         all_skus: set[str] = set()
@@ -742,13 +762,6 @@ class AuditorEngine:
             excel_lists, xml_lists, cat_missing_primary, prohibited_state,
             job_errors, has_nat, has_avn, errors, bump
         )
-
-        # Composição de Kits (BRD-007): injeta as divergências do cruzamento
-        # XML × planilha BO fora do motor lacrado, para que fluam pela mesma
-        # dedup/estatística/DataFrame dos demais checks.
-        for row in (kit_rows or []):
-            errors["kit"].append(row)
-            bump("kit", row.get("brand", "Natura"))
 
         # Converte listas em DataFrames
         error_dfs = {code: pd.DataFrame(rows) if rows else pd.DataFrame()
