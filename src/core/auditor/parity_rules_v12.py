@@ -5,6 +5,8 @@ Certified core logic — V12.
 Base: paridade V11.6 + correção dos checks que dependiam indevidamente da grade
 estar anexada (Check #4 e a liberação dos checks sistêmicos para SKUs online
 fora da grade). Substitui parity_rules_v11.py (mantido como legado/rollback).
+BRD-005: Check #7b (Excesso em Listas de Vitrine) — sincronia simétrica com
+o Check #7, escopada por marca via has_nat/has_avn (BRD-004).
 An integrity hash checks this file at runtime. Any modification will trigger a critical integrity alert.
 Qualquer alteração nesta lógica exige regenerar EXPECTED_V12_HASH em integrity.py.
 =========================================
@@ -234,3 +236,34 @@ def execute_parity_rules(
             for msg in (job_errors.get(sku) or []):
                 errors["job"].append({**row_base, "detail": msg})
                 dump_stats("job", brand)
+
+    # ── Check #7b: EXCESSO EM LISTAS DE VITRINE (BRD-005) ─────────────────
+    # Verificação inversa do Check #7: SKU presente na categoria da lista no
+    # XML, mas ausente (ou removido) da aba equivalente no Excel. Escopo
+    # dinâmico (BRD-004): só avalia listas da marca cuja grade foi carregada
+    # nesta execução, para não gerar falso positivo na marca não auditada.
+    # Produtos-pai de variação (variation_bases) são excluídos: eles podem
+    # figurar na categoria como o item "vendível" da coleção mesmo quando só
+    # as variações filhas aparecem na aba do Excel.
+    for list_id, xml_skus in xml_lists.items():
+        if list_id.upper().startswith("LISTA_"):
+            list_brand = "Natura"
+        elif list_id.lower().startswith("lista-"):
+            list_brand = "Avon"
+        else:
+            continue
+
+        brand_has_grade = (list_brand == "Natura" and has_nat) or (list_brand == "Avon" and has_avn)
+        if not brand_has_grade:
+            continue
+
+        ex_skus = excel_lists.get(list_id, set())
+        for sku in xml_skus - ex_skus:
+            if not SKU_RE.match(sku) or variation_bases.get(sku):
+                continue
+            brand = "Natura" if sku.upper().startswith("NATBRA-") else "Avon"
+            errors["list_excess"].append({
+                "sku": sku, "brand": brand,
+                "detail": f"EXCESSO EM LISTA ({list_id}) — Removido da grade, mas ativo no SF",
+            })
+            dump_stats("list_excess", brand)
