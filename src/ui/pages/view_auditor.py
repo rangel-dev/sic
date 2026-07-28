@@ -18,6 +18,7 @@ import pandas as pd
 from PySide6.QtCore import Qt, QSettings, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QGridLayout,
     QGroupBox,
@@ -39,6 +40,7 @@ from PySide6.QtWidgets import (
 from src.core.auditor_engine import AuditResult, ERROR_META
 from src.core.ai_agent import AiAgent
 from src.core.brand_detector import BrandDetector
+from src.core.auditor.kit_validation import KIT_ERROR_META
 from src.ui.components.base_widgets import Divider, DropZone, ErrorCard, SectionHeader
 from src.workers.worker_auditor import AuditorWorker
 from src.core.history_engine import HistoryEngine
@@ -61,7 +63,12 @@ class AuditorView(QWidget):
         self._result: Optional[AuditResult]   = None
         self._active_filters: set[str]        = set()  # error codes
         self._brand_filter:  str = "all"       # "all", "natura", "avon"
+        self._last_kit_only: bool = False      # última execução foi modo só-kit (BRD-007)
         self._error_cards: dict[str, ErrorCard] = {}
+        self._kit_active_filters: set[str] = set()      # kit "kind" codes (independente de _active_filters)
+        self._kit_error_cards: dict[str, ErrorCard] = {}
+        self._audit_collapsed: bool = False    # capítulo "Auditoria Tradicional" recolhido?
+        self._kit_collapsed: bool   = False    # capítulo "Validação de Kits (BO)" recolhido?
         self._settings = QSettings("SIC", "SIC_Suite")
         self._setup_ui()
 
@@ -72,8 +79,7 @@ class AuditorView(QWidget):
         root.setSpacing(0)
 
         root.addWidget(SectionHeader(
-            "✓  Auditor  — Motor de Auditoria de Catálogo",
-            "Cruza Excel × Pricebook XML × Catálogo XML em 12 regras de negócio"
+            "✓  Auditor  — Motor de Auditoria de Catálogo"
         ))
         root.addWidget(Divider())
 
@@ -152,6 +158,26 @@ class AuditorView(QWidget):
         inputs_row.addLayout(excel_col, 1)
 
         inputs_box_layout.addLayout(inputs_row)
+
+        # 4 – Planilha BO (Kits) — opcional (BRD-007)
+        bo_col = QVBoxLayout()
+        bo_lbl = QLabel("Planilha BO (Kits)  —  opcional")
+        bo_lbl.setObjectName("label_section")
+        bo_col.addWidget(bo_lbl)
+        self._dz_bo = DropZone(
+            "Excel do BO (opcional)\n(COD_VENDA_PAI / FILHO / QUANTIDADE)",
+            "Excel (*.xlsx *.xlsm *.xls)",
+            default_icon="📦",  # planilha do BO não tem marca (NATBRA-/AVNBRA-);
+                                # sem isto, BrandDetector cai em "unknown" (❓ vermelho)
+        )
+        self._dz_bo.setToolTip(
+            "Opcional. Se anexada, o Auditor valida a composição dos Kits\n"
+            "(Pai/Filho/Quantidade) do Salesforce contra a planilha do BO.\n"
+            "Sem ela, a auditoria roda normalmente, apenas sem o check de Kits."
+        )
+        bo_col.addWidget(self._dz_bo)
+        inputs_box_layout.addLayout(bo_col)
+
         layout.addWidget(inputs_box)
 
         # ── Bloco 2: Barra de Ações (rola junto com a página) ─────────────
@@ -220,12 +246,37 @@ class AuditorView(QWidget):
 
         layout.addLayout(action_row)
 
+        # ── Capítulo 1: Auditoria Tradicional ─────────────────────────────
+        # Cards (13 regras de negócio) + tabela detalhada + diagnóstico IA.
+        # Vem sempre primeiro; a Validação de Kits (BO) fica em capítulo
+        # separado ao final da página (ver mais abaixo). O corpo inteiro fica
+        # em self._audit_body, recolhível via botão no cabeçalho — facilita
+        # navegar entre os dois capítulos em telas menores.
+        chapter_audit_row = QHBoxLayout()
+        chapter_audit_header = QLabel("📋  AUDITORIA TRADICIONAL")
+        chapter_audit_header.setStyleSheet(
+            "font-size:13px;font-weight:800;color:#3b82f6;letter-spacing:0.5px;"
+            "text-transform:uppercase;padding-top:4px;"
+        )
+        chapter_audit_row.addWidget(chapter_audit_header)
+        chapter_audit_row.addStretch()
+        self._btn_audit_collapse = self._make_collapse_button()
+        self._btn_audit_collapse.clicked.connect(self._toggle_audit_chapter)
+        chapter_audit_row.addWidget(self._btn_audit_collapse)
+        layout.addLayout(chapter_audit_row)
+
+        self._audit_body = QWidget()
+        audit_body_layout = QVBoxLayout(self._audit_body)
+        audit_body_layout.setContentsMargins(0, 0, 0, 0)
+        audit_body_layout.setSpacing(20)
+        layout.addWidget(self._audit_body)
+
         # ── Bloco 3: Painel de Divergências (cards) ───────────────────────
         cards_header = QLabel("Painel de Divergências")
         cards_header.setStyleSheet(
             "color:#888;font-size:11px;font-weight:700;text-transform:uppercase;"
         )
-        layout.addWidget(cards_header)
+        audit_body_layout.addWidget(cards_header)
 
         # Error card dashboard (Flow-like grid)
         self._cards_container = QWidget()
@@ -246,7 +297,7 @@ class AuditorView(QWidget):
             self._error_cards[code] = card
             card.hide()
 
-        layout.addWidget(self._cards_container)
+        audit_body_layout.addWidget(self._cards_container)
 
         # Empty-state (no divergences) — celebratory message shown when the
         # audit completes with zero errors. Hidden by default; toggled in
@@ -269,7 +320,7 @@ class AuditorView(QWidget):
             "</div>"
         )
         self._empty_state.hide()
-        layout.addWidget(self._empty_state)
+        audit_body_layout.addWidget(self._empty_state)
 
         # ── Bloco 4: Tabela de Divergências Detalhadas ────────────────────
         table_header = QHBoxLayout()
@@ -280,7 +331,7 @@ class AuditorView(QWidget):
         self._table_count_lbl = QLabel("")
         self._table_count_lbl.setObjectName("label_muted")
         table_header.addWidget(self._table_count_lbl)
-        layout.addLayout(table_header)
+        audit_body_layout.addLayout(table_header)
 
         self._table = QTableWidget(0, 5)
         self._table.setHorizontalHeaderLabels(["SKU", "Marca", "Tipo", "Detalhe", "Impt."])
@@ -295,12 +346,12 @@ class AuditorView(QWidget):
         # Cresce até MAX_TABLE_VISIBLE_ROWS; acima disso usa scroll próprio
         # (o resto da página rola no QScrollArea externo).
         self._table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        layout.addWidget(self._table)
+        audit_body_layout.addWidget(self._table)
 
         # ── Bloco 5: Diagnóstico Estratégico — IA ─────────────────────────
         ai_header = QLabel("Diagnóstico Estratégico — IA")
         ai_header.setStyleSheet("font-size:11px;font-weight:700;color:#888;text-transform:uppercase;")
-        layout.addWidget(ai_header)
+        audit_body_layout.addWidget(ai_header)
 
         self._ai_browser = QTextBrowser()
         self._ai_browser.setObjectName("ai_panel")
@@ -308,7 +359,120 @@ class AuditorView(QWidget):
         self._ai_browser.setPlaceholderText("Diagnóstico estratégico aparecerá aqui…")
         self._ai_browser.setMinimumHeight(360)
         self._ai_browser.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        layout.addWidget(self._ai_browser)
+        audit_body_layout.addWidget(self._ai_browser)
+
+        # ── Capítulo 2: Validação de Kits (BO) — BRD-007 ──────────────────
+        # Reproduz a experiência da antiga tela Cadastro → Validação de Kits:
+        # KPIs (analisados/corretos/divergências), cards clicáveis por
+        # subtipo de divergência, tabela SKU Pai/Status/Detalhe e download
+        # do XML de Correção. Só aparece quando o BO é anexado. Fica DEPOIS
+        # do capítulo de Auditoria Tradicional inteiro (cards + tabela + IA),
+        # como um segundo capítulo separado da mesma página de rolagem —
+        # filtros e tabela são independentes dos do capítulo tradicional.
+        # self._kit_chapter agrupa divisor+cabeçalho+corpo: some por inteiro
+        # quando não há planilha BO anexada (_refresh_kit_panel), e o corpo
+        # (self._kit_panel) é recolhível via botão, independente do capítulo
+        # tradicional.
+        self._kit_chapter = QWidget()
+        kit_chapter_layout = QVBoxLayout(self._kit_chapter)
+        kit_chapter_layout.setContentsMargins(0, 0, 0, 0)
+        kit_chapter_layout.setSpacing(20)
+
+        kit_chapter_sep = Divider()
+        kit_chapter_sep.setFixedHeight(2)
+        kit_chapter_sep.setStyleSheet("background-color:#3b82f6;")
+        kit_chapter_layout.addWidget(kit_chapter_sep)
+
+        chapter_kit_row = QHBoxLayout()
+        chapter_kit_header = QLabel("📦  VALIDAÇÃO DE KITS (BO)")
+        chapter_kit_header.setStyleSheet(
+            "font-size:13px;font-weight:800;color:#3b82f6;letter-spacing:0.5px;"
+            "text-transform:uppercase;padding-top:4px;"
+        )
+        chapter_kit_row.addWidget(chapter_kit_header)
+        chapter_kit_row.addStretch()
+        self._btn_kit_collapse = self._make_collapse_button()
+        self._btn_kit_collapse.clicked.connect(self._toggle_kit_chapter)
+        chapter_kit_row.addWidget(self._btn_kit_collapse)
+        kit_chapter_layout.addLayout(chapter_kit_row)
+
+        self._kit_panel = QWidget()
+        kit_layout = QVBoxLayout(self._kit_panel)
+        kit_layout.setContentsMargins(0, 0, 0, 0)
+        kit_layout.setSpacing(10)
+
+        kit_header = QLabel("Composição de Kits (BO)")
+        kit_header.setStyleSheet(
+            "font-size:11px;font-weight:700;color:#888;text-transform:uppercase;"
+        )
+        kit_layout.addWidget(kit_header)
+
+        kit_stats_row = QHBoxLayout()
+        kit_stats_row.setSpacing(12)
+        self._kit_stat_total = self._make_stat_card("0", "Kits Analisados", "#00a1e0")
+        self._kit_stat_ok    = self._make_stat_card("0", "Kits Corretos",   "#2ecc71")
+        self._kit_stat_erro  = self._make_stat_card("0", "Divergências",    "#e74c3c")
+        for card in (self._kit_stat_total, self._kit_stat_ok, self._kit_stat_erro):
+            kit_stats_row.addWidget(card)
+        kit_layout.addLayout(kit_stats_row)
+
+        # Cards clicáveis por subtipo de divergência de kit (BRD-007). Espelha
+        # o dashboard tradicional (ErrorCard + toggle de filtro), mas com
+        # estado e alvo de filtro PRÓPRIOS (self._kit_active_filters /
+        # self._kit_table) — nunca cruza com self._active_filters/self._table.
+        kit_cards_header = QLabel("Divergências por Subtipo")
+        kit_cards_header.setStyleSheet(
+            "font-size:11px;font-weight:700;color:#888;text-transform:uppercase;"
+        )
+        kit_layout.addWidget(kit_cards_header)
+
+        self._kit_cards_container = QWidget()
+        self._kit_cards_grid = QGridLayout(self._kit_cards_container)
+        self._kit_cards_grid.setContentsMargins(0, 0, 0, 0)
+        self._kit_cards_grid.setSpacing(10)
+
+        for kind, meta in KIT_ERROR_META.items():
+            card = ErrorCard(
+                kind,
+                icon=meta.get("icon", "·"),
+                title=meta.get("title", kind),
+                impact=meta.get("impact", ""),
+                desc=meta.get("desc", ""),
+            )
+            card.clicked_code.connect(self._on_kit_card_clicked)
+            self._kit_error_cards[kind] = card
+            card.hide()
+
+        kit_layout.addWidget(self._kit_cards_container)
+
+        self._kit_table = QTableWidget(0, 3)
+        self._kit_table.setHorizontalHeaderLabels(["SKU Pai", "Status", "Detalhe"])
+        self._kit_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self._kit_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self._kit_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self._kit_table.setAlternatingRowColors(True)
+        self._kit_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._kit_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._kit_table.verticalHeader().setVisible(False)
+        self._kit_table.setMinimumHeight(220)
+        kit_layout.addWidget(self._kit_table)
+
+        kit_btn_row = QHBoxLayout()
+        kit_btn_row.setSpacing(12)
+        self._btn_kit_report = QPushButton("⬇  Relatório de Kits")
+        self._btn_kit_report.setObjectName("btn_secondary")
+        self._btn_kit_report.clicked.connect(self._export_kit_report)
+        kit_btn_row.addWidget(self._btn_kit_report)
+        self._btn_kit_correction = QPushButton("⬇  XML de Correção")
+        self._btn_kit_correction.setObjectName("btn_secondary")
+        self._btn_kit_correction.clicked.connect(self._export_kit_correction)
+        kit_btn_row.addWidget(self._btn_kit_correction)
+        kit_btn_row.addStretch()
+        kit_layout.addLayout(kit_btn_row)
+
+        kit_chapter_layout.addWidget(self._kit_panel)
+        self._kit_chapter.hide()
+        layout.addWidget(self._kit_chapter)
 
         # Folga ao final: mantém os blocos no topo quando a página é curta.
         layout.addStretch(1)
@@ -412,17 +576,92 @@ class AuditorView(QWidget):
         self._refresh_cards()
         self._refresh_table()
 
+    # ── Stat cards do painel de kits (BRD-007) ────────────────────────────
+    @staticmethod
+    def _make_stat_card(value: str, label: str, color: str) -> QWidget:
+        card = QWidget()
+        card.setStyleSheet(f"background:{color};border-radius:8px;padding:10px;")
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(2)
+        val_lbl = QLabel(value)
+        val_lbl.setAlignment(Qt.AlignCenter)
+        val_lbl.setObjectName("_val")
+        val_lbl.setStyleSheet("font-size:28px;font-weight:700;color:white;background:transparent;")
+        lay.addWidget(val_lbl)
+        name_lbl = QLabel(label)
+        name_lbl.setAlignment(Qt.AlignCenter)
+        name_lbl.setStyleSheet("font-size:11px;color:white;background:transparent;")
+        lay.addWidget(name_lbl)
+        return card
+
+    @staticmethod
+    def _set_stat(card: QWidget, value: int):
+        lbl = card.findChild(QLabel, "_val")
+        if lbl:
+            lbl.setText(str(value))
+
+    # ── Capítulos recolhíveis (Auditoria Tradicional / Validação de Kits) ──
+    @staticmethod
+    def _make_collapse_button() -> QPushButton:
+        btn = QPushButton("−")
+        btn.setFixedSize(26, 26)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setToolTip("Recolher/expandir esta seção")
+        # O QSS global define padding/min-height genéricos para todo
+        # QPushButton (botões grandes tipo "Executar Auditoria"). Widgets com
+        # borda/raio via stylesheet passam a usar o box-model "estilizado" do
+        # Qt, onde essas propriedades podem sobrepor setFixedSize — por isso
+        # padding/margin/min/max precisam ser zerados/travados aqui também,
+        # e não só o setFixedSize, senão o botão "estica" numa pílula.
+        btn.setStyleSheet(
+            "QPushButton {"
+            "  font-size:15px; font-weight:700; color:#3b82f6;"
+            "  border:1px solid #3b82f6; border-radius:13px;"
+            "  background:transparent; padding:0px; margin:0px;"
+            "  min-width:26px; max-width:26px;"
+            "  min-height:26px; max-height:26px;"
+            "}"
+            "QPushButton:hover { background:rgba(59,130,246,30); }"
+            "QPushButton:pressed { background:rgba(59,130,246,55); }"
+        )
+        return btn
+
+    def _toggle_audit_chapter(self) -> None:
+        self._audit_collapsed = not self._audit_collapsed
+        self._audit_body.setVisible(not self._audit_collapsed)
+        self._btn_audit_collapse.setText("+" if self._audit_collapsed else "−")
+
+    def _toggle_kit_chapter(self) -> None:
+        self._kit_collapsed = not self._kit_collapsed
+        self._kit_panel.setVisible(not self._kit_collapsed)
+        self._btn_kit_collapse.setText("+" if self._kit_collapsed else "−")
+
     # ── Run ───────────────────────────────────────────────────────────────
     def _run(self):
         excel_paths = self._dz_excel.file_paths
         pb_path     = self._dz_pb.file_path
         cat_paths   = self._dz_cat.file_paths
+        bo_path     = self._dz_bo.file_path
+
+        # Modo só-kit (BRD-007): planilha BO anexada SEM Pricebook → valida
+        # apenas a composição de kits (catálogo × BO). Exige somente catálogos
+        # (1+) e a planilha BO; dispensa Pricebook e a regra dos 3 catálogos.
+        # Com Pricebook presente, segue a auditoria completa de sempre.
+        kit_only = bool(bo_path) and not pb_path
+        self._last_kit_only = kit_only
 
         missing = []
-        if not pb_path:
-            missing.append("Pricebook XML")
         if not cat_paths:
             missing.append("Catálogo(s) XML")
+        if not kit_only and not pb_path:
+            missing.append("Pricebook XML")
+        # BRD-007: com BO anexado, a Grade é obrigatória — dela vêm o whitelist
+        # e o CM ativo que guiam o cruzamento de kits (SKU+CM). Vale nos modos
+        # só-kit e completo+BO.
+        if bo_path and not excel_paths:
+            missing.append("Grade de Ativação (Excel)")
 
         if missing:
             QMessageBox.warning(
@@ -431,8 +670,9 @@ class AuditorView(QWidget):
             )
             return
 
-        # Trava 1: Quantidade exata de catálogos
-        if len(cat_paths) != 3:
+        # Trava 1: Quantidade exata de catálogos — só na auditoria completa.
+        # No modo só-kit qualquer quantidade (1+) é aceita.
+        if not kit_only and len(cat_paths) != 3:
             QMessageBox.warning(
                 self, "Quantidade Inválida",
                 f"Quantidade Inválida: A auditoria requer exatamente 3 catálogos "
@@ -488,13 +728,23 @@ class AuditorView(QWidget):
         self._progress_bar.show()
         self._status_lbl.show()
         self._active_filters.clear()
+        self._kit_active_filters.clear()
 
         # Reset cards
         for card in self._error_cards.values():
             card.update_counts(0, 0, 0)
             card.set_selected(False)
+        for card in self._kit_error_cards.values():
+            card.update_counts(0, 0, 0)
+            card.set_selected(False)
 
-        self._worker = AuditorWorker(excel_paths, pb_path, cat_paths, self)
+        # Cursor de espera (mesmo padrão de main_window.py) — feedback visual
+        # imediato de que o processamento está em andamento, evitando a
+        # sensação de app travado em máquinas mais lentas. Restaurado em
+        # _on_finished/_on_error (só um dos dois dispara por execução).
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+
+        self._worker = AuditorWorker(excel_paths, pb_path, cat_paths, bo_path, self)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
         self._worker.error_msg.connect(self._on_error)
@@ -507,6 +757,7 @@ class AuditorView(QWidget):
 
     # ── Finished ──────────────────────────────────────────────────────────
     def _on_finished(self, result: AuditResult):
+        QApplication.restoreOverrideCursor()
         self._result = result
         self._progress_bar.hide()
         self._status_lbl.hide()
@@ -516,7 +767,10 @@ class AuditorView(QWidget):
         self._btn_webhook.setEnabled(True)
 
         total = result.stats.get("total", 0)
-        if total == 0:
+        # Certificado Mestre só faz sentido na auditoria completa: atesta
+        # conformidade do catálogo inteiro. Numa execução só-kit ele seria
+        # enganoso, então fica desabilitado nesse modo.
+        if total == 0 and not self._last_kit_only:
             self._btn_master_cert.setEnabled(True)
             self._cert_status_lbl.setObjectName("cert_status_ready")
             self._cert_status_lbl.setText("✅")
@@ -535,6 +789,9 @@ class AuditorView(QWidget):
         # Default: show all errors (clear selection)
         self._active_filters.clear()
         self._refresh_table()
+
+        # Painel dedicado de kits (BRD-007)
+        self._refresh_kit_panel()
 
         # AI diagnostic
         agent = AiAgent()
@@ -574,6 +831,159 @@ class AuditorView(QWidget):
             f"Auditoria concluída: {result.total_excel_skus} SKUs, {total} divergências."
         )
 
+    # ── Painel dedicado de kits (BRD-007) ─────────────────────────────────
+    def _refresh_kit_panel(self):
+        """Popula o painel de Composição de Kits a partir de result.kit_data.
+        Reproduz a antiga tela de Validação de Kits (KPIs + tabela + correção),
+        mais os cards por subtipo (BRD-007 UX)."""
+        kd = getattr(self._result, "kit_data", None) if self._result else None
+        if kd is None:
+            self._kit_chapter.hide()
+            return
+
+        # Resultado novo invalida qualquer seleção de filtro anterior.
+        self._kit_active_filters.clear()
+
+        stats = kd.stats
+        self._set_stat(self._kit_stat_total, stats.get("total", 0))
+        self._set_stat(self._kit_stat_ok,    stats.get("ok", 0))
+        self._set_stat(self._kit_stat_erro,  stats.get("erro", 0))
+
+        self._refresh_kit_cards(kd)
+        self._refresh_kit_table(kd)
+
+        has_errors = stats.get("erro", 0) > 0
+        self._btn_kit_report.setEnabled(has_errors)
+        self._btn_kit_correction.setEnabled(bool(kd.correction_xml))
+        self._kit_panel.setVisible(not self._kit_collapsed)
+        self._kit_chapter.show()
+
+    def _on_kit_card_clicked(self, kind: str) -> None:
+        """Toggle de filtro independente do dashboard tradicional — nunca
+        toca em self._active_filters nem em self._table."""
+        if kind in self._kit_active_filters:
+            self._kit_active_filters.remove(kind)
+        else:
+            self._kit_active_filters.add(kind)
+
+        for k_kind, card in self._kit_error_cards.items():
+            card.set_selected(k_kind in self._kit_active_filters)
+
+        self._refresh_kit_table()
+
+    def _refresh_kit_cards(self, kd) -> None:
+        """Popula os cards clicáveis por subtipo (kind) a partir de kd.rows,
+        com breakdown real de marca Natura/Avon."""
+        counts_nat: dict[str, int] = {}
+        counts_avn: dict[str, int] = {}
+        for row in kd.rows:
+            kind = row.get("kind")
+            if kind is None:
+                continue
+            if row.get("brand") == "Avon":
+                counts_avn[kind] = counts_avn.get(kind, 0) + 1
+            else:
+                counts_nat[kind] = counts_nat.get(kind, 0) + 1
+
+        for i in reversed(range(self._kit_cards_grid.count())):
+            self._kit_cards_grid.itemAt(i).widget().setParent(None)
+
+        visible_cards = []
+        for kind, card in self._kit_error_cards.items():
+            nat = counts_nat.get(kind, 0)
+            avn = counts_avn.get(kind, 0)
+            card.update_counts(nat + avn, nat, avn)
+            if nat + avn > 0:
+                visible_cards.append(card)
+                card.show()
+            else:
+                card.hide()
+
+        for idx, card in enumerate(visible_cards):
+            row, col = divmod(idx, 4)
+            self._kit_cards_grid.addWidget(card, row, col)
+
+        self._kit_cards_container.setVisible(len(visible_cards) > 0)
+
+    def _refresh_kit_table(self, kd=None) -> None:
+        """Popula self._kit_table a partir de kd.rows, filtrando por
+        self._kit_active_filters quando houver cards de subtipo selecionados."""
+        if kd is None:
+            kd = getattr(self._result, "kit_data", None) if self._result else None
+        if kd is None:
+            return
+
+        rows = kd.rows
+        if self._kit_active_filters:
+            rows = [r for r in rows if r.get("kind") in self._kit_active_filters]
+
+        self._kit_table.setRowCount(0)
+        if rows:
+            self._kit_table.setRowCount(len(rows))
+            for i, e in enumerate(rows):
+                pai_item     = QTableWidgetItem(str(e.get("pai", "")))
+                status_val   = str(e.get("status", ""))
+                status_item  = QTableWidgetItem(status_val)
+                detalhe_item = QTableWidgetItem(str(e.get("detail", "")))
+                if "Ausente" in status_val:
+                    status_item.setForeground(QColor("#ff7b72"))
+                elif "Divergente" in status_val:
+                    status_item.setForeground(QColor("#e2b93d"))
+                self._kit_table.setItem(i, 0, pai_item)
+                self._kit_table.setItem(i, 1, status_item)
+                self._kit_table.setItem(i, 2, detalhe_item)
+        elif kd.rows and self._kit_active_filters:
+            # Defensivo: não deveria ocorrer (cards só existem com total>0),
+            # mas evita mostrar "Sucesso" quando na real é filtro sem match.
+            self._kit_table.setRowCount(1)
+            self._kit_table.setItem(0, 0, QTableWidgetItem(""))
+            self._kit_table.setItem(0, 1, QTableWidgetItem(""))
+            self._kit_table.setItem(0, 2, QTableWidgetItem(
+                "Nenhuma linha para os filtros selecionados."))
+        else:
+            self._kit_table.setRowCount(1)
+            ok_item = QTableWidgetItem("✅ Sucesso")
+            ok_item.setForeground(QColor("#2ecc71"))
+            self._kit_table.setItem(0, 0, QTableWidgetItem(""))
+            self._kit_table.setItem(0, 1, ok_item)
+            self._kit_table.setItem(0, 2, QTableWidgetItem("Todos os kits conferem!"))
+
+    def _export_kit_report(self):
+        kd = getattr(self._result, "kit_data", None) if self._result else None
+        if kd is None or not kd.rows:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Salvar Relatório de Kits", "Relatorio_Kits.xlsx", "Excel (*.xlsx)"
+        )
+        if not path:
+            return
+        path = get_unique_path(path)
+        try:
+            df = pd.DataFrame(
+                [{"SKU Pai": r.get("pai", ""), "Status": r.get("status", ""),
+                  "Detalhe": r.get("detail", "")} for r in kd.rows]
+            )
+            with pd.ExcelWriter(path, engine="openpyxl") as writer:
+                df.to_excel(writer, sheet_name="Divergencias_Kits", index=False)
+            QMessageBox.information(self, "Exportado", f"Relatório salvo em:\n{path}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Erro ao Exportar", str(exc))
+
+    def _export_kit_correction(self):
+        kd = getattr(self._result, "kit_data", None) if self._result else None
+        if kd is None or not kd.correction_xml:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Salvar XML de Correção", "CORRECAO_KITS_BRASIL.xml", "XML (*.xml)"
+        )
+        if not path:
+            return
+        try:
+            Path(path).write_text(kd.correction_xml, encoding="utf-8")
+            QMessageBox.information(self, "Exportado", f"XML salvo em:\n{path}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Erro ao Exportar", str(exc))
+
     # ── Altura dinâmica da tabela ─────────────────────────────────────────
     def _adjust_table_height(self) -> None:
         """Ajusta a altura da tabela para caber até MAX_TABLE_VISIBLE_ROWS
@@ -598,6 +1008,7 @@ class AuditorView(QWidget):
 
     # ── Error ─────────────────────────────────────────────────────────────
     def _on_error(self, msg: str):
+        QApplication.restoreOverrideCursor()
         self._btn_run.setEnabled(True)
         self._progress_bar.hide()
         self._status_lbl.hide()
@@ -938,6 +1349,7 @@ class AuditorView(QWidget):
         self._dz_pb.clear()
         self._dz_cat.clear()
         self._dz_excel.clear()
+        self._dz_bo.clear()
         self._table.setRowCount(0)
         self._ai_browser.clear()
         self._progress_bar.setValue(0)
@@ -949,19 +1361,34 @@ class AuditorView(QWidget):
         self._btn_master_cert.setEnabled(False)
         self._cert_status_lbl.hide()
         self._result = None
+        self._last_kit_only = False
         self._active_filters.clear()
+        self._kit_active_filters.clear()
         self._brand_filter  = "all"
         self._btn_all.setChecked(True)
         self._btn_natura.setChecked(False)
         self._btn_avon.setChecked(False)
         self._cards_container.hide()
         self._empty_state.hide()
+        self._kit_chapter.hide()
+        self._kit_table.setRowCount(0)
+        self._kit_cards_container.hide()
         for card in self._error_cards.values():
+            card.hide()
+            card.update_counts(0, 0, 0)
+            card.set_selected(False)
+        for card in self._kit_error_cards.values():
             card.hide()
             card.update_counts(0, 0, 0)
             card.set_selected(False)
         self._table_title.setText("Selecione um ou mais tipos de erro")
         self._table_count_lbl.setText("")
+        # Recolhimento dos capítulos volta ao estado expandido em um novo ciclo.
+        self._audit_collapsed = False
+        self._kit_collapsed = False
+        self._audit_body.setVisible(True)
+        self._btn_audit_collapse.setText("−")
+        self._btn_kit_collapse.setText("−")
         self._btn_run.setEnabled(True)
 
     def _export_evidence(self):
