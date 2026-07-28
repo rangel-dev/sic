@@ -172,11 +172,10 @@ class MainWindow(QMainWindow):
             self._nav_buttons[idx] = btn
             tabs_layout.addWidget(btn)
 
-        # Cadastro dropdown: indices 5 and 6 for the two submodules
+        # Cadastro dropdown: Gestor GCP (6) e Pontuação (12)
         cadastro_btn = DropdownNavButton("≡", "Cadastro")
         cadastro_btn.setFixedHeight(56)
         cadastro_btn.setObjectName("tab_button")
-        cadastro_btn.add_submenu_item("Validação de Kits",     5, "▪")
         cadastro_btn.add_submenu_item("Gestor GCP", 6, "▪")
         cadastro_btn.add_submenu_item("Pontuação", 12, "▪")
         cadastro_btn.submenu_clicked.connect(lambda idx: self._switch_cadastro(idx))
@@ -267,10 +266,6 @@ class MainWindow(QMainWindow):
         elif index == 4:
             from src.ui.pages.view_volumetria import VolumetriaView
             page = VolumetriaView(self)
-        elif index == 5:
-            # Cadastro submenu: Validação de Kits
-            from src.ui.pages.view_cadastro_kits import CadastroKitsView
-            page = CadastroKitsView(self)
         elif index == 6:
             # Cadastro submenu: Gestor GCP
             from src.ui.pages.view_cadastro_pontuacao import CadastroPontuacaoView
@@ -286,10 +281,6 @@ class MainWindow(QMainWindow):
             from src.ui.pages.view_menu_validator import MenuValidatorView
             page = MenuValidatorView(self)
             QApplication.restoreOverrideCursor()
-        elif index == 10:
-            # Legacy: if someone tries to access the old container (shouldn't happen)
-            from src.ui.pages.view_cadastro_kits import CadastroKitsView
-            page = CadastroKitsView(self)
         elif index == 11:
             from src.ui.pages.view_sobre import SobreView
             page = SobreView(self)
@@ -316,7 +307,7 @@ class MainWindow(QMainWindow):
         # Update button states (manual exclusive group)
         for i, btn in self._nav_buttons.items():
             if i == 5:  # Cadastro dropdown — mark as active for sub-pages
-                btn.setChecked(index in (5, 6, 12))
+                btn.setChecked(index in (6, 12))
             else:
                 btn.setChecked(i == index)
 
@@ -326,7 +317,6 @@ class MainWindow(QMainWindow):
             1: "Exportador",
             3: "Auditor",
             4: "Volumetria",
-            5: "Cadastro → Validação de Kits",
             6: "Cadastro → Gestor GCP",
             7: "Histórico",
             8: "Configurações",
