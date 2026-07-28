@@ -18,7 +18,7 @@ from lxml import etree
 
 from src.core.auditor.integrity import verify_core_integrity
 from src.core.auditor.parity_rules_v12 import execute_parity_rules
-from src.core.auditor.kit_validation import _so_numeros
+from src.core.auditor.kit_validation import GradeIndex, _so_numeros
 
 # ─── Namespaces ───────────────────────────────────────────────────────────────
 PRICEBOOK_NS = "http://www.demandware.com/xml/impex/pricebook/2006-10-31"
@@ -121,7 +121,7 @@ class AuditorEngine:
 
             # 1. Excel (Opcional)
             self._prog(10, "Lendo planilhas Excel (se houver)…")
-            excel_prices, excel_lists, excel_brands, has_nat, has_avn, grade_cm = self._parse_excels(excel_paths)
+            excel_prices, excel_lists, excel_brands, has_nat, has_avn, grade_idx = self._parse_excels(excel_paths)
             result.total_excel_skus = len(excel_prices)
 
             # Regra de Ouro (Gold Rule) V11.6 & Detecção de Marcas
@@ -193,7 +193,7 @@ class AuditorEngine:
                 self._prog(82, "Validando composição de Kits (planilha BO)…")
                 try:
                     from src.core.auditor.kit_validation import validate_kits
-                    result.kit_data = validate_kits(bo_path, cat_paths, grade_cm)
+                    result.kit_data = validate_kits(bo_path, cat_paths, grade_idx)
                 except Exception as kit_exc:  # noqa: BLE001
                     print(f"⚠️ [Kit Validation] Falha ao validar kits (ignorado): {kit_exc}")
 
@@ -235,12 +235,12 @@ class AuditorEngine:
                 print("⚠️ [Integrity Check] parity_rules alterado; execução prosseguirá.")
 
             self._prog(15, "Lendo Grade de Ativação (whitelist + CM)…")
-            _, _, _, _, _, grade_cm = self._parse_excels(excel_paths)
+            _, _, _, _, _, grade_idx = self._parse_excels(excel_paths)
 
             self._prog(20, "Validando composição de Kits (planilha BO)…")
             try:
                 from src.core.auditor.kit_validation import validate_kits
-                kit_data = validate_kits(bo_path, cat_paths, grade_cm)
+                kit_data = validate_kits(bo_path, cat_paths, grade_idx)
             except Exception as kit_exc:  # noqa: BLE001
                 result.error = f"Falha ao validar a planilha do BO: {kit_exc}"
                 return result
@@ -272,11 +272,11 @@ class AuditorEngine:
           excel_lists  : {list_id: set(skus)}   (LISTA_01 para Natura, lista-01 para Avon)
           brands_found : lista de marcas
           has_nat, has_avn : bool
-          grade_cm     : {sku_numérico: cm_ativo}  (BRD-007 — whitelist + SKU+CM)
+          grade_idx    : GradeIndex (BRD-007 — CM vigente + quais SKUs são kits)
         """
         excel_prices = {}
         excel_lists  = {}
-        grade_cm: dict[str, str] = {}
+        grade_idx = GradeIndex()
         has_nat = has_avn = False
 
         for path in paths:
@@ -287,10 +287,10 @@ class AuditorEngine:
             if file_brand == "Natura": has_nat = True
             if file_brand == "Avon":   has_avn = True
 
-            # Grade de Ativação → preços, visibilidade e CM (Código de Material)
+            # Grade de Ativação → preços, visibilidade, CM e marcação de kit
             grade = self._find_grade_sheet(wb)
             if grade:
-                self._parse_grade(grade, file_brand, excel_prices, grade_cm)
+                self._parse_grade(grade, file_brand, excel_prices, grade_idx)
 
             # Listas LISTA_XX / lista-XX
             for name in wb.sheetnames:
@@ -310,7 +310,7 @@ class AuditorEngine:
             wb.close()
 
         brands = (["Natura"] if has_nat else []) + (["Avon"] if has_avn else [])
-        return excel_prices, excel_lists, brands, has_nat, has_avn, grade_cm
+        return excel_prices, excel_lists, brands, has_nat, has_avn, grade_idx
 
     def _detect_brand_workbook(self, wb) -> str:
         """Varre toda a aba GRADE ou a primeira disponível e conta NATBRA/AVNBRA (Robust like JS)."""
@@ -362,11 +362,13 @@ class AuditorEngine:
         return None
 
     def _parse_grade(self, ws, file_brand: str, out: dict,
-                     grade_cm: Optional[dict] = None) -> None:
+                     grade: Optional[GradeIndex] = None) -> None:
         rows = list(ws.iter_rows(max_row=10000, values_only=True))
-        sku_col = de_col = por_col = vis_col = cm_col = None
+        sku_col = de_col = por_col = vis_col = cm_col = tipo_col = None
         sku_start = None
 
+        # Detecção por NOME de cabeçalho, nunca por posição: o layout difere
+        # entre as marcas (a grade Avon tem colunas a mais que a Natura).
         for i, row in enumerate(rows[:60]):
             for j, cell in enumerate(row):
                 if cell is None:
@@ -379,6 +381,8 @@ class AuditorEngine:
                     por_col = j
                 elif vu == "CM":            # Código de Material (exato; não casa "CMV")
                     cm_col = j
+                elif vu == "TIPO MATERIAL":  # ZEST = kit; ZPAC/ZPRO = item simples
+                    tipo_col = j
                 elif "VISIBLE" in vu or "VISIBILIDADE" in vu:
                     vis_col = j
                 if sku_col is None and SKU_RE.match(v):
@@ -412,13 +416,21 @@ class AuditorEngine:
 
             out[sku] = {"DE": de or 0.0, "POR": por or 0.0, "VISIBLE": vis}
 
-            # CM (Código de Material) ativo do ciclo → whitelist + identidade SKU+CM
-            # da validação de kits (BRD-007). Chave = SKU numérico.
-            if grade_cm is not None and cm_col is not None and cm_col < len(row):
-                cm_val = _so_numeros(row[cm_col])
+            # Índice da grade para a validação de kits (BRD-007): CM vigente do
+            # ciclo e quais SKUs são kits (TIPO MATERIAL = ZEST). Chaveado por
+            # (marca, SKU numérico) — há SKUs que existem nas duas marcas.
+            # O SKU é registrado mesmo sem CM: estar na grade é o que define o
+            # que é vigente; o CM é dado complementar (há linhas sem CM).
+            if grade is not None:
                 sku_num = _so_numeros(sku)
-                if sku_num and cm_val:
-                    grade_cm[sku_num] = cm_val
+                if sku_num:
+                    cm_val = ""
+                    if cm_col is not None and cm_col < len(row):
+                        cm_val = _so_numeros(row[cm_col])
+                    grade.cm[(file_brand, sku_num)] = cm_val
+                    if tipo_col is not None and tipo_col < len(row):
+                        if str(row[tipo_col] or "").strip().upper() == "ZEST":
+                            grade.kits.add((file_brand, sku_num))
         print(f"DEBUG: Grade {file_brand} -> SKUs carregados: {len(out)}")
 
     def _parse_lista(self, ws, file_brand: str, num: str, out: dict) -> None:
