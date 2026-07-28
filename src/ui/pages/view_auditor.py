@@ -67,6 +67,7 @@ class AuditorView(QWidget):
         self._error_cards: dict[str, ErrorCard] = {}
         self._kit_active_filters: set[str] = set()      # kit "kind" codes (independente de _active_filters)
         self._kit_error_cards: dict[str, ErrorCard] = {}
+        self._kit_brand_filter: str = "all"    # marca da seção de kits ("all"/"natura"/"avon")
         self._audit_collapsed: bool = False    # capítulo "Auditoria Tradicional" recolhido?
         self._kit_collapsed: bool   = False    # capítulo "Validação de Kits (BO)" recolhido?
         self._settings = QSettings("SIC", "SIC_Suite")
@@ -307,18 +308,7 @@ class AuditorView(QWidget):
         self._empty_state.setAlignment(Qt.AlignCenter)
         self._empty_state.setWordWrap(True)
         self._empty_state.setTextFormat(Qt.RichText)
-        self._empty_state.setText(
-            "<div style='padding:28px 20px;'>"
-            "<div style='font-size:42px;line-height:1;'>✅</div>"
-            "<div style='font-size:16px;font-weight:700;margin-top:12px;color:#22A06B;'>"
-            "Catálogo 100% íntegro"
-            "</div>"
-            "<div style='font-size:12px;margin-top:6px;color:#888;'>"
-            "Nenhuma divergência encontrada nas 12 regras de negócio.<br>"
-            "Pricebook, catálogos e planilhas estão alinhados."
-            "</div>"
-            "</div>"
-        )
+        self._empty_state.setText(self._empty_state_html_ok())
         self._empty_state.hide()
         audit_body_layout.addWidget(self._empty_state)
 
@@ -420,11 +410,24 @@ class AuditorView(QWidget):
         # o dashboard tradicional (ErrorCard + toggle de filtro), mas com
         # estado e alvo de filtro PRÓPRIOS (self._kit_active_filters /
         # self._kit_table) — nunca cruza com self._active_filters/self._table.
+        kit_cards_row = QHBoxLayout()
         kit_cards_header = QLabel("Divergências por Subtipo")
         kit_cards_header.setStyleSheet(
             "font-size:11px;font-weight:700;color:#888;text-transform:uppercase;"
         )
-        kit_layout.addWidget(kit_cards_header)
+        kit_cards_row.addWidget(kit_cards_header)
+        kit_cards_row.addStretch()
+        # Pills de marca PRÓPRIAS da seção de kits — não mexem no filtro de
+        # marca do dashboard tradicional (self._brand_filter).
+        self._btn_kit_all    = self._make_kit_filter_pill("Todos",  "all",    True)
+        self._btn_kit_natura = self._make_kit_filter_pill("Natura", "natura", False)
+        self._btn_kit_avon   = self._make_kit_filter_pill("Avon",   "avon",   False)
+        self._btn_kit_all.setToolTip("Mostrar kits de todas as marcas")
+        self._btn_kit_natura.setToolTip("Filtrar apenas kits da marca Natura")
+        self._btn_kit_avon.setToolTip("Filtrar apenas kits da marca Avon")
+        for b in (self._btn_kit_all, self._btn_kit_natura, self._btn_kit_avon):
+            kit_cards_row.addWidget(b)
+        kit_layout.addLayout(kit_cards_row)
 
         self._kit_cards_container = QWidget()
         self._kit_cards_grid = QGridLayout(self._kit_cards_container)
@@ -445,16 +448,26 @@ class AuditorView(QWidget):
 
         kit_layout.addWidget(self._kit_cards_container)
 
-        self._kit_table = QTableWidget(0, 3)
-        self._kit_table.setHorizontalHeaderLabels(["SKU Pai", "Status", "Detalhe"])
+        self._kit_table = QTableWidget(0, 4)
+        self._kit_table.setHorizontalHeaderLabels(["SKU Pai", "Marca", "Status", "Detalhe"])
         self._kit_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self._kit_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self._kit_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self._kit_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self._kit_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self._kit_table.setAlternatingRowColors(True)
         self._kit_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._kit_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._kit_table.verticalHeader().setVisible(False)
-        self._kit_table.setMinimumHeight(220)
+        # Viewport próprio com scroll interno — evita que 100+ linhas (agora
+        # de altura variável, por causa do word wrap) empurrem os botões de
+        # export pra muito longe ou façam a página inteira rolar demais.
+        self._kit_table.setMinimumHeight(320)
+        self._kit_table.setMaximumHeight(480)
+        self._kit_table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        # Detalhe agora traz textos didáticos mais longos — sem quebra de linha
+        # eles ficavam cortados na largura fixa da coluna. Word wrap + altura
+        # de linha recalculada por conteúdo (_refresh_kit_table) resolve.
+        self._kit_table.setWordWrap(True)
         kit_layout.addWidget(self._kit_table)
 
         kit_btn_row = QHBoxLayout()
@@ -576,6 +589,32 @@ class AuditorView(QWidget):
         self._refresh_cards()
         self._refresh_table()
 
+    def _make_kit_filter_pill(self, text: str, key: str, checked: bool) -> QPushButton:
+        """Gêmea de _make_filter_pill para a seção de kits — aquela está presa ao
+        trio do dashboard tradicional e ao _set_brand_filter."""
+        btn = QPushButton(text)
+        btn.setCheckable(True)
+        btn.setChecked(checked)
+        btn.setObjectName("btn_ghost")
+        btn.setFixedHeight(24)
+        btn.setStyleSheet("padding: 2px 10px; font-size: 11px; font-weight: 600;")
+        btn.setProperty("filter_key", key)
+        btn.clicked.connect(lambda: self._set_kit_brand_filter(key))
+        return btn
+
+    def _set_kit_brand_filter_silent(self, key: str) -> None:
+        """Reseta o estado/pills de marca da seção de kits sem repintar (usado
+        quando ainda não há resultado)."""
+        self._kit_brand_filter = key
+        for btn in (self._btn_kit_all, self._btn_kit_natura, self._btn_kit_avon):
+            btn.setChecked(btn.property("filter_key") == key)
+
+    def _set_kit_brand_filter(self, key: str):
+        """Filtra APENAS a seção de kits — não toca no dashboard tradicional."""
+        self._set_kit_brand_filter_silent(key)
+        self._refresh_kit_cards()
+        self._refresh_kit_table()
+
     # ── Stat cards do painel de kits (BRD-007) ────────────────────────────
     @staticmethod
     def _make_stat_card(value: str, label: str, color: str) -> QWidget:
@@ -637,6 +676,43 @@ class AuditorView(QWidget):
         self._kit_collapsed = not self._kit_collapsed
         self._kit_panel.setVisible(not self._kit_collapsed)
         self._btn_kit_collapse.setText("+" if self._kit_collapsed else "−")
+
+    # ── Empty-state do capítulo tradicional ────────────────────────────────
+    @staticmethod
+    def _empty_state_html_ok() -> str:
+        """Auditoria tradicional rodou e não encontrou nenhuma divergência."""
+        return (
+            "<div style='padding:28px 20px;'>"
+            "<div style='font-size:42px;line-height:1;'>✅</div>"
+            "<div style='font-size:16px;font-weight:700;margin-top:12px;color:#22A06B;'>"
+            "Catálogo 100% íntegro"
+            "</div>"
+            "<div style='font-size:12px;margin-top:6px;color:#888;'>"
+            "Nenhuma divergência encontrada nas regras de negócio.<br>"
+            "Pricebook, catálogos e planilhas estão alinhados."
+            "</div>"
+            "</div>"
+        )
+
+    @staticmethod
+    def _empty_state_html_kit_only() -> str:
+        """Modo só-kit (BO sem Pricebook): a auditoria tradicional NÃO rodou —
+        "0 divergências" aqui não significa "íntegro", significa "não checado".
+        Sem este aviso, o usuário lê o card verde como se preço/categoria/
+        visibilidade tivessem sido validados, o que é falso."""
+        return (
+            "<div style='padding:28px 20px;'>"
+            "<div style='font-size:42px;line-height:1;'>ℹ️</div>"
+            "<div style='font-size:16px;font-weight:700;margin-top:12px;color:#3b82f6;'>"
+            "Auditoria Tradicional não executada"
+            "</div>"
+            "<div style='font-size:12px;margin-top:6px;color:#888;'>"
+            "Nenhum Pricebook foi anexado — rodou apenas a Validação de Kits "
+            "(BO), no capítulo abaixo.<br>Preço, categorias e visibilidade "
+            "NÃO foram conferidos. Anexe o Pricebook para auditar tudo."
+            "</div>"
+            "</div>"
+        )
 
     # ── Run ───────────────────────────────────────────────────────────────
     def _run(self):
@@ -729,6 +805,7 @@ class AuditorView(QWidget):
         self._status_lbl.show()
         self._active_filters.clear()
         self._kit_active_filters.clear()
+        self._set_kit_brand_filter_silent("all")
 
         # Reset cards
         for card in self._error_cards.values():
@@ -794,15 +871,31 @@ class AuditorView(QWidget):
         self._refresh_kit_panel()
 
         # AI diagnostic
-        agent = AiAgent()
         self._settings.sync()
         theme = str(self._settings.value("theme", "light"))
-        html  = agent.generate_report(
-            result.stats,
-            brands_found=result.brands_found,
-            total_excel_skus=result.total_excel_skus,
-            theme=theme,
-        )
+        if self._last_kit_only:
+            # Modo só-kit: as 13 regras tradicionais nunca rodaram (insumos
+            # vazios), então stats["by_type"] sempre dá 0 erros em tudo.
+            # agent.generate_report() leria isso como "Operação Saudável /
+            # 100% íntegro" — a mesma falsa afirmação do empty-state, só que
+            # no painel de IA. Não chamamos o agente nesse modo.
+            html = (
+                '<div style="color:#3b82f6;font-weight:700;">ℹ️ Diagnóstico não '
+                'aplicável neste modo</div>'
+                '<div style="margin-top:8px;">Sem Pricebook anexado, só a '
+                'Validação de Kits (BO) rodou. Preço, categorias e '
+                'visibilidade não foram auditados — veja o resultado dos '
+                'kits no capítulo abaixo. Anexe o Pricebook para um '
+                'diagnóstico completo.</div>'
+            )
+        else:
+            agent = AiAgent()
+            html  = agent.generate_report(
+                result.stats,
+                brands_found=result.brands_found,
+                total_excel_skus=result.total_excel_skus,
+                theme=theme,
+            )
         bg_html = "#fcfdfe" if theme == "light" else "#0e1118"
         fg_html = "#333333" if theme == "light" else "#c0cce0"
 
@@ -844,15 +937,10 @@ class AuditorView(QWidget):
         # Resultado novo invalida qualquer seleção de filtro anterior.
         self._kit_active_filters.clear()
 
-        stats = kd.stats
-        self._set_stat(self._kit_stat_total, stats.get("total", 0))
-        self._set_stat(self._kit_stat_ok,    stats.get("ok", 0))
-        self._set_stat(self._kit_stat_erro,  stats.get("erro", 0))
-
         self._refresh_kit_cards(kd)
         self._refresh_kit_table(kd)
 
-        has_errors = stats.get("erro", 0) > 0
+        has_errors = kd.stats.get("erro", 0) > 0
         self._btn_kit_report.setEnabled(has_errors)
         self._btn_kit_correction.setEnabled(bool(kd.correction_xml))
         self._kit_panel.setVisible(not self._kit_collapsed)
@@ -871,16 +959,43 @@ class AuditorView(QWidget):
 
         self._refresh_kit_table()
 
-    def _refresh_kit_cards(self, kd) -> None:
-        """Popula os cards clicáveis por subtipo (kind) a partir de kd.rows,
-        com breakdown real de marca Natura/Avon."""
+    def _kit_data(self):
+        return getattr(self._result, "kit_data", None) if self._result else None
+
+    def _kit_rows_da_marca(self, kd) -> list[dict]:
+        """Linhas de kit respeitando o filtro de marca da seção (em kd.rows a
+        marca vem capitalizada: 'Natura'/'Avon')."""
+        if self._kit_brand_filter == "all":
+            return list(kd.rows)
+        return [r for r in kd.rows
+                if str(r.get("brand", "")).lower() == self._kit_brand_filter]
+
+    def _refresh_kit_cards(self, kd=None) -> None:
+        """Popula KPIs e cards clicáveis por subtipo (kind), respeitando o
+        filtro de marca da seção."""
+        if kd is None:
+            kd = self._kit_data()
+        if kd is None:
+            return
+
+        # KPIs: usam o recorte por marca quando há filtro ativo.
+        stats = kd.stats or {}
+        if self._kit_brand_filter == "all":
+            kpi = stats
+        else:
+            marca = self._kit_brand_filter.capitalize()
+            kpi = (stats.get("by_brand") or {}).get(marca, {})
+        self._set_stat(self._kit_stat_total, kpi.get("total", 0))
+        self._set_stat(self._kit_stat_ok,    kpi.get("ok", 0))
+        self._set_stat(self._kit_stat_erro,  kpi.get("erro", 0))
+
         counts_nat: dict[str, int] = {}
         counts_avn: dict[str, int] = {}
-        for row in kd.rows:
+        for row in self._kit_rows_da_marca(kd):
             kind = row.get("kind")
             if kind is None:
                 continue
-            if row.get("brand") == "Avon":
+            if str(row.get("brand", "")).lower() == "avon":
                 counts_avn[kind] = counts_avn.get(kind, 0) + 1
             else:
                 counts_nat[kind] = counts_nat.get(kind, 0) + 1
@@ -906,14 +1021,15 @@ class AuditorView(QWidget):
         self._kit_cards_container.setVisible(len(visible_cards) > 0)
 
     def _refresh_kit_table(self, kd=None) -> None:
-        """Popula self._kit_table a partir de kd.rows, filtrando por
-        self._kit_active_filters quando houver cards de subtipo selecionados."""
+        """Popula self._kit_table filtrando por marca e pelos cards de subtipo
+        selecionados."""
         if kd is None:
-            kd = getattr(self._result, "kit_data", None) if self._result else None
+            kd = self._kit_data()
         if kd is None:
             return
 
-        rows = kd.rows
+        base_rows = self._kit_rows_da_marca(kd)
+        rows = base_rows
         if self._kit_active_filters:
             rows = [r for r in rows if r.get("kind") in self._kit_active_filters]
 
@@ -921,35 +1037,129 @@ class AuditorView(QWidget):
         if rows:
             self._kit_table.setRowCount(len(rows))
             for i, e in enumerate(rows):
-                pai_item     = QTableWidgetItem(str(e.get("pai", "")))
-                status_val   = str(e.get("status", ""))
-                status_item  = QTableWidgetItem(status_val)
-                detalhe_item = QTableWidgetItem(str(e.get("detail", "")))
+                brand_val   = str(e.get("brand", ""))
+                status_val  = str(e.get("status", ""))
+                brand_item  = QTableWidgetItem(brand_val)
+                status_item = QTableWidgetItem(status_val)
+                # Mesmas cores de marca da tabela do auditor tradicional
+                if brand_val.lower() == "natura":
+                    brand_item.setForeground(QColor("#FF8050"))
+                elif brand_val.lower() == "avon":
+                    brand_item.setForeground(QColor("#bb88ff"))
                 if "Ausente" in status_val:
                     status_item.setForeground(QColor("#ff7b72"))
                 elif "Divergente" in status_val:
                     status_item.setForeground(QColor("#e2b93d"))
-                self._kit_table.setItem(i, 0, pai_item)
-                self._kit_table.setItem(i, 1, status_item)
-                self._kit_table.setItem(i, 2, detalhe_item)
-        elif kd.rows and self._kit_active_filters:
-            # Defensivo: não deveria ocorrer (cards só existem com total>0),
-            # mas evita mostrar "Sucesso" quando na real é filtro sem match.
+                # SKU completo com prefixo (NATBRA-/AVNBRA-), não só o número —
+                # independente da coluna Marca, ajuda o auditor a localizar o
+                # produto direto no Salesforce/catálogo.
+                detail_item = QTableWidgetItem(str(e.get("detail", "")))
+                self._kit_table.setItem(i, 0, QTableWidgetItem(str(e.get("sku", e.get("pai", "")))))
+                self._kit_table.setItem(i, 1, brand_item)
+                self._kit_table.setItem(i, 2, status_item)
+                self._kit_table.setItem(i, 3, detail_item)
+            # Word wrap muda a altura necessária de cada linha; recalcula
+            # depois de popular para não cortar o texto de Detalhe. Adiado via
+            # singleShot(0): chamado na hora, a coluna Detalhe (Stretch) ainda
+            # não tinha assumido a largura final, e o cálculo de quebra de
+            # linha usava uma largura estreita — inflando a altura da linha
+            # muito além do necessário (mesmo bug que _adjust_table_height já
+            # contorna do mesmo jeito para a tabela tradicional).
+            QTimer.singleShot(0, self._kit_table.resizeRowsToContents)
+        elif kd.rows:
+            # Havia divergências, mas o recorte atual (marca e/ou subtipo) não
+            # tem nenhuma — não pode exibir "Sucesso", seria enganoso.
             self._kit_table.setRowCount(1)
-            self._kit_table.setItem(0, 0, QTableWidgetItem(""))
-            self._kit_table.setItem(0, 1, QTableWidgetItem(""))
-            self._kit_table.setItem(0, 2, QTableWidgetItem(
+            for c in range(3):
+                self._kit_table.setItem(0, c, QTableWidgetItem(""))
+            self._kit_table.setItem(0, 3, QTableWidgetItem(
                 "Nenhuma linha para os filtros selecionados."))
         else:
             self._kit_table.setRowCount(1)
             ok_item = QTableWidgetItem("✅ Sucesso")
             ok_item.setForeground(QColor("#2ecc71"))
             self._kit_table.setItem(0, 0, QTableWidgetItem(""))
-            self._kit_table.setItem(0, 1, ok_item)
-            self._kit_table.setItem(0, 2, QTableWidgetItem("Todos os kits conferem!"))
+            self._kit_table.setItem(0, 1, QTableWidgetItem(""))
+            self._kit_table.setItem(0, 2, ok_item)
+            self._kit_table.setItem(0, 3, QTableWidgetItem("Todos os kits conferem!"))
+
+    @staticmethod
+    def _kit_row_to_export(r: dict) -> dict:
+        """Linha de divergência no formato rico do relatório."""
+        meta = KIT_ERROR_META.get(r.get("kind", ""), {})
+        return {
+            "Marca":            r.get("brand", ""),
+            "SKU Pai":          r.get("sku", ""),
+            "SKU Pai (núm)":    r.get("pai", ""),
+            "Tipo":             meta.get("title", r.get("kind", "")),
+            "Status":           r.get("status", ""),
+            "SKU Filho":        r.get("filho", ""),
+            "Qtd SF":           r.get("qtd_sf", ""),
+            "Qtd BO":           r.get("qtd_bo", ""),
+            "CM (Grade)":       r.get("cm_grade", ""),
+            "CM (BO)":          r.get("cm_bo", ""),
+            "Detalhe":          r.get("detail", ""),
+        }
+
+    @staticmethod
+    def _style_kit_resumo_sheet(ws, df: pd.DataFrame, n_kpis: int) -> None:
+        """Estiliza a aba Resumo: header em negrito, as 3 linhas de KPI geral
+        coloridas (mesma cor dos stat cards da tela), separador antes do
+        detalhamento por subtipo, e a coluna Total destacada (negrito + fundo
+        cinza-claro) — para não depender de repetir a palavra "TOTAL" como
+        valor ambíguo numa coluna Marca."""
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        header_fill = PatternFill("solid", fgColor="0D1F3D")
+        header_font = Font(color="FFFFFF", bold=True)
+        total_fill  = PatternFill("solid", fgColor="F0F0F0")
+        kpi_colors  = {
+            "Kits Analisados":  "0072B2",
+            "Kits Corretos":    "1E8449",
+            "Kits Divergentes": "C0392B",
+        }
+        thin  = Side(style="thin", color="D9D9D9")
+        thick = Side(style="medium", color="888888")
+
+        n_cols = len(df.columns)
+        total_col_idx = n_cols  # última coluna é sempre "Total"
+
+        for col in range(1, n_cols + 1):
+            cell = ws.cell(row=1, column=col)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center")
+
+        for row_idx in range(2, len(df) + 2):
+            indicador = ws.cell(row=row_idx, column=1).value
+            is_kpi = (row_idx - 1) <= n_kpis
+            # Linha logo abaixo do bloco de KPIs gerais: separador visual
+            # antes do detalhamento por subtipo de divergência.
+            is_primeira_do_detalhe = (row_idx - 1) == n_kpis + 1
+            top_side = thick if is_primeira_do_detalhe else thin
+            row_border = Border(left=thin, right=thin, top=top_side, bottom=thin)
+            for col in range(1, n_cols + 1):
+                cell = ws.cell(row=row_idx, column=col)
+                cell.border = row_border
+                if col == total_col_idx:
+                    cell.font = Font(bold=True)
+                    cell.fill = total_fill
+            if is_kpi and indicador in kpi_colors:
+                ws.cell(row=row_idx, column=1).font = Font(bold=True, color=kpi_colors[indicador])
+
+        for col in range(1, n_cols + 1):
+            header_len = len(str(df.columns[col - 1]))
+            max_len = max([header_len] + [len(str(v)) for v in df.iloc[:, col - 1]])
+            ws.column_dimensions[get_column_letter(col)].width = max(14, max_len + 4)
+
+        ws.freeze_panes = "A2"
 
     def _export_kit_report(self):
-        kd = getattr(self._result, "kit_data", None) if self._result else None
+        """Relatório de kits: aba Resumo (matriz Indicador × Marca, com Total
+        como coluna — não como valor repetido) + uma aba por marca com as
+        divergências do recorte filtrado na tela."""
+        kd = self._kit_data()
         if kd is None or not kd.rows:
             return
         path, _ = QFileDialog.getSaveFileName(
@@ -959,12 +1169,65 @@ class AuditorView(QWidget):
             return
         path = get_unique_path(path)
         try:
-            df = pd.DataFrame(
-                [{"SKU Pai": r.get("pai", ""), "Status": r.get("status", ""),
-                  "Detalhe": r.get("detail", "")} for r in kd.rows]
-            )
+            stats = kd.stats or {}
+            by_brand = stats.get("by_brand") or {}
+            # Ordem fixa (Natura antes de Avon) — só as marcas com kits nesta auditoria.
+            marcas = [m for m in ("Natura", "Avon") if m in by_brand] or ["Natura"]
+
+            def linha_resumo(indicador: str, por_marca: dict, total: int) -> dict:
+                row: dict[str, object] = {"Indicador": indicador}
+                for m in marcas:
+                    row[m] = por_marca.get(m, 0)
+                row["Total"] = total
+                return row
+
+            # ── Bloco 1: KPIs gerais. Sempre o quadro COMPLETO, ignorando os
+            # filtros da tela, para o auditor não perder a visão geral.
+            resumo_rows = [
+                linha_resumo("Kits Analisados",
+                             {m: by_brand.get(m, {}).get("total", 0) for m in marcas},
+                             stats.get("total", 0)),
+                linha_resumo("Kits Corretos",
+                             {m: by_brand.get(m, {}).get("ok", 0) for m in marcas},
+                             stats.get("ok", 0)),
+                linha_resumo("Kits Divergentes",
+                             {m: by_brand.get(m, {}).get("erro", 0) for m in marcas},
+                             stats.get("erro", 0)),
+            ]
+            n_kpis = len(resumo_rows)
+
+            # ── Bloco 2: detalhamento por subtipo (só os que tiveram achado)
+            for kind, meta in KIT_ERROR_META.items():
+                total_kind = sum(1 for r in kd.rows if r.get("kind") == kind)
+                if not total_kind:
+                    continue
+                por_marca = {m: sum(1 for r in kd.rows
+                                     if r.get("kind") == kind and r.get("brand") == m)
+                             for m in marcas}
+                resumo_rows.append(linha_resumo(meta.get("title", kind), por_marca, total_kind))
+
+            df_resumo = pd.DataFrame(resumo_rows)
+
+            # ── Abas por marca: respeitam os filtros ativos na tela (marca +
+            # subtipo), igual ao relatório do auditor tradicional.
+            rows_filtradas = self._kit_rows_da_marca(kd)
+            if self._kit_active_filters:
+                rows_filtradas = [r for r in rows_filtradas
+                                  if r.get("kind") in self._kit_active_filters]
+
             with pd.ExcelWriter(path, engine="openpyxl") as writer:
-                df.to_excel(writer, sheet_name="Divergencias_Kits", index=False)
+                df_resumo.to_excel(writer, sheet_name="Resumo", index=False)
+                self._style_kit_resumo_sheet(writer.sheets["Resumo"], df_resumo, n_kpis)
+                for m in marcas:
+                    linhas = [self._kit_row_to_export(r) for r in rows_filtradas
+                              if r.get("brand") == m]
+                    if not linhas:
+                        continue
+                    sheet = m
+                    for char in r"/\?*:[]":
+                        sheet = sheet.replace(char, "_")
+                    pd.DataFrame(linhas).to_excel(writer, sheet_name=sheet[:31], index=False)
+
             QMessageBox.information(self, "Exportado", f"Relatório salvo em:\n{path}")
         except Exception as exc:
             QMessageBox.critical(self, "Erro ao Exportar", str(exc))
@@ -1064,10 +1327,19 @@ class AuditorView(QWidget):
 
         self._cards_container.setVisible(len(visible_cards) > 0)
 
-        # Optimistic empty-state: only when the audit result has zero total
-        # divergences (not when filters merely hide everything).
-        total_errors = self._result.stats.get("total", 0)
-        self._empty_state.setVisible(total_errors == 0)
+        # Empty-state: modo só-kit NUNCA passa pelas 13 regras tradicionais
+        # (rodam com insumos vazios), então total sempre dá 0 mas isso não
+        # significa "íntegro" — significa "não checado". Mostrar o card verde
+        # de sucesso nesse caso seria uma falsa afirmação de conformidade.
+        if self._last_kit_only:
+            self._empty_state.setText(self._empty_state_html_kit_only())
+            self._empty_state.setVisible(True)
+        else:
+            # Só aqui, sem modo só-kit, "total == 0" de fato significa que a
+            # auditoria rodou e não achou divergência (não é filtro escondendo).
+            total_errors = self._result.stats.get("total", 0)
+            self._empty_state.setText(self._empty_state_html_ok())
+            self._empty_state.setVisible(total_errors == 0)
 
     def _refresh_table(self):
         if not self._result:
@@ -1364,6 +1636,7 @@ class AuditorView(QWidget):
         self._last_kit_only = False
         self._active_filters.clear()
         self._kit_active_filters.clear()
+        self._set_kit_brand_filter_silent("all")
         self._brand_filter  = "all"
         self._btn_all.setChecked(True)
         self._btn_natura.setChecked(False)
