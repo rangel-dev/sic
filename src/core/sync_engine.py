@@ -15,11 +15,31 @@ from typing import Callable, Optional, Dict, Set, Any
 import openpyxl
 from lxml import etree
 
-from src.core.excel_reader import dominant_brand
+from src.core.excel_reader import dominant_brand, parse_price
 
 CATALOG_NS = "http://www.demandware.com/xml/impex/catalog/2006-10-31"
 SKU_PATTERN = re.compile(r"^(NAT|AVN)BRA-", re.IGNORECASE)
 MIN_FILE_AGE_SECONDS = 600  # 10-minute golden rule
+
+# BRD-008: categorias SFCC de faixa de preço para produtos "Presente"
+PRESENTE_CATEGORY_IDS = (
+    "presentes-faixa-de-preco-agradecer",
+    "presentes-faixa-de-preco-encantar",
+    "presentes-faixa-de-preco-surpreender",
+    "presentes-faixa-de-preco-impressionar",
+)
+
+
+def _price_bucket(price: float) -> str:
+    """Mapeia o "Preço POR" para uma das 4 faixas de presente (BRD-008 §4.2).
+    Limites superiores inclusivos."""
+    if price <= 50.00:
+        return "presentes-faixa-de-preco-agradecer"
+    if price <= 100.00:
+        return "presentes-faixa-de-preco-encantar"
+    if price <= 150.00:
+        return "presentes-faixa-de-preco-surpreender"
+    return "presentes-faixa-de-preco-impressionar"
 
 
 @dataclass
@@ -70,13 +90,17 @@ class SyncEngine:
             # Consolidate Brand accurately
             result.brand = self._consolidate_brand(catalog_state, grade_map)
 
+            # BRD-008: presentes por faixa de preço — calculado uma vez, usado
+            # nas estatísticas (_execute_rules) e na geração do XML
+            presente_targets = self._compute_presente_targets(catalog_state, grade_map, result.brand)
+
             # Execute Business Rules (V11.1 Motor)
             self._progress(60, "Aplicando Regras de Governança V11.1…")
-            delta, metrics, report = self._execute_rules(catalog_state, grade_map, excel_lists, result.brand)
+            delta, metrics, report = self._execute_rules(catalog_state, grade_map, excel_lists, result.brand, presente_targets)
 
             # Generate XML
             self._progress(80, "Gerando XML Catálogo Delta…")
-            result.xml_content = self._generate_catalog_xml(delta, catalog_id, excel_lists, catalog_state, result.brand)
+            result.xml_content = self._generate_catalog_xml(delta, catalog_id, excel_lists, catalog_state, result.brand, presente_targets)
 
             result.stats = metrics
             result.report = report
@@ -114,6 +138,37 @@ class SyncEngine:
         
         return dominant_brand(nat_count, avn_count)
 
+    # ── Presente / Faixa de Preço (BRD-008) ─────────────────────────────────
+    def _compute_presente_targets(self, catalog_state: dict, grade_map: dict, brand: str) -> dict[str, set[str]]:
+        """SKUs Natura, variação (não-master), com "CATEGORIA PLANEJAMENTO" ==
+        "Presente" e preço válido na Grade, mapeados para a categoria SFCC de
+        faixa de preço correspondente. Sempre retorna as 4 chaves (mesmo
+        vazias) para que o diff add/remove detecte quando uma faixa esvazia.
+        """
+        targets: dict[str, set[str]] = {cat_id: set() for cat_id in PRESENTE_CATEGORY_IDS}
+
+        if brand != "natura":
+            return targets  # CA-05: Avon nunca é categorizado
+
+        for pid, prod in catalog_state["products"].items():
+            if prod["isMaster"]:
+                continue  # CA-06: produto-pai/mestre é isento
+
+            g = grade_map.get(pid)
+            if not g:
+                continue
+
+            if str(g.get("planning_cat", "")).strip().upper() != "PRESENTE":
+                continue
+
+            price = g.get("price")
+            if not price:  # None ou 0.0 -> CA-04 (sem preço válido = não categorizado)
+                continue
+
+            targets[_price_bucket(price)].add(pid)
+
+        return targets
+
     # ── Parse Excel Files ─────────────────────────────────────────────────
     def _parse_excel_files(self, paths: list[str]) -> tuple[dict[str, set[str]], dict[str, dict], str]:
         excel_lists: dict[str, set[str]] = {}
@@ -147,7 +202,7 @@ class SyncEngine:
                 if not rows:
                     continue
 
-                sku_col = vis_col = selo_col = None
+                sku_col = vis_col = selo_col = por_col = plan_col = None
 
                 if is_grade:
                     # Scan headers
@@ -159,6 +214,10 @@ class SyncEngine:
                                 vis_col = j
                             if val in ("SELO", "MARKETING"):
                                 selo_col = j
+                            if val == "POR":  # BRD-008: "Preço POR" — cabeçalho real é só "POR"
+                                por_col = j
+                            if val == "CATEGORIA PLANEJAMENTO":  # BRD-008
+                                plan_col = j
                             if sku_col is None and SKU_PATTERN.match(str(cell.value).strip()):
                                 sku_col = j
                                 break
@@ -194,7 +253,20 @@ class SyncEngine:
                                             if raw_c not in ("00000000", "00000000000000", "000000"):
                                                 selo_color = "#" + raw_c[-6:]
                                 
-                                grade_map[pid] = {"visible": vis, "seal": selo, "color": selo_color}
+                                price = None
+                                if por_col is not None and por_col < len(row):
+                                    price = parse_price(row[por_col].value)
+
+                                planning_cat = ""
+                                if plan_col is not None and plan_col < len(row):
+                                    pc = row[plan_col].value
+                                    if pc is not None:
+                                        planning_cat = str(pc).strip()
+
+                                grade_map[pid] = {
+                                    "visible": vis, "seal": selo, "color": selo_color,
+                                    "price": price, "planning_cat": planning_cat,
+                                }
                             
                             if is_list:
                                 clean_id = f"LISTA_{list_match.group(1)}"
@@ -288,7 +360,7 @@ class SyncEngine:
         return state, catalog_id
 
     # ── Engine Business Rules V11.1 ───────────────────────────────────────
-    def _execute_rules(self, catalog_state: dict, grade_map: dict, excel_lists: dict, brand: str) -> tuple[dict, dict, list]:
+    def _execute_rules(self, catalog_state: dict, grade_map: dict, excel_lists: dict, brand: str, presente_targets: dict[str, set[str]]) -> tuple[dict, dict, list]:
         deltas = []
         report = []
         active_masters = set()
@@ -429,6 +501,30 @@ class SyncEngine:
                 "status": status
             })
 
+        # BRD-008: categorias de faixa de preço de presente — cat_id JÁ é o ID
+        # final (ex. "presentes-faixa-de-preco-agradecer"), sem a transformação
+        # de case usada para LISTA_N (por isso o loop é separado do de cima).
+        for cat_id, skus in presente_targets.items():
+            old_set = catalog_state["assignments"].get(cat_id.upper(), set())
+
+            added = len(skus - old_set)
+            removed = len(old_set - skus)
+            list_add += added
+            list_rem += removed
+
+            status = "Sincronizado ✓"
+            if added > 0 or removed > 0:
+                status = f"Delta: +{added} / -{removed}"
+            if len(skus) == 0:
+                status = "Lista Vazia"
+
+            lists_details.append({
+                "id": cat_id,
+                "excel": len(skus),
+                "xml": len(old_set),
+                "status": status
+            })
+
         metrics = {
             "xml": len(catalog_state["products"]),
             "grade": len(grade_map),
@@ -442,13 +538,14 @@ class SyncEngine:
             # JS Total Deltas = db.deltas.length (V14.0 sync_app.html linha 528)
             "deltas": len(deltas),
             "lists": len(excel_lists),
+            "presente_categories": len(presente_targets),
             "lists_details": lists_details
         }
         
         return {"products": deltas}, metrics, report
 
     # ── XML Generation ────────────────────────────────────────────────────
-    def _generate_catalog_xml(self, delta: dict, catalog_id: str, excel_lists: dict, catalog_state: dict, brand: str) -> bytes:
+    def _generate_catalog_xml(self, delta: dict, catalog_id: str, excel_lists: dict, catalog_state: dict, brand: str, presente_targets: dict[str, set[str]]) -> bytes:
         root = etree.Element("catalog", xmlns=CATALOG_NS)
         root.set("catalog-id", catalog_id or "storefront-catalog")
         
@@ -501,6 +598,29 @@ class SyncEngine:
                 if pid_in_xml not in skus_in_excel:
                     ca = etree.SubElement(root, "category-assignment")
                     ca.set("category-id", fmt_id)
+                    ca.set("product-id", pid_in_xml)
+                    ca.set("mode", "delete")
+
+        # BRD-008: category-assignment de faixa de preço de presente (Natura
+        # only; presente_targets já vem vazio para Avon). cat_id já é o ID
+        # final da categoria, sem transformação de case.
+        for cat_id, skus_in_target in presente_targets.items():
+            # Additions
+            for sku_id in skus_in_target:
+                p = catalog_state["products"].get(sku_id)
+                if p:
+                    cats = catalog_state["assignments"].get(cat_id.upper(), set())
+                    if sku_id not in cats:
+                        ca = etree.SubElement(root, "category-assignment")
+                        ca.set("category-id", cat_id)
+                        ca.set("product-id", sku_id)
+
+            # Removals
+            cats = catalog_state["assignments"].get(cat_id.upper(), set())
+            for pid_in_xml in cats:
+                if pid_in_xml not in skus_in_target:
+                    ca = etree.SubElement(root, "category-assignment")
+                    ca.set("category-id", cat_id)
                     ca.set("product-id", pid_in_xml)
                     ca.set("mode", "delete")
 
