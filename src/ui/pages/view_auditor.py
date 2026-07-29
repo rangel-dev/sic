@@ -839,9 +839,21 @@ class AuditorView(QWidget):
         self._progress_bar.hide()
         self._status_lbl.hide()
         self._btn_run.setEnabled(True)
-        self._btn_export.setEnabled(True)
-        self._btn_export_full.setEnabled(True)
-        self._btn_webhook.setEnabled(True)
+
+        # Exportações e webhook da auditoria tradicional dependem de
+        # result.errors/stats, que ficam vazios no modo só-kit (kits não
+        # entram em ERROR_META) — habilitá-los aqui geraria um XLSX sem
+        # abas (crash) ou um webhook de "0 Divergências / Operação Saudável"
+        # falso, escondendo divergências reais de kit. O capítulo de kits
+        # tem seus próprios botões de exportação (Relatório/XML de Correção).
+        traditional_enabled = not self._last_kit_only
+        self._btn_export.setEnabled(traditional_enabled)
+        self._btn_export_full.setEnabled(traditional_enabled)
+        self._btn_webhook.setEnabled(traditional_enabled)
+        tooltip = "" if traditional_enabled else "Indisponível no modo só-kit — use os botões do painel de Kits."
+        self._btn_export.setToolTip(tooltip)
+        self._btn_export_full.setToolTip(tooltip)
+        self._btn_webhook.setToolTip(tooltip)
 
         total = result.stats.get("total", 0)
         # Certificado Mestre só faz sentido na auditoria completa: atesta
@@ -942,7 +954,7 @@ class AuditorView(QWidget):
 
         has_errors = kd.stats.get("erro", 0) > 0
         self._btn_kit_report.setEnabled(has_errors)
-        self._btn_kit_correction.setEnabled(bool(kd.correction_xml))
+        self._btn_kit_correction.setEnabled(bool(kd.correction_xmls))
         self._kit_panel.setVisible(not self._kit_collapsed)
         self._kit_chapter.show()
 
@@ -1233,17 +1245,40 @@ class AuditorView(QWidget):
             QMessageBox.critical(self, "Erro ao Exportar", str(exc))
 
     def _export_kit_correction(self):
+        # Nota: assim como no XML combinado antigo, a exportação ignora o
+        # filtro de marca da seção de kits (_kit_brand_filter) — esse filtro
+        # é só de visualização, o export sempre sai com todas as marcas que
+        # tiverem divergência. Mantido igual ao comportamento anterior.
         kd = getattr(self._result, "kit_data", None) if self._result else None
-        if kd is None or not kd.correction_xml:
+        if kd is None or not kd.correction_xmls:
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Salvar XML de Correção", "CORRECAO_KITS_BRASIL.xml", "XML (*.xml)"
-        )
-        if not path:
+
+        marcas = sorted(kd.correction_xmls)
+        if len(marcas) == 1:
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Salvar XML de Correção", "CORRECAO_KITS_BRASIL.xml", "XML (*.xml)"
+            )
+            if not path:
+                return
+            try:
+                Path(path).write_text(kd.correction_xmls[marcas[0]], encoding="utf-8")
+                QMessageBox.information(self, "Exportado", f"XML salvo em:\n{path}")
+            except Exception as exc:
+                QMessageBox.critical(self, "Erro ao Exportar", str(exc))
+            return
+
+        # Mais de uma marca: cada uma tem um catalog-id diferente, então não
+        # dá pra combinar num XML só — salva um arquivo por marca na pasta escolhida.
+        dir_path = QFileDialog.getExistingDirectory(self, "Escolher pasta para os XMLs de Correção")
+        if not dir_path:
             return
         try:
-            Path(path).write_text(kd.correction_xml, encoding="utf-8")
-            QMessageBox.information(self, "Exportado", f"XML salvo em:\n{path}")
+            saved = []
+            for marca in marcas:
+                file_path = Path(dir_path) / f"CORRECAO_KITS_BRASIL_{marca.lower()}.xml"
+                file_path.write_text(kd.correction_xmls[marca], encoding="utf-8")
+                saved.append(str(file_path))
+            QMessageBox.information(self, "Exportado", "XMLs salvos:\n" + "\n".join(saved))
         except Exception as exc:
             QMessageBox.critical(self, "Erro ao Exportar", str(exc))
 
@@ -1547,6 +1582,17 @@ class AuditorView(QWidget):
     def _send_webhook(self):
         if not self._result:
             return
+        if self._last_kit_only:
+            # Defesa em profundidade: o botão já fica desabilitado no modo
+            # só-kit (_on_finished), mas result.errors/stats vêm vazios nesse
+            # modo — enviar aqui reportaria "0 Divergências / Operação
+            # Saudável" ao Google Chat mesmo com kits divergentes.
+            QMessageBox.warning(
+                self, "Google Chat",
+                "Webhook indisponível no modo só-kit (sem Pricebook): kits divergentes "
+                "não são contabilizados nas estatísticas gerais. Use o painel de Kits."
+            )
+            return
         url = self._settings.value("gchat_webhook", "")
         if not url:
             QMessageBox.warning(
@@ -1689,6 +1735,18 @@ class AuditorView(QWidget):
         Bloqueado se result.stats["total"] != 0.
         """
         if not self._result:
+            return
+
+        if self._last_kit_only:
+            # Defesa em profundidade: o botão já fica desabilitado no modo
+            # só-kit (_on_finished), mas total==0 trivialmente nesse modo
+            # (stats vazios), o que passaria pelo gate abaixo sem essa checagem.
+            QMessageBox.critical(
+                self,
+                "Exportação Bloqueada — Modo Só-Kit",
+                "O Certificado Mestre não pode ser emitido a partir de uma execução "
+                "só-kit: ele atesta conformidade do catálogo inteiro, que não foi auditado.",
+            )
             return
 
         total = self._result.stats.get("total", 0)

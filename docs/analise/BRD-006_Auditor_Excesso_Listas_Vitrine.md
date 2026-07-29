@@ -106,3 +106,40 @@ motor com dados reais/sintéticos, como descrito acima.
 
 - Alterações na lógica do Check #7 existente (não modificado).
 - Alterações em qualquer outra regra de negócio do Auditor.
+
+---
+
+## 7. Nota de Implementação (pós-auditoria, 29-07-2026)
+
+Uma auditoria de conformidade confirmou que os 5 pontos da especificação
+(seções 3.1 a 3.3) conferem no código atual, e que o Check #7b sobreviveu
+intacto às mudanças de BRD-007/008 (selo de integridade `EXPECTED_V12_HASH`
+validado). Ficaram registrados os seguintes comportamentos implementados além
+do texto original, e known-issues não corrigidos nesta rodada (severidade
+média/baixa, sem risco de dano em produção identificado):
+
+**Além do texto do BRD:**
+- A inferência de marca por `list_id` (`LISTA_` → Natura, `lista-` → Avon) é
+  **case-insensitive** no Check #7b (`.upper()`/`.lower()`), enquanto o Check
+  #7 original usa comparação estrita. Um `cat_id` como `Lista_01` vindo do XML
+  seria classificado pelo #7b mas nunca casaria no #7 — assimetria não
+  documentada, sem caso real observado até o momento.
+- O filtro `SKU_RE.match(sku)` no Check #7b não está no pseudocódigo da seção
+  3.1 (baixo impacto, coerente com o resto do motor).
+
+**Known-issues (não corrigidos nesta rodada):**
+- **Marca do erro por SKU, não por lista**: a guarda de escopo dinâmico usa a
+  marca da *lista*, mas o registro do erro usa a marca derivada do prefixo do
+  *SKU*. Um `AVNBRA-*` presente numa `LISTA_01` (cenário cross-brand, já
+  coberto pelo Check #3) geraria `list_excess` contabilizado como Avon mesmo
+  com `has_avn=False` — fura o espírito do escopo dinâmico (BRD-004) embora
+  respeite a letra desta regra.
+- **Assimetria de normalização de chave** entre `excel_lists` (chave sempre
+  canônica, com padding) e `xml_lists` (chave crua do XML). Se o SF expuser um
+  `cat_id` em formato diferente do canônico (ex.: sem zero-padding), a
+  categoria inteira viraria `list_excess` por descasamento de formatação, não
+  por ausência real da aba. Recomenda-se validar com um dump real de
+  categorias antes de considerar isso não-risco.
+- `list_excess` **não está no knowledge base do `ai_agent.py`** (`_KB` e lista
+  `priority`) — o relatório gerado pela IA cai no fallback genérico para esse
+  tipo de erro, em vez de uma descrição dedicada.
