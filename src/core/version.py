@@ -1,7 +1,7 @@
 """
 SIC — Version Control
 """
-VERSION = "1.2.11-alpha.2"
+VERSION = "1.3.0-beta"
 APP_NAME = "SIC — System Intelligence Commerce"
 GITHUB_REPO = "rangel-dev/sic"  # Change this if your repo name is different 
 
