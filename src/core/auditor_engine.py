@@ -19,6 +19,7 @@ from lxml import etree
 from src.core.auditor.integrity import verify_core_integrity
 from src.core.auditor.parity_rules_v12 import execute_parity_rules
 from src.core.auditor.kit_validation import GradeIndex, _so_numeros
+from src.core.excel_reader import parse_price
 
 # ─── Namespaces ───────────────────────────────────────────────────────────────
 PRICEBOOK_NS = "http://www.demandware.com/xml/impex/pricebook/2006-10-31"
@@ -409,8 +410,8 @@ class AuditorEngine:
             if file_brand == "Avon" and sku.startswith("NATBRA-"):
                 continue
 
-            de  = self._f(row[de_col]  if de_col  is not None and de_col  < len(row) else None)
-            por = self._f(row[por_col] if por_col is not None and por_col < len(row) else None)
+            de  = parse_price(row[de_col]  if de_col  is not None and de_col  < len(row) else None)
+            por = parse_price(row[por_col] if por_col is not None and por_col < len(row) else None)
             vis_raw = row[vis_col] if vis_col is not None and vis_col < len(row) else None
             vis = str(vis_raw).strip().upper() if vis_raw else ""
 
@@ -897,17 +898,3 @@ class AuditorEngine:
         acertos_df = pd.DataFrame(acertos_rows) if acertos_rows else pd.DataFrame(columns=["sku", "brand", "de_sf", "por_sf", "online", "searchable"])
 
         return error_dfs, total_stats, acertos_df, evidence_df
-
-    # ── Helper ────────────────────────────────────────────────────────────
-    @staticmethod
-    def _f(val) -> Optional[float]:
-        if val is None:
-            return None
-        # Emula estritamente o comportamento do parseFloat() do JavaScript Legado.
-        # Ele lê apenas a parte inicial que se parece com número, truncando na vírgula 
-        # (causando o aumento e identificação do Falso Positivo/Erro de Typping em 10,50 vs 10.5).
-        v_str = str(val).replace("R$", "").strip()
-        m = re.match(r'^[+-]?\d+(?:\.\d+)?', v_str)
-        if m:
-            return float(m.group(0))
-        return None
