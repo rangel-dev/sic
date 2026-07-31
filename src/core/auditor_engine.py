@@ -437,7 +437,17 @@ class AuditorEngine:
     def _parse_lista(self, ws, file_brand: str, num: str, out: dict) -> None:
         sku_col = -1
         rows = list(ws.iter_rows(max_row=10000, values_only=True))
-        
+
+        # BRD-010: registra a lista como existente (aba já garantidamente
+        # visível, filtrada em _parse_excels) mesmo sem nenhum SKU, para o
+        # Check "list_excess" distinguir "ausente/oculta" (não validar) de
+        # "visível vazia" (validar como excesso genuíno). Mesmo padrão do
+        # fix do Exportador (BRD-009 — sync_engine.py).
+        if file_brand == "Natura":
+            out.setdefault(f"LISTA_{num}", set())
+        elif file_brand == "Avon":
+            out.setdefault(f"lista-{num}", set())
+
         # Scanner Dinâmico (Legacy JS findSkuColumnOnly)
         for i, row in enumerate(rows[:50]):
             for j, cell in enumerate(row):

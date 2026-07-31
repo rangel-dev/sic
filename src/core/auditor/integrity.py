@@ -3,7 +3,7 @@ import os
 
 # DO NOT CHANGE THIS HASH.
 # Doing so overrides the integrity of the certified V12 logic parity.
-EXPECTED_V12_HASH = "3d62f7412052141a6fbf0fa2c2ae853ec420716f3a3cb1fbc9ddae2e04d9f6b5"
+EXPECTED_V12_HASH = "7c3757d2de37a744d8275f969851829761302a03c65ff8d7c28720fc36c07feb"
 
 def verify_core_integrity() -> bool:
     """

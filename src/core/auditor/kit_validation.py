@@ -32,8 +32,6 @@ _NS = "http://www.demandware.com/xml/impex/catalog/2006-10-31"
 # UI para gerar cards de filtro dedicados na seção de Validação de Kits (BO).
 KIND_KIT_SEM_BUNDLE      = "kit_sem_bundle_no_catalogo"
 KIND_AUSENTE_NO_BO       = "ausente_no_bo"
-KIND_MATERIAL_PAI_DIV    = "material_pai_divergente"
-KIND_MATERIAL_FILHO_DIV  = "material_filho_divergente"
 KIND_FILHO_AUSENTE_BO    = "filho_ausente_bo"
 KIND_QTD_ERRADA          = "qtd_errada"
 KIND_FILHO_FALTANDO_SF   = "filho_faltando_sf"
@@ -51,20 +49,6 @@ KIT_ERROR_META: dict[str, dict] = {
         "title": "Kit Ausente no BO", "icon": "🚫",
         "impact": "Kit não cadastrado no BO",
         "desc": "O kit está ativo na Grade mas não consta na planilha do BO.",
-    },
-    KIND_MATERIAL_PAI_DIV: {
-        "title": "Material do Pai Desatualizado", "icon": "🏷️",
-        "impact": "Grade × BO em desacordo",
-        "desc": "A Grade diz qual CM (material) está vigente para este kit, e "
-                "o BO não tem nenhuma linha com esse CM — só conhece "
-                "materiais antigos dele.",
-    },
-    KIND_MATERIAL_FILHO_DIV: {
-        "title": "Material do Filho Desatualizado", "icon": "🔖",
-        "impact": "Grade × BO em desacordo",
-        "desc": "A Grade diz qual CM (material) está vigente para este "
-                "componente, e o BO não tem nenhuma linha com esse CM — só "
-                "conhece materiais antigos dele.",
     },
     KIND_FILHO_AUSENTE_BO: {
         "title": "Filho Ausente no BO", "icon": "➖",
@@ -96,8 +80,6 @@ KIT_ERROR_META: dict[str, dict] = {
 _STATUS_POR_KIND = {
     KIND_KIT_SEM_BUNDLE:      "Ausente no SF",
     KIND_AUSENTE_NO_BO:       "Ausente no BO",
-    KIND_MATERIAL_PAI_DIV:    "Material Divergente (Pai)",
-    KIND_MATERIAL_FILHO_DIV:  "Material Divergente (Filho)",
     KIND_FILHO_AUSENTE_BO:    "Ausente no BO",
     KIND_QTD_ERRADA:          "Quantidade Divergente",
     KIND_FILHO_FALTANDO_SF:   "Ausente no SF",
@@ -402,18 +384,9 @@ def validate_kits(bo_path: str, cat_paths: list[str],
                 stats["erro"] += 1
                 by_brand["erro"] += 1
                 continue
-            if cm_pai:
-                cm_bo_str = ", ".join(sorted(bo.cms_por_sku.get(pid, set()))) or "nenhum"
-                reportar(KIND_MATERIAL_PAI_DIV,
-                         f"A Grade indica que o material vigente deste kit é o "
-                         f"CM {cm_pai}. A planilha do BO não tem nenhuma linha "
-                         f"com esse CM para este pai — ela só conhece a(s) "
-                         f"versão(ões) {cm_bo_str}. Provável causa: o BO ainda "
-                         f"não foi atualizado para o material atual (ou o kit "
-                         f"trocou de material recentemente). A composição "
-                         f"abaixo foi conferida contra a versão mais recente "
-                         f"que o BO conhece.",
-                         cm_grade=cm_pai, cm_bo=cm_bo_str)
+            # BRD-011: checagem de material do pai desatualizado (Grade × BO)
+            # removida por excesso de zelo — segue conferindo a composição
+            # contra a versão mais recente que o BO conhece.
             comp = todas
 
         # 3. Catálogo → BO
@@ -455,18 +428,8 @@ def validate_kits(bo_path: str, cat_paths: list[str],
                          filho=f_sku, qtd_bo=info["qty"], cm_bo=info["cm"],
                          cm_grade=grade.cm.get((marca, f_sku), ""))
                 continue
-            cm_grade_filho = grade.cm.get((marca, f_sku))
-            if cm_grade_filho and cm_grade_filho not in bo.cms_por_sku.get(f_sku, set()):
-                cm_bo_str = ", ".join(sorted(bo.cms_por_sku.get(f_sku, set()))) or "nenhum"
-                reportar(KIND_MATERIAL_FILHO_DIV,
-                         f"A Grade indica que o material vigente do componente "
-                         f"{f_sku} é o CM {cm_grade_filho}. O BO não tem "
-                         f"nenhuma linha com esse CM para este componente — só "
-                         f"conhece a(s) versão(ões) {cm_bo_str}. O componente "
-                         f"pode estar certo na composição, mas o BO está "
-                         f"referenciando uma versão de material desatualizada.",
-                         filho=f_sku, qtd_sf=filhos_sf.get(f_sku, ""),
-                         qtd_bo=info["qty"], cm_grade=cm_grade_filho, cm_bo=cm_bo_str)
+            # BRD-011: checagem de material do filho desatualizado (Grade × BO)
+            # removida por excesso de zelo.
 
         if achados:
             rows.extend(achados)
