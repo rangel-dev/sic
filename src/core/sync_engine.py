@@ -21,7 +21,7 @@ CATALOG_NS = "http://www.demandware.com/xml/impex/catalog/2006-10-31"
 SKU_PATTERN = re.compile(r"^(NAT|AVN)BRA-", re.IGNORECASE)
 MIN_FILE_AGE_SECONDS = 600  # 10-minute golden rule
 
-# BRD-008: categorias SFCC de faixa de preço para produtos "Presente"
+# BRD-008: categorias SFCC de faixa de preço para produtos "Presente" — Natura
 PRESENTE_CATEGORY_IDS = (
     "presentes-faixa-de-preco-agradecer",
     "presentes-faixa-de-preco-encantar",
@@ -29,10 +29,18 @@ PRESENTE_CATEGORY_IDS = (
     "presentes-faixa-de-preco-impressionar",
 )
 
+# BRD-009: mesma lógica, faixas e IDs de categoria próprios da Avon.
+PRESENTE_CATEGORY_IDS_AVON = (
+    "presentes-faixa-de-preco-ate-19",
+    "presentes-faixa-de-preco-de-20-ate-49",
+    "presentes-faixa-de-preco-de-50-ate-99",
+    "presentes-faixa-de-preco-acima-de-150",
+)
+
 
 def _price_bucket(price: float) -> str:
-    """Mapeia o "Preço POR" para uma das 4 faixas de presente (BRD-008 §4.2).
-    Limites superiores inclusivos."""
+    """Mapeia o "Preço POR" para uma das 4 faixas de presente Natura
+    (BRD-008 §4.2). Limites superiores inclusivos."""
     if price <= 50.00:
         return "presentes-faixa-de-preco-agradecer"
     if price <= 100.00:
@@ -40,6 +48,32 @@ def _price_bucket(price: float) -> str:
     if price <= 150.00:
         return "presentes-faixa-de-preco-surpreender"
     return "presentes-faixa-de-preco-impressionar"
+
+
+def _price_bucket_avon(price: float) -> Optional[str]:
+    """Mapeia o "Preço POR" para uma das 4 faixas de presente Avon (BRD-009).
+    Lacuna PROPOSITAL entre R$100,00 e R$150,00 (ambos inclusive): SKU Avon
+    "Presente" nessa faixa não recebe nenhuma das 4 categorias — retorna
+    None e o chamador trata como "sem categoria" (mesmo mecanismo do preço
+    inválido). "Acima de 150" é estritamente > 150.00 (150.00 exato cai na
+    lacuna)."""
+    if price <= 19.99:
+        return "presentes-faixa-de-preco-ate-19"
+    if price <= 49.99:
+        return "presentes-faixa-de-preco-de-20-ate-49"
+    if price <= 99.99:
+        return "presentes-faixa-de-preco-de-50-ate-99"
+    if price <= 150.00:
+        return None  # lacuna proposital 100,00–150,00 (BRD-009)
+    return "presentes-faixa-de-preco-acima-de-150"
+
+
+# Marca -> (tupla de IDs de categoria, função de bucket de preço). Fonte
+# única de verdade consultada por _compute_presente_targets.
+_PRESENTE_RULES_BY_BRAND: dict[str, tuple[tuple[str, ...], Callable[[float], Optional[str]]]] = {
+    "natura": (PRESENTE_CATEGORY_IDS, _price_bucket),
+    "avon": (PRESENTE_CATEGORY_IDS_AVON, _price_bucket_avon),
+}
 
 
 @dataclass
@@ -138,27 +172,32 @@ class SyncEngine:
         
         return dominant_brand(nat_count, avn_count)
 
-    # ── Presente / Faixa de Preço (BRD-008) ─────────────────────────────────
+    # ── Presente / Faixa de Preço (BRD-008 Natura, BRD-009 Avon) ────────────
     def _compute_presente_targets(
         self, catalog_state: dict, grade_map: dict, brand: str, presente_cols_ok: bool
     ) -> Optional[dict[str, set[str]]]:
-        """SKUs Natura, variação (não-master), com "CATEGORIA PLANEJAMENTO" ==
-        "Presente" e preço válido na Grade, mapeados para a categoria SFCC de
-        faixa de preço correspondente. Sempre retorna as 4 chaves (mesmo
-        vazias) para que o diff add/remove detecte quando uma faixa esvazia.
+        """SKUs (Natura ou Avon), variação (não-master), com "CATEGORIA
+        PLANEJAMENTO" == "Presente"/"PRESENTES" e preço válido na Grade,
+        mapeados para a categoria SFCC de faixa de preço da marca (tabelas de
+        IDs e faixas distintas por marca, ver _PRESENTE_RULES_BY_BRAND).
+        Sempre retorna todas as chaves da tabela da marca (mesmo vazias) para
+        que o diff add/remove detecte quando uma faixa esvazia.
 
-        Retorna None quando a regra não deve rodar (marca != Natura, ou a
-        Grade não tem as colunas "CATEGORIA PLANEJAMENTO"/"POR") — nesse caso
-        o chamador não deve gerar NENHUM delta de presente (nem add, nem
-        remove), para não apagar categorização existente por engano.
+        Retorna None quando a regra não deve rodar (marca sem tabela de
+        faixas definida, ou a Grade não tem as colunas "CATEGORIA
+        PLANEJAMENTO"/"POR") — nesse caso o chamador não deve gerar NENHUM
+        delta de presente (nem add, nem remove), para não apagar
+        categorização existente por engano.
         """
-        if brand != "natura":
-            return None  # CA-05: Avon nunca é categorizado
+        rules = _PRESENTE_RULES_BY_BRAND.get(brand)
+        if rules is None:
+            return None  # marca sem tabela de faixas definida
 
         if not presente_cols_ok:
             return None  # Grade sem as colunas necessárias: regra não roda
 
-        targets: dict[str, set[str]] = {cat_id: set() for cat_id in PRESENTE_CATEGORY_IDS}
+        category_ids, bucket_fn = rules
+        targets: dict[str, set[str]] = {cat_id: set() for cat_id in category_ids}
 
         for pid, prod in catalog_state["products"].items():
             if prod["isMaster"]:
@@ -177,7 +216,11 @@ class SyncEngine:
             if not price:  # None ou 0.0 -> CA-04 (sem preço válido = não categorizado)
                 continue
 
-            targets[_price_bucket(price)].add(pid)
+            bucket = bucket_fn(price)
+            if bucket is None:  # Avon: lacuna proposital 100,00–150,00 (BRD-009)
+                continue
+
+            targets[bucket].add(pid)
 
         return targets
 
@@ -196,6 +239,14 @@ class SyncEngine:
             self._progress(17, f"> Excel carregado (Modo Recuperação). Abas detectadas: {len(wb.sheetnames)}")
 
             for name in wb.sheetnames:
+                ws = wb[name]
+                if ws.sheet_state != 'visible':
+                    # Aba oculta (hidden/veryHidden) é tratada como se não
+                    # existisse no arquivo — mesmo padrão de
+                    # auditor_engine.py:299 (sheet_state != 'visible' cobre
+                    # os dois estados ocultos do openpyxl de uma vez). BRD-009.
+                    continue
+
                 n = name.upper()
                 is_grade = "GRADE" in n or "ATIVA" in n
                 list_match = re.search(r"LISTA[\s_-]*([0-9.]+)", n)
@@ -209,9 +260,14 @@ class SyncEngine:
                 if is_list:
                     clean_id = f"LISTA_{list_match.group(1)}"
                     self._progress(18, f"> Aba [{name}] -> Identificada como: LISTA ({clean_id})")
+                    # BRD-009: registra a chave já aqui, mesmo com 0 SKUs, para
+                    # que o diff downstream enxergue a lista esvaziada e gere
+                    # delta de remoção total (old_set - set() = old_set), em
+                    # vez de simplesmente ignorá-la por ausência no dict.
+                    excel_lists.setdefault(clean_id, set())
 
                 # values_only=False allows accessing Cell properties like .fill color style
-                rows = list(wb[name].iter_rows(max_row=5000, values_only=False))
+                rows = list(ws.iter_rows(max_row=5000, values_only=False))
                 if not rows:
                     continue
 

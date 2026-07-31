@@ -1208,24 +1208,35 @@ class AuditorView(QWidget):
             ]
             n_kpis = len(resumo_rows)
 
-            # ── Bloco 2: detalhamento por subtipo (só os que tiveram achado)
-            for kind, meta in KIT_ERROR_META.items():
-                total_kind = sum(1 for r in kd.rows if r.get("kind") == kind)
-                if not total_kind:
-                    continue
-                por_marca = {m: sum(1 for r in kd.rows
-                                     if r.get("kind") == kind and r.get("brand") == m)
-                             for m in marcas}
-                resumo_rows.append(linha_resumo(meta.get("title", kind), por_marca, total_kind))
-
-            df_resumo = pd.DataFrame(resumo_rows)
-
-            # ── Abas por marca: respeitam os filtros ativos na tela (marca +
-            # subtipo), igual ao relatório do auditor tradicional.
+            # ── rows_filtradas: recorte por marca + subtipo (cards
+            # selecionados na tela). Fonte única de verdade usada tanto pelo
+            # Bloco 2 do Resumo quanto pelas abas por marca abaixo (BRD-009).
             rows_filtradas = self._kit_rows_da_marca(kd)
             if self._kit_active_filters:
                 rows_filtradas = [r for r in rows_filtradas
                                   if r.get("kind") in self._kit_active_filters]
+
+            # ── Bloco 2: detalhamento por subtipo, respeitando os cards
+            # selecionados na tela (só os que tiveram achado no recorte
+            # atual). Sem filtro ativo (nenhum card = "Todos"), comportamento
+            # idêntico ao anterior (mostra todos os subtipos com achado).
+            for kind, meta in KIT_ERROR_META.items():
+                total_kind = sum(1 for r in rows_filtradas if r.get("kind") == kind)
+                if not total_kind:
+                    continue
+                por_marca = {m: sum(1 for r in rows_filtradas
+                                     if r.get("kind") == kind and r.get("brand") == m)
+                             for m in marcas}
+                resumo_rows.append(linha_resumo(meta.get("title", kind), por_marca, total_kind))
+
+            # Aviso explícito quando há filtro ativo — quem abrir o Excel sem
+            # ver a tela não deve achar que o Bloco 2 é o total geral.
+            if self._kit_active_filters:
+                titles = [KIT_ERROR_META.get(k, {}).get("title", k)
+                          for k in self._kit_active_filters]
+                resumo_rows.append({"Indicador": f"⚠ Filtro ativo na exportação: {', '.join(titles)}"})
+
+            df_resumo = pd.DataFrame(resumo_rows)
 
             with pd.ExcelWriter(path, engine="openpyxl") as writer:
                 df_resumo.to_excel(writer, sheet_name="Resumo", index=False)
