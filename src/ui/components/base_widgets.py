@@ -62,6 +62,7 @@ class DropZone(QFrame):
         extensions: str = "Todos os arquivos (*.*)",
         multiple: bool = False,
         parent: Optional[QWidget] = None,
+        default_icon: Optional[str] = None,
     ):
         super().__init__(parent)
         self._extensions = extensions
@@ -69,6 +70,10 @@ class DropZone(QFrame):
         self._files: list[str] = []
         self._last_dir: str = ""  # Lembra a última pasta usada
         self._validator: Optional[Callable[[list[str]], Optional[str]]] = None
+        # Ícone fixo do estado "preenchido", usado quando o arquivo não tem
+        # marca associada (ex.: planilha de BO) — sem isso, BrandDetector
+        # classifica como "unknown" e mostra ❓ vermelho, que parece erro.
+        self._default_icon = default_icon
 
         self.setObjectName("dropzone")
         self.setAcceptDrops(True)
@@ -259,6 +264,8 @@ class DropZone(QFrame):
 
     def _get_brand_emoji(self, brands: set[str]) -> str:
         """Maps brand set to emoji icon."""
+        if self._default_icon:
+            return self._default_icon
         if not brands or brands == {"unknown"}:
             return "❓"
 
