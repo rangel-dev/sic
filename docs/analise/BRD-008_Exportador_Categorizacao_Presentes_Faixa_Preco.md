@@ -178,3 +178,37 @@ para as listas `LISTA_X`.
 - Aplicação da regra para outras marcas além da Natura.
 - Coluna no relatório XLSX do Exportador indicando a faixa/categoria atribuída
   (melhoria futura).
+
+---
+
+## 8. Nota de Implementação (pós-auditoria, 29-07-2026)
+
+Uma auditoria de conformidade encontrou dois cenários em que a primeira versão
+da regra rodava quando não deveria, arriscando apagar categorização de
+presente já existente no SFCC. Corrigido antes de qualquer uso em produção:
+
+- **Grade sem as colunas necessárias.** Se a aba Grade não tiver as colunas
+  "CATEGORIA PLANEJAMENTO"/"POR" detectáveis por cabeçalho (planilha de ciclo
+  antigo, coluna renomeada), a regra **não roda** — nenhum SKU é
+  adicionado ou removido das 4 categorias nesta execução. A primeira versão
+  , ao não achar as colunas, classificava todo SKU como "sem preço válido" e
+  gerava `mode="delete"` para tudo que já estivesse categorizado.
+- **Execução Avon.** A regra **não roda de fato** para Avon — nenhum delta é
+  calculado, nem add nem remove. A primeira versão computava as 4 categorias
+  vazias e deixava o diff seguir, o que também geraria remoção de qualquer
+  categorização de presente pré-existente num catálogo Avon.
+
+Implementação: `_compute_presente_targets` retorna `Optional[dict]` — `None`
+quando a regra não deve rodar (ver `src/core/sync_engine.py`); `_execute_rules`
+e `_generate_catalog_xml` pulam o bloco de presente inteiro quando recebem
+`None`, sem gerar nenhuma linha de estatística nem `category-assignment`.
+Coberto por `tests/test_sync_engine_presente.py`.
+
+**Correção adicional (mesma data), achada testando com dados reais**: os 4
+arquivos de Grade real disponíveis (Natura/Avon, ciclos maio e junho)
+usam **"PRESENTES" (plural)** na coluna "CATEGORIA PLANEJAMENTO" — nunca
+"Presente" (singular) como documentado na seção 4.1. Com a comparação
+original (`== "PRESENTE"`), a regra nunca categorizaria nenhum SKU real,
+mesmo com as colunas corretamente detectadas — falha silenciosa, sem erro.
+Corrigido para aceitar as duas formas: `str(planning_cat).strip().upper()
+in ("PRESENTE", "PRESENTES")`.
