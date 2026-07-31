@@ -62,6 +62,23 @@ CONTRIBUTORS = [
 # type: "feat" | "fix" | "chore"
 CHANGELOG = [
     {
+        "version": "1.3.1",
+        "date": "Julho 2026",
+        "entries": [
+            ("feat", "Validação de Kits: novo painel dedicado confere automaticamente a composição de kits publicada no Salesforce contra a planilha de referência da equipe — antes era feito manualmente."),
+            ("feat", "Categorização de Presentes: produtos marcados como presente na Grade agora são organizados sozinhos em categorias de faixa de preço no Salesforce, para Natura e Avon."),
+            ("feat", "Exportador: lista esvaziada na Grade agora limpa de verdade os produtos correspondentes no Salesforce, e abas escondidas da planilha passam a ser ignoradas."),
+            ("feat", "Auditor: novo alerta aponta produto que saiu de uma lista de vitrine na Grade, mas continua ativo no Salesforce."),
+            ("fix", "Auditor: verificações que dependiam da Grade sem necessidade agora rodam de forma independente — evita que produto com preço zerado passe despercebido."),
+            ("fix", "Auditor: o alerta de produto esquecido em lista de vitrine parou de disparar alarme falso quando a lista simplesmente não existe ou está escondida na planilha."),
+            ("fix", "Validação de Kits: relatório exportado agora respeita o filtro de tipo de erro escolhido na tela, em vez de sempre mostrar a contagem geral."),
+            ("fix", "Corrigidas duas falhas encontradas em revisão interna: o modo só-kits podia indicar \"Operação Saudável\" sem checar nada, e o arquivo de correção de kits com Natura e Avon juntos saía com identificador errado para a Avon."),
+            ("fix", "Certificado de Auditoria: corrigido o carimbo de segurança que estava cobrindo uma linha da tabela de conformidade."),
+            ("chore", "Nova regra de cadastro: todo produto passa a ficar marcado como \"pesquisável mesmo indisponível\" no Salesforce, para Natura e Avon."),
+            ("chore", "Início de uma reformulação visual do SIC — protótipos das novas telas já em desenvolvimento, ainda não aplicados ao app."),
+        ],
+    },
+    {
         "version": "1.2.6",
         "date": "Junho 2026",
         "entries": [

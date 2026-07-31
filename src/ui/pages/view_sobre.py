@@ -14,6 +14,29 @@ from src.core.version import VERSION, APP_NAME
 from src.core.changelog_data import CONTRIBUTORS
 from src.ui.components.base_widgets import Divider, SectionHeader
 
+# Quantas entradas de um card de versão ficam visíveis antes do "Ler mais".
+_CHANGELOG_VISIBLE_ENTRIES = 4
+
+
+# ── Ler mais / Ler menos ────────────────────────────────────────────────────
+class _ReadMoreToggle(QLabel):
+    """Clicável que mostra/esconde `target`, alternando o próprio texto."""
+
+    def __init__(self, target: QWidget, parent=None):
+        super().__init__("Ler mais ▾", parent)
+        self._target = target
+        target.setVisible(False)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setStyleSheet(
+            "font-size: 11px; font-weight: 600; color: #BB88FF; background: transparent;"
+        )
+
+    def mousePressEvent(self, event):
+        expanded = not self._target.isVisible()
+        self._target.setVisible(expanded)
+        self.setText("Ler menos ▴" if expanded else "Ler mais ▾")
+        super().mousePressEvent(event)
+
 
 # ── Contributor Card ─────────────────────────────────────────────────────────
 class _ContributorCard(QFrame):
@@ -250,33 +273,27 @@ class SobreView(QWidget):
             sep.setStyleSheet("background: #e0e0e0; border: none;")
             card_layout.addWidget(sep)
 
-            # Entries
-            for entry in ver["entries"]:
-                # Suporta tanto o formato antigo (4 itens) quanto o novo (2 itens)
-                if len(entry) >= 2:
-                    etype, etext = entry[0], entry[1]
-                    icon, color, label = TYPE_MAP.get(etype, ("·", "#888", "Info"))
-                else:
-                    continue
+            # Entries — mostra só as primeiras; o resto fica atrás de "Ler mais"
+            entries = [e for e in ver["entries"] if len(e) >= 2]
+            visible_entries = entries[:_CHANGELOG_VISIBLE_ENTRIES]
+            hidden_entries = entries[_CHANGELOG_VISIBLE_ENTRIES:]
 
-                row = QHBoxLayout()
-                row.setSpacing(8)
-                row.setContentsMargins(4, 0, 0, 0)
+            for entry in visible_entries:
+                self._add_entry_row(card_layout, entry, dim=(i > 0), type_map=TYPE_MAP)
 
-                icon_lbl = QLabel(icon)
-                icon_lbl.setFixedWidth(16)
-                icon_lbl.setStyleSheet(f"font-size: 12px; color: {color}; background: transparent;")
-                row.addWidget(icon_lbl)
+            if hidden_entries:
+                extra = QWidget()
+                extra_layout = QVBoxLayout(extra)
+                extra_layout.setContentsMargins(0, 0, 0, 0)
+                extra_layout.setSpacing(6)
+                for entry in hidden_entries:
+                    self._add_entry_row(extra_layout, entry, dim=(i > 0), type_map=TYPE_MAP)
+                card_layout.addWidget(extra)
 
-                # Texto formatado: "Tipo: Mensagem"
-                full_text = f"<b>{label}:</b> {etext}"
-                text_lbl = QLabel(full_text)
-                text_lbl.setWordWrap(True)
-                text_lbl.setStyleSheet(
-                    f"font-size: 12px; {'color: #777;' if i > 0 else ''} background: transparent;"
-                )
-                row.addWidget(text_lbl, 1)
-                card_layout.addLayout(row)
+                toggle_row = QHBoxLayout()
+                toggle_row.addWidget(_ReadMoreToggle(extra))
+                toggle_row.addStretch()
+                card_layout.addLayout(toggle_row)
 
             self._layout.addWidget(card)
             self._layout.addSpacing(8)
@@ -311,3 +328,27 @@ class SobreView(QWidget):
             "font-size: 11px; font-weight: 700; color: #555; letter-spacing: 1.5px;"
         )
         layout.addWidget(lbl)
+
+    @staticmethod
+    def _add_entry_row(layout: QVBoxLayout, entry: tuple, dim: bool, type_map: dict):
+        etype, etext = entry[0], entry[1]
+        icon, color, label = type_map.get(etype, ("·", "#888", "Info"))
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        row.setContentsMargins(4, 0, 0, 0)
+
+        icon_lbl = QLabel(icon)
+        icon_lbl.setFixedWidth(16)
+        icon_lbl.setStyleSheet(f"font-size: 12px; color: {color}; background: transparent;")
+        row.addWidget(icon_lbl)
+
+        # Texto formatado: "Tipo: Mensagem"
+        full_text = f"<b>{label}:</b> {etext}"
+        text_lbl = QLabel(full_text)
+        text_lbl.setWordWrap(True)
+        text_lbl.setStyleSheet(
+            f"font-size: 12px; {'color: #777;' if dim else ''} background: transparent;"
+        )
+        row.addWidget(text_lbl, 1)
+        layout.addLayout(row)
