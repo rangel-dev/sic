@@ -17,7 +17,9 @@ import pandas as pd
 from lxml import etree
 
 from src.core.auditor.integrity import verify_core_integrity
-from src.core.auditor.parity_rules_v11 import execute_parity_rules
+from src.core.auditor.parity_rules_v12 import execute_parity_rules
+from src.core.auditor.kit_validation import GradeIndex, _so_numeros
+from src.core.excel_reader import parse_price
 
 # ─── Namespaces ───────────────────────────────────────────────────────────────
 PRICEBOOK_NS = "http://www.demandware.com/xml/impex/pricebook/2006-10-31"
@@ -37,6 +39,7 @@ PROHIBITED_CATEGORIES = {
 ERROR_META: dict[str, dict] = {
     "price":      {"title": "Divergência de Preço",         "impact": "Risco Financeiro Alto",       "icon": "💰", "desc": "Preço no Excel (DE/POR) não bate com o valor no Pricebook do Salesforce."},
     "list":       {"title": "Visibilidade em Listas",        "impact": "Baixa Conversão",             "icon": "📋", "desc": "SKU está na aba de lista (ex: LISTA_01) no Excel, mas não está na categoria equivalente no XML."},
+    "list_excess": {"title": "Excesso em Lista de Vitrine",  "impact": "Lixo de Catálogo",            "icon": "🗑️", "desc": "SKU está na categoria de lista (ex: LISTA_01) no Salesforce, mas foi removido da aba equivalente no Excel."},
     "ml":         {"title": "Conflito Canal ML",             "impact": "Conflito Estratégico",        "icon": "⚡", "desc": "Preço no catálogo 'Minha Loja' diverge do preço da marca principal (Natura/Avon)."},
     "margin":     {"title": "Margem de Segurança",           "impact": "Perda Operacional (Crítico)", "icon": "🚨", "desc": "Produto em promoção (POR < DE) dentro de uma categoria onde descontos são proibidos."},
     "logic":      {"title": "Erro Lógico (POR > DE)",        "impact": "Erro de Cadastro",            "icon": "⚠️", "desc": "O preço promocional (POR) está maior que o preço de lista (DE)."},
@@ -72,6 +75,7 @@ class AuditResult:
     error: Optional[str] = None
     preflight_error: Optional[str] = None
     integrity_error: bool = False
+    kit_data: Optional[object] = None   # KitAuditData (BRD-007) — painel dedicado de kits
 
 
 # ─── Engine ───────────────────────────────────────────────────────────────────
@@ -80,12 +84,20 @@ class AuditorEngine:
         self._prog = progress_callback or (lambda p, m: None)
 
     # ── Entrada ───────────────────────────────────────────────────────────
-    def run(self, excel_paths: list[str], pb_path: str, cat_paths: list[str]) -> AuditResult:
+    def run(self, excel_paths: list[str], pb_path: str, cat_paths: list[str],
+            bo_path: Optional[str] = None) -> AuditResult:
+        # Modo só-kit (BRD-007): planilha BO anexada SEM Pricebook → valida
+        # apenas a composição de kits (catálogo × BO). Não exige pricebook nem
+        # os 3 catálogos, e não toca no fluxo completo (que roda quando há
+        # pricebook). Detecção automática pelos arquivos presentes.
+        if bo_path and not pb_path:
+            return self._run_kit_only(excel_paths, cat_paths, bo_path)
+
         result = AuditResult()
         try:
             # 0. Verificação de Lacre de Paridade
             if not verify_core_integrity():
-                print("⚠️ [Integrity Check] O arquivo parity_rules_v11.py foi modificado, mas a execução prosseguirá.")
+                print("⚠️ [Integrity Check] O arquivo parity_rules_v12.py foi modificado, mas a execução prosseguirá.")
 
             # Trava 5: Pricebook e Catálogos devem ter sido exportados há menos de 15 min
             if _is_production_environment():
@@ -110,7 +122,7 @@ class AuditorEngine:
 
             # 1. Excel (Opcional)
             self._prog(10, "Lendo planilhas Excel (se houver)…")
-            excel_prices, excel_lists, excel_brands, has_nat, has_avn = self._parse_excels(excel_paths)
+            excel_prices, excel_lists, excel_brands, has_nat, has_avn, grade_idx = self._parse_excels(excel_paths)
             result.total_excel_skus = len(excel_prices)
 
             # Regra de Ouro (Gold Rule) V11.6 & Detecção de Marcas
@@ -173,6 +185,19 @@ class AuditorEngine:
             self._prog(78, "Verificando sync de Jobs ML…")
             job_errors = self._calc_job_errors(category_assignments_map, ml_job_rules)
 
+            # 4.5 Composição de Kits (BRD-007) — opcional, só se planilha BO anexada.
+            # Falha na leitura do BO não deve abortar a auditoria: é um check extra.
+            # Totalmente desacoplado do total/estatísticas da auditoria tradicional
+            # (result.stats) — só alimenta o painel dedicado via result.kit_data,
+            # não conta para Certificado Mestre, empty-state ou webhook.
+            if bo_path:
+                self._prog(82, "Validando composição de Kits (planilha BO)…")
+                try:
+                    from src.core.auditor.kit_validation import validate_kits
+                    result.kit_data = validate_kits(bo_path, cat_paths, grade_idx)
+                except Exception as kit_exc:  # noqa: BLE001
+                    print(f"⚠️ [Kit Validation] Falha ao validar kits (ignorado): {kit_exc}")
+
             # 5. Cruzamento analítico
             self._prog(85, "Cruzamento analítico e gerando evidências…")
             errors, stats, acertos_df, evidence_df = self._cross_validate(
@@ -182,13 +207,61 @@ class AuditorEngine:
                 bundles, variation_bases, job_errors,
                 has_nat, has_avn,
             )
-            result.errors   = errors
-            result.stats    = stats
-            result.acertos  = acertos_df
-            result.evidence = evidence_df
+            result.errors        = errors
+            result.stats         = stats
+            result.acertos       = acertos_df
+            result.evidence      = evidence_df
 
             self._prog(100, "Auditoria concluída!")
         except Exception as exc:
+            result.error = str(exc)
+        return result
+
+    # ── Modo só-kit (BRD-007) ─────────────────────────────────────────────
+    def _run_kit_only(self, excel_paths: list[str], cat_paths: list[str],
+                      bo_path: str) -> AuditResult:
+        """
+        Valida apenas a composição de kits (catálogo XML × planilha BO), sem
+        exigir Pricebook nem os 3 catálogos. Chama `_cross_validate` com os
+        demais insumos vazios só para reaproveitar sua maquinaria de
+        acertos/evidências (stats fica zerado — kit não conta nesse total,
+        ver result.kit_data).
+
+        A Grade de Ativação (excel_paths) é lida para obter o whitelist e o CM
+        ativo do ciclo (BRD-007), que guiam o cruzamento SKU+CM contra o BO.
+        """
+        result = AuditResult()
+        try:
+            if not verify_core_integrity():
+                print("⚠️ [Integrity Check] parity_rules alterado; execução prosseguirá.")
+
+            self._prog(15, "Lendo Grade de Ativação (whitelist + CM)…")
+            _, _, _, _, _, grade_idx = self._parse_excels(excel_paths)
+
+            self._prog(20, "Validando composição de Kits (planilha BO)…")
+            try:
+                from src.core.auditor.kit_validation import validate_kits
+                kit_data = validate_kits(bo_path, cat_paths, grade_idx)
+            except Exception as kit_exc:  # noqa: BLE001
+                result.error = f"Falha ao validar a planilha do BO: {kit_exc}"
+                return result
+            result.kit_data = kit_data
+            kit_rows = kit_data.rows
+
+            self._prog(80, "Consolidando divergências de kit…")
+            errors, stats, acertos_df, evidence_df = self._cross_validate(
+                {}, {}, {}, {}, {}, {}, {},
+                {"Natura": set(), "Avon": set(), "ML": set()}, {},
+                {}, {}, {}, False, False,
+            )
+            result.errors       = errors
+            result.stats        = stats
+            result.acertos      = acertos_df
+            result.evidence     = evidence_df
+            result.brands_found = sorted({r["brand"] for r in kit_rows})
+
+            self._prog(100, "Validação de Kits concluída!")
+        except Exception as exc:  # noqa: BLE001
             result.error = str(exc)
         return result
 
@@ -200,9 +273,11 @@ class AuditorEngine:
           excel_lists  : {list_id: set(skus)}   (LISTA_01 para Natura, lista-01 para Avon)
           brands_found : lista de marcas
           has_nat, has_avn : bool
+          grade_idx    : GradeIndex (BRD-007 — CM vigente + quais SKUs são kits)
         """
         excel_prices = {}
         excel_lists  = {}
+        grade_idx = GradeIndex()
         has_nat = has_avn = False
 
         for path in paths:
@@ -213,10 +288,10 @@ class AuditorEngine:
             if file_brand == "Natura": has_nat = True
             if file_brand == "Avon":   has_avn = True
 
-            # Grade de Ativação → preços e visibilidade
+            # Grade de Ativação → preços, visibilidade, CM e marcação de kit
             grade = self._find_grade_sheet(wb)
             if grade:
-                self._parse_grade(grade, file_brand, excel_prices)
+                self._parse_grade(grade, file_brand, excel_prices, grade_idx)
 
             # Listas LISTA_XX / lista-XX
             for name in wb.sheetnames:
@@ -236,7 +311,7 @@ class AuditorEngine:
             wb.close()
 
         brands = (["Natura"] if has_nat else []) + (["Avon"] if has_avn else [])
-        return excel_prices, excel_lists, brands, has_nat, has_avn
+        return excel_prices, excel_lists, brands, has_nat, has_avn, grade_idx
 
     def _detect_brand_workbook(self, wb) -> str:
         """Varre toda a aba GRADE ou a primeira disponível e conta NATBRA/AVNBRA (Robust like JS)."""
@@ -287,11 +362,14 @@ class AuditorEngine:
                     return wb[name]
         return None
 
-    def _parse_grade(self, ws, file_brand: str, out: dict) -> None:
+    def _parse_grade(self, ws, file_brand: str, out: dict,
+                     grade: Optional[GradeIndex] = None) -> None:
         rows = list(ws.iter_rows(max_row=10000, values_only=True))
-        sku_col = de_col = por_col = vis_col = None
+        sku_col = de_col = por_col = vis_col = cm_col = tipo_col = None
         sku_start = None
 
+        # Detecção por NOME de cabeçalho, nunca por posição: o layout difere
+        # entre as marcas (a grade Avon tem colunas a mais que a Natura).
         for i, row in enumerate(rows[:60]):
             for j, cell in enumerate(row):
                 if cell is None:
@@ -302,6 +380,10 @@ class AuditorEngine:
                     de_col = j
                 elif vu == "POR":
                     por_col = j
+                elif vu == "CM":            # Código de Material (exato; não casa "CMV")
+                    cm_col = j
+                elif vu == "TIPO MATERIAL":  # ZEST = kit; ZPAC/ZPRO = item simples
+                    tipo_col = j
                 elif "VISIBLE" in vu or "VISIBILIDADE" in vu:
                     vis_col = j
                 if sku_col is None and SKU_RE.match(v):
@@ -328,18 +410,44 @@ class AuditorEngine:
             if file_brand == "Avon" and sku.startswith("NATBRA-"):
                 continue
 
-            de  = self._f(row[de_col]  if de_col  is not None and de_col  < len(row) else None)
-            por = self._f(row[por_col] if por_col is not None and por_col < len(row) else None)
+            de  = parse_price(row[de_col]  if de_col  is not None and de_col  < len(row) else None)
+            por = parse_price(row[por_col] if por_col is not None and por_col < len(row) else None)
             vis_raw = row[vis_col] if vis_col is not None and vis_col < len(row) else None
             vis = str(vis_raw).strip().upper() if vis_raw else ""
 
             out[sku] = {"DE": de or 0.0, "POR": por or 0.0, "VISIBLE": vis}
+
+            # Índice da grade para a validação de kits (BRD-007): CM vigente do
+            # ciclo e quais SKUs são kits (TIPO MATERIAL = ZEST). Chaveado por
+            # (marca, SKU numérico) — há SKUs que existem nas duas marcas.
+            # O SKU é registrado mesmo sem CM: estar na grade é o que define o
+            # que é vigente; o CM é dado complementar (há linhas sem CM).
+            if grade is not None:
+                sku_num = _so_numeros(sku)
+                if sku_num:
+                    cm_val = ""
+                    if cm_col is not None and cm_col < len(row):
+                        cm_val = _so_numeros(row[cm_col])
+                    grade.cm[(file_brand, sku_num)] = cm_val
+                    if tipo_col is not None and tipo_col < len(row):
+                        if str(row[tipo_col] or "").strip().upper() == "ZEST":
+                            grade.kits.add((file_brand, sku_num))
         print(f"DEBUG: Grade {file_brand} -> SKUs carregados: {len(out)}")
 
     def _parse_lista(self, ws, file_brand: str, num: str, out: dict) -> None:
         sku_col = -1
         rows = list(ws.iter_rows(max_row=10000, values_only=True))
-        
+
+        # BRD-010: registra a lista como existente (aba já garantidamente
+        # visível, filtrada em _parse_excels) mesmo sem nenhum SKU, para o
+        # Check "list_excess" distinguir "ausente/oculta" (não validar) de
+        # "visível vazia" (validar como excesso genuíno). Mesmo padrão do
+        # fix do Exportador (BRD-009 — sync_engine.py).
+        if file_brand == "Natura":
+            out.setdefault(f"LISTA_{num}", set())
+        elif file_brand == "Avon":
+            out.setdefault(f"lista-{num}", set())
+
         # Scanner Dinâmico (Legacy JS findSkuColumnOnly)
         for i, row in enumerate(rows[:50]):
             for j, cell in enumerate(row):
@@ -800,17 +908,3 @@ class AuditorEngine:
         acertos_df = pd.DataFrame(acertos_rows) if acertos_rows else pd.DataFrame(columns=["sku", "brand", "de_sf", "por_sf", "online", "searchable"])
 
         return error_dfs, total_stats, acertos_df, evidence_df
-
-    # ── Helper ────────────────────────────────────────────────────────────
-    @staticmethod
-    def _f(val) -> Optional[float]:
-        if val is None:
-            return None
-        # Emula estritamente o comportamento do parseFloat() do JavaScript Legado.
-        # Ele lê apenas a parte inicial que se parece com número, truncando na vírgula 
-        # (causando o aumento e identificação do Falso Positivo/Erro de Typping em 10,50 vs 10.5).
-        v_str = str(val).replace("R$", "").strip()
-        m = re.match(r'^[+-]?\d+(?:\.\d+)?', v_str)
-        if m:
-            return float(m.group(0))
-        return None
