@@ -469,7 +469,13 @@ class SyncEngine:
             up = {}
             if prod["online"] != n_on: up["online-flag"] = "true" if n_on else "false"
             if prod["searchable"] != n_vis: up["searchable-flag"] = "true" if n_vis else "false"
-            
+            # BRD-010: searchable-if-unavailable-flag sempre "true" para todo
+            # produto (Natura e Avon, sem exceção de marca ou estado online/
+            # searchable). Idempotente: só entra no delta se ainda não é true
+            # (inclui ausência da flag no XML de entrada, parseada como False).
+            if not prod["seoFlag"]:
+                up["searchable-if-unavailable-flag"] = "true"
+
             s_act = "-"
             # LÓGICA DE SELO COM LIMPEZA DE LIXO (V14.0 sync_app.html linhas 478-494)
             # O V14 usa JSON.stringify com lowercase e COMPARA com prod.sObj
@@ -529,7 +535,11 @@ class SyncEngine:
             up = {}
             if m_prod["online"] != act: up["online-flag"] = "true" if act else "false"
             if m_prod["searchable"] != act: up["searchable-flag"] = "true" if act else "false"
-            
+            # BRD-010: mesma regra do loop de produtos normais — "sem
+            # exceção" inclui produtos mestre.
+            if not m_prod["seoFlag"]:
+                up["searchable-if-unavailable-flag"] = "true"
+
             if up:
                 deltas.append({"id": m_id, "up": up})
                 

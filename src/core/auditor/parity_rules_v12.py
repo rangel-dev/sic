@@ -7,6 +7,8 @@ estar anexada (Check #4 e a liberação dos checks sistêmicos para SKUs online
 fora da grade). Substitui parity_rules_v11.py (mantido como legado/rollback).
 BRD-005: Check #7b (Excesso em Listas de Vitrine) — sincronia simétrica com
 o Check #7, escopada por marca via has_nat/has_avn (BRD-004).
+BRD-010: Check #7b não valida lista ausente/oculta da Grade (chave nunca
+registrada em excel_lists) — só lista visível (mesmo vazia) é validada.
 An integrity hash checks this file at runtime. Any modification will trigger a critical integrity alert.
 Qualquer alteração nesta lógica exige regenerar EXPECTED_V12_HASH em integrity.py.
 =========================================
@@ -257,7 +259,14 @@ def execute_parity_rules(
         if not brand_has_grade:
             continue
 
-        ex_skus = excel_lists.get(list_id, set())
+        # BRD-010: lista nunca vista como visível na Grade (ausente ou
+        # oculta) não é validada — não há como saber se a ausência é
+        # intencional. Lista visível com 0 SKUs (chave presente, set
+        # vazio) continua validada normalmente como excesso genuíno.
+        if list_id not in excel_lists:
+            continue
+
+        ex_skus = excel_lists[list_id]
         for sku in xml_skus - ex_skus:
             if not SKU_RE.match(sku) or variation_bases.get(sku):
                 continue
