@@ -32,8 +32,6 @@ _NS = "http://www.demandware.com/xml/impex/catalog/2006-10-31"
 # UI para gerar cards de filtro dedicados na seção de Validação de Kits (BO).
 KIND_KIT_SEM_BUNDLE      = "kit_sem_bundle_no_catalogo"
 KIND_AUSENTE_NO_BO       = "ausente_no_bo"
-KIND_MATERIAL_PAI_DIV    = "material_pai_divergente"
-KIND_MATERIAL_FILHO_DIV  = "material_filho_divergente"
 KIND_FILHO_AUSENTE_BO    = "filho_ausente_bo"
 KIND_QTD_ERRADA          = "qtd_errada"
 KIND_FILHO_FALTANDO_SF   = "filho_faltando_sf"
@@ -51,20 +49,6 @@ KIT_ERROR_META: dict[str, dict] = {
         "title": "Kit Ausente no BO", "icon": "🚫",
         "impact": "Kit não cadastrado no BO",
         "desc": "O kit está ativo na Grade mas não consta na planilha do BO.",
-    },
-    KIND_MATERIAL_PAI_DIV: {
-        "title": "Material do Pai Desatualizado", "icon": "🏷️",
-        "impact": "Grade × BO em desacordo",
-        "desc": "A Grade diz qual CM (material) está vigente para este kit, e "
-                "o BO não tem nenhuma linha com esse CM — só conhece "
-                "materiais antigos dele.",
-    },
-    KIND_MATERIAL_FILHO_DIV: {
-        "title": "Material do Filho Desatualizado", "icon": "🔖",
-        "impact": "Grade × BO em desacordo",
-        "desc": "A Grade diz qual CM (material) está vigente para este "
-                "componente, e o BO não tem nenhuma linha com esse CM — só "
-                "conhece materiais antigos dele.",
     },
     KIND_FILHO_AUSENTE_BO: {
         "title": "Filho Ausente no BO", "icon": "➖",
@@ -96,8 +80,6 @@ KIT_ERROR_META: dict[str, dict] = {
 _STATUS_POR_KIND = {
     KIND_KIT_SEM_BUNDLE:      "Ausente no SF",
     KIND_AUSENTE_NO_BO:       "Ausente no BO",
-    KIND_MATERIAL_PAI_DIV:    "Material Divergente (Pai)",
-    KIND_MATERIAL_FILHO_DIV:  "Material Divergente (Filho)",
     KIND_FILHO_AUSENTE_BO:    "Ausente no BO",
     KIND_QTD_ERRADA:          "Quantidade Divergente",
     KIND_FILHO_FALTANDO_SF:   "Ausente no SF",
@@ -133,7 +115,10 @@ class KitAuditData:
     # [{sku, pai, brand, status, detail, kind, filho, qtd_sf, qtd_bo, cm_grade, cm_bo}]
     rows: list[dict] = field(default_factory=list)
     stats: dict = field(default_factory=dict)   # {total, ok, erro, by_brand:{...}}
-    correction_xml: str = ""
+    # Um envelope <catalog> por marca (marca -> XML string): cada marca tem seu
+    # próprio catalog-id no Salesforce, então não dá pra combinar kits Natura e
+    # Avon num único XML com um catalog-id só.
+    correction_xmls: dict[str, str] = field(default_factory=dict)
 
 
 def _so_numeros(val) -> str:
@@ -214,21 +199,28 @@ def _read_bo_excel(path: str) -> BoIndex:
     return bo
 
 
-def _read_kits_from_xml(paths: list[str]) -> dict[tuple[str, str], dict]:
+def _read_kits_from_xml(paths: list[str]) -> tuple[dict[tuple[str, str], dict], dict[str, str]]:
     """{(marca, sku_num): {raw_pid, filhos:{sku_num: qty}}} — só produtos com bundle.
 
     Chaveado por marca porque há SKUs numéricos que existem nas duas marcas; sem
     isso um catálogo sobrescreveria o kit do outro. Produtos sem bundle são
     ignorados: o mesmo SKU aparece em vários catálogos (marca + Minha Loja) e o
     espelho sem composição não pode zerar o bundle real.
+
+    Também devolve `catalog_ids: {marca: catalog-id}` — o catalog-id real do
+    XML de origem onde um kit daquela marca foi de fato encontrado, usado para
+    gerar o XML de Correção com o envelope certo por marca (ver
+    `_build_correction_xml`).
     """
     kits: dict[tuple[str, str], dict] = {}
+    catalog_ids: dict[str, str] = {}
     for path in paths:
         try:
             tree = ET.parse(path)
         except ET.ParseError:
             continue
         root = tree.getroot()
+        cat_id = root.get("catalog-id", "")
 
         ns = _NS if root.tag.startswith("{") else ""
         tag = lambda t: f"{{{ns}}}{t}" if ns else t  # noqa: E731
@@ -253,29 +245,51 @@ def _read_kits_from_xml(paths: list[str]) -> dict[tuple[str, str], dict]:
 
             pid_num = _so_numeros(raw_pid)
             if filhos and pid_num:
-                chave = (_brand_from_pid(raw_pid), pid_num)
+                marca = _brand_from_pid(raw_pid)
+                chave = (marca, pid_num)
                 kits.setdefault(chave, {"raw_pid": raw_pid, "filhos": filhos})
-    return kits
+                if cat_id:
+                    catalog_ids.setdefault(marca, cat_id)
+    return kits, catalog_ids
 
 
-def _build_correction_xml(kits: list[dict]) -> str:
-    """Gera o XML de Correção (composição do BO) para os kits divergentes."""
-    lines = [
-        '<?xml version="1.0" encoding="UTF-8"?>',
-        '<catalog xmlns="http://www.demandware.com/xml/impex/catalog/2006-10-31"'
-        ' catalog-id="natura-br-storefront-catalog">',
-    ]
+# Fallback só usado se, por algum motivo, nenhum XML de entrada trouxe um
+# catalog-id para a marca (não deveria acontecer: um kit só entra na lista de
+# correção se foi lido de algum catálogo — ver validate_kits).
+_FALLBACK_CATALOG_ID = {
+    "Natura": "natura-br-storefront-catalog",
+    "Avon": "avon-br-storefront-catalog",
+}
+
+
+def _build_correction_xml(kits: list[dict], catalog_ids: dict[str, str]) -> dict[str, str]:
+    """Gera o XML de Correção (composição do BO) para os kits divergentes, um
+    envelope <catalog> por marca — cada marca tem um catalog-id diferente no
+    Salesforce, então não é possível combinar Natura e Avon num único XML
+    (o import usaria o catalog-id errado para uma das marcas)."""
+    por_marca: dict[str, list[dict]] = {}
     for kit in kits:
-        lines.append(f'  <product product-id="{kit["pid"]}">')
-        lines.append("    <bundled-products>")
-        for f in kit["filhos"]:
-            lines.append(f'      <bundled-product product-id="{f["id"]}">')
-            lines.append(f"        <quantity>{f['qty']}</quantity>")
-            lines.append("      </bundled-product>")
-        lines.append("    </bundled-products>")
-        lines.append("  </product>")
-    lines.append("</catalog>")
-    return "\n".join(lines)
+        por_marca.setdefault(kit.get("marca", "Natura"), []).append(kit)
+
+    xmls: dict[str, str] = {}
+    for marca, marca_kits in por_marca.items():
+        cat_id = catalog_ids.get(marca) or _FALLBACK_CATALOG_ID.get(marca, _FALLBACK_CATALOG_ID["Natura"])
+        lines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            f'<catalog xmlns="{_NS}" catalog-id="{cat_id}">',
+        ]
+        for kit in marca_kits:
+            lines.append(f'  <product product-id="{kit["pid"]}">')
+            lines.append("    <bundled-products>")
+            for f in kit["filhos"]:
+                lines.append(f'      <bundled-product product-id="{f["id"]}">')
+                lines.append(f"        <quantity>{f['qty']}</quantity>")
+                lines.append("      </bundled-product>")
+            lines.append("    </bundled-products>")
+            lines.append("  </product>")
+        lines.append("</catalog>")
+        xmls[marca] = "\n".join(lines)
+    return xmls
 
 
 def _alvos(grade: GradeIndex, kits_cat: dict[tuple[str, str], dict]) -> list[tuple[str, str]]:
@@ -303,11 +317,12 @@ def validate_kits(bo_path: str, cat_paths: list[str],
         `status` e `kind` alimentam o painel dedicado; `filho`, `qtd_sf`,
         `qtd_bo`, `cm_grade` e `cm_bo` alimentam o relatório Excel.
       - stats: {total, ok, erro, by_brand: {marca: {total, ok, erro}}}.
-      - correction_xml: composição do BO para os kits divergentes.
+      - correction_xmls: composição do BO para os kits divergentes, um XML por
+        marca (marca -> XML string).
     """
     grade = grade or GradeIndex()
     bo = _read_bo_excel(bo_path)
-    kits_cat = _read_kits_from_xml(cat_paths)
+    kits_cat, catalog_ids = _read_kits_from_xml(cat_paths)
 
     rows: list[dict] = []
     kits_para_corrigir: list[dict] = []
@@ -369,18 +384,9 @@ def validate_kits(bo_path: str, cat_paths: list[str],
                 stats["erro"] += 1
                 by_brand["erro"] += 1
                 continue
-            if cm_pai:
-                cm_bo_str = ", ".join(sorted(bo.cms_por_sku.get(pid, set()))) or "nenhum"
-                reportar(KIND_MATERIAL_PAI_DIV,
-                         f"A Grade indica que o material vigente deste kit é o "
-                         f"CM {cm_pai}. A planilha do BO não tem nenhuma linha "
-                         f"com esse CM para este pai — ela só conhece a(s) "
-                         f"versão(ões) {cm_bo_str}. Provável causa: o BO ainda "
-                         f"não foi atualizado para o material atual (ou o kit "
-                         f"trocou de material recentemente). A composição "
-                         f"abaixo foi conferida contra a versão mais recente "
-                         f"que o BO conhece.",
-                         cm_grade=cm_pai, cm_bo=cm_bo_str)
+            # BRD-011: checagem de material do pai desatualizado (Grade × BO)
+            # removida por excesso de zelo — segue conferindo a composição
+            # contra a versão mais recente que o BO conhece.
             comp = todas
 
         # 3. Catálogo → BO
@@ -422,18 +428,8 @@ def validate_kits(bo_path: str, cat_paths: list[str],
                          filho=f_sku, qtd_bo=info["qty"], cm_bo=info["cm"],
                          cm_grade=grade.cm.get((marca, f_sku), ""))
                 continue
-            cm_grade_filho = grade.cm.get((marca, f_sku))
-            if cm_grade_filho and cm_grade_filho not in bo.cms_por_sku.get(f_sku, set()):
-                cm_bo_str = ", ".join(sorted(bo.cms_por_sku.get(f_sku, set()))) or "nenhum"
-                reportar(KIND_MATERIAL_FILHO_DIV,
-                         f"A Grade indica que o material vigente do componente "
-                         f"{f_sku} é o CM {cm_grade_filho}. O BO não tem "
-                         f"nenhuma linha com esse CM para este componente — só "
-                         f"conhece a(s) versão(ões) {cm_bo_str}. O componente "
-                         f"pode estar certo na composição, mas o BO está "
-                         f"referenciando uma versão de material desatualizada.",
-                         filho=f_sku, qtd_sf=filhos_sf.get(f_sku, ""),
-                         qtd_bo=info["qty"], cm_grade=cm_grade_filho, cm_bo=cm_bo_str)
+            # BRD-011: checagem de material do filho desatualizado (Grade × BO)
+            # removida por excesso de zelo.
 
         if achados:
             rows.extend(achados)
@@ -442,11 +438,12 @@ def validate_kits(bo_path: str, cat_paths: list[str],
             prefixo = _prefixo(marca)
             kits_para_corrigir.append({
                 "pid": prefixo + pid,
+                "marca": marca,
                 "filhos": [{"id": prefixo + f, "qty": i["qty"]} for f, i in comp.items()],
             })
         else:
             stats["ok"] += 1
             by_brand["ok"] += 1
 
-    correction_xml = _build_correction_xml(kits_para_corrigir)
-    return KitAuditData(rows=rows, stats=stats, correction_xml=correction_xml)
+    correction_xmls = _build_correction_xml(kits_para_corrigir, catalog_ids)
+    return KitAuditData(rows=rows, stats=stats, correction_xmls=correction_xmls)

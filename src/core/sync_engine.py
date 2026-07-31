@@ -21,7 +21,7 @@ CATALOG_NS = "http://www.demandware.com/xml/impex/catalog/2006-10-31"
 SKU_PATTERN = re.compile(r"^(NAT|AVN)BRA-", re.IGNORECASE)
 MIN_FILE_AGE_SECONDS = 600  # 10-minute golden rule
 
-# BRD-008: categorias SFCC de faixa de preço para produtos "Presente"
+# BRD-008: categorias SFCC de faixa de preço para produtos "Presente" — Natura
 PRESENTE_CATEGORY_IDS = (
     "presentes-faixa-de-preco-agradecer",
     "presentes-faixa-de-preco-encantar",
@@ -29,10 +29,18 @@ PRESENTE_CATEGORY_IDS = (
     "presentes-faixa-de-preco-impressionar",
 )
 
+# BRD-009: mesma lógica, faixas e IDs de categoria próprios da Avon.
+PRESENTE_CATEGORY_IDS_AVON = (
+    "presentes-faixa-de-preco-ate-19",
+    "presentes-faixa-de-preco-de-20-ate-49",
+    "presentes-faixa-de-preco-de-50-ate-99",
+    "presentes-faixa-de-preco-acima-de-150",
+)
+
 
 def _price_bucket(price: float) -> str:
-    """Mapeia o "Preço POR" para uma das 4 faixas de presente (BRD-008 §4.2).
-    Limites superiores inclusivos."""
+    """Mapeia o "Preço POR" para uma das 4 faixas de presente Natura
+    (BRD-008 §4.2). Limites superiores inclusivos."""
     if price <= 50.00:
         return "presentes-faixa-de-preco-agradecer"
     if price <= 100.00:
@@ -40,6 +48,32 @@ def _price_bucket(price: float) -> str:
     if price <= 150.00:
         return "presentes-faixa-de-preco-surpreender"
     return "presentes-faixa-de-preco-impressionar"
+
+
+def _price_bucket_avon(price: float) -> Optional[str]:
+    """Mapeia o "Preço POR" para uma das 4 faixas de presente Avon (BRD-009).
+    Lacuna PROPOSITAL entre R$100,00 e R$150,00 (ambos inclusive): SKU Avon
+    "Presente" nessa faixa não recebe nenhuma das 4 categorias — retorna
+    None e o chamador trata como "sem categoria" (mesmo mecanismo do preço
+    inválido). "Acima de 150" é estritamente > 150.00 (150.00 exato cai na
+    lacuna)."""
+    if price <= 19.99:
+        return "presentes-faixa-de-preco-ate-19"
+    if price <= 49.99:
+        return "presentes-faixa-de-preco-de-20-ate-49"
+    if price <= 99.99:
+        return "presentes-faixa-de-preco-de-50-ate-99"
+    if price <= 150.00:
+        return None  # lacuna proposital 100,00–150,00 (BRD-009)
+    return "presentes-faixa-de-preco-acima-de-150"
+
+
+# Marca -> (tupla de IDs de categoria, função de bucket de preço). Fonte
+# única de verdade consultada por _compute_presente_targets.
+_PRESENTE_RULES_BY_BRAND: dict[str, tuple[tuple[str, ...], Callable[[float], Optional[str]]]] = {
+    "natura": (PRESENTE_CATEGORY_IDS, _price_bucket),
+    "avon": (PRESENTE_CATEGORY_IDS_AVON, _price_bucket_avon),
+}
 
 
 @dataclass
@@ -75,7 +109,7 @@ class SyncEngine:
 
             # Parse Excel: lists + grade (visibility + seals)
             self._progress(15, "Lendo planilhas Excel (Extração Bruta)…")
-            excel_lists, grade_map, brand = self._parse_excel_files(excel_paths)
+            excel_lists, grade_map, brand, presente_cols_ok = self._parse_excel_files(excel_paths)
             result.brand = brand
 
             if not excel_lists and not grade_map:
@@ -92,7 +126,7 @@ class SyncEngine:
 
             # BRD-008: presentes por faixa de preço — calculado uma vez, usado
             # nas estatísticas (_execute_rules) e na geração do XML
-            presente_targets = self._compute_presente_targets(catalog_state, grade_map, result.brand)
+            presente_targets = self._compute_presente_targets(catalog_state, grade_map, result.brand, presente_cols_ok)
 
             # Execute Business Rules (V11.1 Motor)
             self._progress(60, "Aplicando Regras de Governança V11.1…")
@@ -138,17 +172,32 @@ class SyncEngine:
         
         return dominant_brand(nat_count, avn_count)
 
-    # ── Presente / Faixa de Preço (BRD-008) ─────────────────────────────────
-    def _compute_presente_targets(self, catalog_state: dict, grade_map: dict, brand: str) -> dict[str, set[str]]:
-        """SKUs Natura, variação (não-master), com "CATEGORIA PLANEJAMENTO" ==
-        "Presente" e preço válido na Grade, mapeados para a categoria SFCC de
-        faixa de preço correspondente. Sempre retorna as 4 chaves (mesmo
-        vazias) para que o diff add/remove detecte quando uma faixa esvazia.
-        """
-        targets: dict[str, set[str]] = {cat_id: set() for cat_id in PRESENTE_CATEGORY_IDS}
+    # ── Presente / Faixa de Preço (BRD-008 Natura, BRD-009 Avon) ────────────
+    def _compute_presente_targets(
+        self, catalog_state: dict, grade_map: dict, brand: str, presente_cols_ok: bool
+    ) -> Optional[dict[str, set[str]]]:
+        """SKUs (Natura ou Avon), variação (não-master), com "CATEGORIA
+        PLANEJAMENTO" == "Presente"/"PRESENTES" e preço válido na Grade,
+        mapeados para a categoria SFCC de faixa de preço da marca (tabelas de
+        IDs e faixas distintas por marca, ver _PRESENTE_RULES_BY_BRAND).
+        Sempre retorna todas as chaves da tabela da marca (mesmo vazias) para
+        que o diff add/remove detecte quando uma faixa esvazia.
 
-        if brand != "natura":
-            return targets  # CA-05: Avon nunca é categorizado
+        Retorna None quando a regra não deve rodar (marca sem tabela de
+        faixas definida, ou a Grade não tem as colunas "CATEGORIA
+        PLANEJAMENTO"/"POR") — nesse caso o chamador não deve gerar NENHUM
+        delta de presente (nem add, nem remove), para não apagar
+        categorização existente por engano.
+        """
+        rules = _PRESENTE_RULES_BY_BRAND.get(brand)
+        if rules is None:
+            return None  # marca sem tabela de faixas definida
+
+        if not presente_cols_ok:
+            return None  # Grade sem as colunas necessárias: regra não roda
+
+        category_ids, bucket_fn = rules
+        targets: dict[str, set[str]] = {cat_id: set() for cat_id in category_ids}
 
         for pid, prod in catalog_state["products"].items():
             if prod["isMaster"]:
@@ -158,22 +207,29 @@ class SyncEngine:
             if not g:
                 continue
 
-            if str(g.get("planning_cat", "")).strip().upper() != "PRESENTE":
+            # Dados reais da Grade usam "PRESENTES" (plural); o BRD-008 documenta
+            # "Presente" (singular). Aceita as duas formas por segurança entre ciclos.
+            if str(g.get("planning_cat", "")).strip().upper() not in ("PRESENTE", "PRESENTES"):
                 continue
 
             price = g.get("price")
             if not price:  # None ou 0.0 -> CA-04 (sem preço válido = não categorizado)
                 continue
 
-            targets[_price_bucket(price)].add(pid)
+            bucket = bucket_fn(price)
+            if bucket is None:  # Avon: lacuna proposital 100,00–150,00 (BRD-009)
+                continue
+
+            targets[bucket].add(pid)
 
         return targets
 
     # ── Parse Excel Files ─────────────────────────────────────────────────
-    def _parse_excel_files(self, paths: list[str]) -> tuple[dict[str, set[str]], dict[str, dict], str]:
+    def _parse_excel_files(self, paths: list[str]) -> tuple[dict[str, set[str]], dict[str, dict], str, bool]:
         excel_lists: dict[str, set[str]] = {}
         grade_map: dict[str, dict] = {}
         nat = avn = 0
+        presente_cols_ok = False
 
         self._progress(15, "> Iniciando Varredura Bruta V14.0...")
         self._progress(16, "> Mapeando cores de fundo do Excel (Bruto OpenXML)...")
@@ -183,6 +239,14 @@ class SyncEngine:
             self._progress(17, f"> Excel carregado (Modo Recuperação). Abas detectadas: {len(wb.sheetnames)}")
 
             for name in wb.sheetnames:
+                ws = wb[name]
+                if ws.sheet_state != 'visible':
+                    # Aba oculta (hidden/veryHidden) é tratada como se não
+                    # existisse no arquivo — mesmo padrão de
+                    # auditor_engine.py:299 (sheet_state != 'visible' cobre
+                    # os dois estados ocultos do openpyxl de uma vez). BRD-009.
+                    continue
+
                 n = name.upper()
                 is_grade = "GRADE" in n or "ATIVA" in n
                 list_match = re.search(r"LISTA[\s_-]*([0-9.]+)", n)
@@ -196,9 +260,14 @@ class SyncEngine:
                 if is_list:
                     clean_id = f"LISTA_{list_match.group(1)}"
                     self._progress(18, f"> Aba [{name}] -> Identificada como: LISTA ({clean_id})")
+                    # BRD-009: registra a chave já aqui, mesmo com 0 SKUs, para
+                    # que o diff downstream enxergue a lista esvaziada e gere
+                    # delta de remoção total (old_set - set() = old_set), em
+                    # vez de simplesmente ignorá-la por ausência no dict.
+                    excel_lists.setdefault(clean_id, set())
 
                 # values_only=False allows accessing Cell properties like .fill color style
-                rows = list(wb[name].iter_rows(max_row=5000, values_only=False))
+                rows = list(ws.iter_rows(max_row=5000, values_only=False))
                 if not rows:
                     continue
 
@@ -221,6 +290,8 @@ class SyncEngine:
                             if sku_col is None and SKU_PATTERN.match(str(cell.value).strip()):
                                 sku_col = j
                                 break
+                    if por_col is not None and plan_col is not None:
+                        presente_cols_ok = True
                     self._progress(19, "> Chaves de dados carregadas: GRADE")
                 
                 # Scan entire sheet
@@ -276,7 +347,7 @@ class SyncEngine:
             wb.close()
 
         brand = dominant_brand(nat, avn)
-        return excel_lists, grade_map, brand
+        return excel_lists, grade_map, brand, presente_cols_ok
 
     # ── Parse Catalog XML ─────────────────────────────────────────────────
     def _parse_catalogs(self, paths: list[str]) -> tuple[dict, str]:
@@ -360,7 +431,7 @@ class SyncEngine:
         return state, catalog_id
 
     # ── Engine Business Rules V11.1 ───────────────────────────────────────
-    def _execute_rules(self, catalog_state: dict, grade_map: dict, excel_lists: dict, brand: str, presente_targets: dict[str, set[str]]) -> tuple[dict, dict, list]:
+    def _execute_rules(self, catalog_state: dict, grade_map: dict, excel_lists: dict, brand: str, presente_targets: Optional[dict[str, set[str]]]) -> tuple[dict, dict, list]:
         deltas = []
         report = []
         active_masters = set()
@@ -398,7 +469,13 @@ class SyncEngine:
             up = {}
             if prod["online"] != n_on: up["online-flag"] = "true" if n_on else "false"
             if prod["searchable"] != n_vis: up["searchable-flag"] = "true" if n_vis else "false"
-            
+            # BRD-010: searchable-if-unavailable-flag sempre "true" para todo
+            # produto (Natura e Avon, sem exceção de marca ou estado online/
+            # searchable). Idempotente: só entra no delta se ainda não é true
+            # (inclui ausência da flag no XML de entrada, parseada como False).
+            if not prod["seoFlag"]:
+                up["searchable-if-unavailable-flag"] = "true"
+
             s_act = "-"
             # LÓGICA DE SELO COM LIMPEZA DE LIXO (V14.0 sync_app.html linhas 478-494)
             # O V14 usa JSON.stringify com lowercase e COMPARA com prod.sObj
@@ -458,7 +535,11 @@ class SyncEngine:
             up = {}
             if m_prod["online"] != act: up["online-flag"] = "true" if act else "false"
             if m_prod["searchable"] != act: up["searchable-flag"] = "true" if act else "false"
-            
+            # BRD-010: mesma regra do loop de produtos normais — "sem
+            # exceção" inclui produtos mestre.
+            if not m_prod["seoFlag"]:
+                up["searchable-if-unavailable-flag"] = "true"
+
             if up:
                 deltas.append({"id": m_id, "up": up})
                 
@@ -504,26 +585,30 @@ class SyncEngine:
         # BRD-008: categorias de faixa de preço de presente — cat_id JÁ é o ID
         # final (ex. "presentes-faixa-de-preco-agradecer"), sem a transformação
         # de case usada para LISTA_N (por isso o loop é separado do de cima).
-        for cat_id, skus in presente_targets.items():
-            old_set = catalog_state["assignments"].get(cat_id.upper(), set())
+        # presente_targets é None quando a regra não deve rodar nesta execução
+        # (marca != Natura, ou Grade sem as colunas necessárias) — nesse caso
+        # nenhuma linha/estatística de presente é gerada.
+        if presente_targets is not None:
+            for cat_id, skus in presente_targets.items():
+                old_set = catalog_state["assignments"].get(cat_id.upper(), set())
 
-            added = len(skus - old_set)
-            removed = len(old_set - skus)
-            list_add += added
-            list_rem += removed
+                added = len(skus - old_set)
+                removed = len(old_set - skus)
+                list_add += added
+                list_rem += removed
 
-            status = "Sincronizado ✓"
-            if added > 0 or removed > 0:
-                status = f"Delta: +{added} / -{removed}"
-            if len(skus) == 0:
-                status = "Lista Vazia"
+                status = "Sincronizado ✓"
+                if added > 0 or removed > 0:
+                    status = f"Delta: +{added} / -{removed}"
+                if len(skus) == 0:
+                    status = "Lista Vazia"
 
-            lists_details.append({
-                "id": cat_id,
-                "excel": len(skus),
-                "xml": len(old_set),
-                "status": status
-            })
+                lists_details.append({
+                    "id": cat_id,
+                    "excel": len(skus),
+                    "xml": len(old_set),
+                    "status": status
+                })
 
         metrics = {
             "xml": len(catalog_state["products"]),
@@ -538,14 +623,14 @@ class SyncEngine:
             # JS Total Deltas = db.deltas.length (V14.0 sync_app.html linha 528)
             "deltas": len(deltas),
             "lists": len(excel_lists),
-            "presente_categories": len(presente_targets),
+            "presente_categories": len(presente_targets) if presente_targets is not None else 0,
             "lists_details": lists_details
         }
         
         return {"products": deltas}, metrics, report
 
     # ── XML Generation ────────────────────────────────────────────────────
-    def _generate_catalog_xml(self, delta: dict, catalog_id: str, excel_lists: dict, catalog_state: dict, brand: str, presente_targets: dict[str, set[str]]) -> bytes:
+    def _generate_catalog_xml(self, delta: dict, catalog_id: str, excel_lists: dict, catalog_state: dict, brand: str, presente_targets: Optional[dict[str, set[str]]]) -> bytes:
         root = etree.Element("catalog", xmlns=CATALOG_NS)
         root.set("catalog-id", catalog_id or "storefront-catalog")
         
@@ -601,28 +686,32 @@ class SyncEngine:
                     ca.set("product-id", pid_in_xml)
                     ca.set("mode", "delete")
 
-        # BRD-008: category-assignment de faixa de preço de presente (Natura
-        # only; presente_targets já vem vazio para Avon). cat_id já é o ID
-        # final da categoria, sem transformação de case.
-        for cat_id, skus_in_target in presente_targets.items():
-            # Additions
-            for sku_id in skus_in_target:
-                p = catalog_state["products"].get(sku_id)
-                if p:
-                    cats = catalog_state["assignments"].get(cat_id.upper(), set())
-                    if sku_id not in cats:
+        # BRD-008: category-assignment de faixa de preço de presente. cat_id
+        # já é o ID final da categoria, sem transformação de case.
+        # presente_targets é None quando a regra não deve rodar nesta execução
+        # (marca != Natura, ou Grade sem as colunas necessárias) — nesse caso
+        # NENHUM category-assignment de presente é emitido, nem add nem
+        # delete, para não apagar categorização existente por engano.
+        if presente_targets is not None:
+            for cat_id, skus_in_target in presente_targets.items():
+                # Additions
+                for sku_id in skus_in_target:
+                    p = catalog_state["products"].get(sku_id)
+                    if p:
+                        cats = catalog_state["assignments"].get(cat_id.upper(), set())
+                        if sku_id not in cats:
+                            ca = etree.SubElement(root, "category-assignment")
+                            ca.set("category-id", cat_id)
+                            ca.set("product-id", sku_id)
+
+                # Removals
+                cats = catalog_state["assignments"].get(cat_id.upper(), set())
+                for pid_in_xml in cats:
+                    if pid_in_xml not in skus_in_target:
                         ca = etree.SubElement(root, "category-assignment")
                         ca.set("category-id", cat_id)
-                        ca.set("product-id", sku_id)
-
-            # Removals
-            cats = catalog_state["assignments"].get(cat_id.upper(), set())
-            for pid_in_xml in cats:
-                if pid_in_xml not in skus_in_target:
-                    ca = etree.SubElement(root, "category-assignment")
-                    ca.set("category-id", cat_id)
-                    ca.set("product-id", pid_in_xml)
-                    ca.set("mode", "delete")
+                        ca.set("product-id", pid_in_xml)
+                        ca.set("mode", "delete")
 
         return etree.tostring(
             root, xml_declaration=True, encoding="UTF-8", pretty_print=True
