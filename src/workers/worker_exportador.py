@@ -17,6 +17,8 @@ from src.core.sync_engine import SyncEngine, SyncResult
 class ExportResult:
     pricebook: Optional[dict] = None      # GeradorEngine.run() dict; None if not requested
     catalog: Optional[SyncResult] = None  # SyncEngine.run() result; None if not requested
+    inventory_natura_xml: Optional[bytes] = None  # BRD-011: sempre que há grade Natura
+    inventory_avon_xml: Optional[bytes] = None    # BRD-011: sempre que há grade Avon
 
 
 class ExportadorWorker(QThread):
@@ -68,6 +70,25 @@ class ExportadorWorker(QThread):
 
                 engine = SyncEngine(progress_callback=cat_progress)
                 result.catalog = engine.run(self._excel_paths, self._cat_paths)
+
+            # BRD-011: Inventory (Natura e/ou Avon) — sempre que há grade
+            # carregada, independente de quais artefatos foram marcados. Se o
+            # Catálogo já rodou, reaproveita o parse dele (evita reler o
+            # Excel); senão, faz um parse dedicado só para isso.
+            if result.catalog is not None and not result.catalog.error:
+                result.inventory_natura_xml = result.catalog.inventory_natura_xml
+                result.inventory_avon_xml = result.catalog.inventory_avon_xml
+            elif self._excel_paths:
+                self.progress.emit(95, "Gerando arquivo(s) de Inventory…")
+
+                def inv_progress(p: int, m: str) -> None:
+                    if m.startswith(">"):
+                        self.progress.emit(95, m)
+
+                inv_engine = SyncEngine(progress_callback=inv_progress)
+                result.inventory_natura_xml, result.inventory_avon_xml = (
+                    inv_engine.build_inventories(self._excel_paths)
+                )
 
             self.finished.emit(result)
 

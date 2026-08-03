@@ -330,6 +330,32 @@ QPushButton:disabled {
     background-color: #a78bfa;
 }
 
+#btn_inv_natura {
+    background-color: #f59e0b;
+    color: #1a1a1a;
+    border: none;
+    font-weight: 600;
+    min-height: 38px;
+    border-radius: 6px;
+}
+
+#btn_inv_natura:hover {
+    background-color: #d97706;
+}
+
+#btn_inv_avon {
+    background-color: #c4b5fd;
+    color: #1a1a1a;
+    border: none;
+    font-weight: 600;
+    min-height: 38px;
+    border-radius: 6px;
+}
+
+#btn_inv_avon:hover {
+    background-color: #a78bfa;
+}
+
 #btn_secondary {
     background-color: #334155;
     color: #f1f5f9;
