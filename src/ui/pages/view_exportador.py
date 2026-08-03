@@ -371,11 +371,44 @@ class ExportadorView(QWidget):
         self._btn_dl_report.setFixedWidth(210)
         self._btn_dl_report.clicked.connect(self._save_report)
         dl_cat_row.addWidget(self._btn_dl_report)
+
         dl_cat_row.addStretch()
         cat_res_layout.addLayout(dl_cat_row)
 
         self._cat_result_widget.hide()
         layout.addWidget(self._cat_result_widget)
+
+        # ── Resultados — Inventory (BRD-011, independente de Pricebook/Catálogo) ──
+        self._inv_result_widget = QWidget()
+        inv_res_layout = QVBoxLayout(self._inv_result_widget)
+        inv_res_layout.setContentsMargins(0, 0, 0, 0)
+        inv_res_layout.setSpacing(8)
+
+        lbl_inv_res = QLabel("Inventory")
+        lbl_inv_res.setObjectName("label_section")
+        lbl_inv_res.setStyleSheet("color:#60a5fa; font-weight:700;")
+        inv_res_layout.addWidget(lbl_inv_res)
+
+        dl_inv_row = QHBoxLayout()
+        self._btn_dl_inv_nat = QPushButton("⬇  Salvar Inventory Natura XML")
+        self._btn_dl_inv_nat.setObjectName("btn_inv_natura")
+        self._btn_dl_inv_nat.setFixedWidth(230)
+        self._btn_dl_inv_nat.clicked.connect(self._save_inventory_natura)
+        self._btn_dl_inv_nat.hide()
+        dl_inv_row.addWidget(self._btn_dl_inv_nat)
+
+        self._btn_dl_inv_avn = QPushButton("⬇  Salvar Inventory Avon XML")
+        self._btn_dl_inv_avn.setObjectName("btn_inv_avon")
+        self._btn_dl_inv_avn.setFixedWidth(230)
+        self._btn_dl_inv_avn.clicked.connect(self._save_inventory_avon)
+        self._btn_dl_inv_avn.hide()
+        dl_inv_row.addWidget(self._btn_dl_inv_avn)
+
+        dl_inv_row.addStretch()
+        inv_res_layout.addLayout(dl_inv_row)
+
+        self._inv_result_widget.hide()
+        layout.addWidget(self._inv_result_widget)
 
         layout.addStretch()
 
@@ -490,6 +523,7 @@ class ExportadorView(QWidget):
         self._btn_run.setEnabled(False)
         self._pb_result_widget.hide()
         self._cat_result_widget.hide()
+        self._inv_result_widget.hide()
         self._warn_lbl.hide()
         self._progress_bar.setValue(0)
         self._progress_bar.show()
@@ -598,6 +632,13 @@ class ExportadorView(QWidget):
                     f"Catálogo gerado: {s.get('deltas', 0)} modificações.",
                 )
 
+        # ── Inventory result (BRD-011) — independente de Pricebook/Catálogo ─
+        has_nat_inv = bool(result.inventory_natura_xml)
+        has_avn_inv = bool(result.inventory_avon_xml)
+        self._btn_dl_inv_nat.setVisible(has_nat_inv)
+        self._btn_dl_inv_avn.setVisible(has_avn_inv)
+        self._inv_result_widget.setVisible(has_nat_inv or has_avn_inv)
+
         if p := self.parent():
             if hasattr(p, "show_status"):
                 parts = []
@@ -648,6 +689,36 @@ class ExportadorView(QWidget):
                 f.write(xml)
             QMessageBox.information(self, "Salvo", f"Catálogo salvo em:\n{path}")
 
+    def _save_inventory_natura(self) -> None:
+        if not self._result:
+            return
+        xml = self._result.inventory_natura_xml
+        if not xml:
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Salvar Inventory Natura XML", "INVENTORY_NATURA.xml", "XML (*.xml)"
+        )
+        if path:
+            with open(path, "wb") as f:
+                f.write(xml)
+            QMessageBox.information(self, "Salvo", f"Inventory Natura salvo em:\n{path}")
+
+    def _save_inventory_avon(self) -> None:
+        if not self._result:
+            return
+        xml = self._result.inventory_avon_xml
+        if not xml:
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Salvar Inventory Avon XML", "INVENTORY_AVON.xml", "XML (*.xml)"
+        )
+        if path:
+            with open(path, "wb") as f:
+                f.write(xml)
+            QMessageBox.information(self, "Salvo", f"Inventory Avon salvo em:\n{path}")
+
     def _save_report(self) -> None:
         if not self._result or not self._result.catalog or not self._result.catalog.report:
             QMessageBox.warning(self, "Relatório", "Nenhum relatório disponível.")
@@ -676,6 +747,9 @@ class ExportadorView(QWidget):
         self._warn_lbl.hide()
         self._pb_result_widget.hide()
         self._cat_result_widget.hide()
+        self._inv_result_widget.hide()
+        self._btn_dl_inv_nat.hide()
+        self._btn_dl_inv_avn.hide()
         self._btn_run.setEnabled(True)
         self._chk_pb.setChecked(True)
         self._chk_cat.setChecked(False)

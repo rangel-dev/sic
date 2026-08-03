@@ -18,6 +18,8 @@ from lxml import etree
 from src.core.excel_reader import dominant_brand, parse_price
 
 CATALOG_NS = "http://www.demandware.com/xml/impex/catalog/2006-10-31"
+INVENTORY_NS = "http://www.demandware.com/xml/impex/inventory/2007-05-31"
+INVENTORY_LIST_ID = "cb-brazil_inventory"
 SKU_PATTERN = re.compile(r"^(NAT|AVN)BRA-", re.IGNORECASE)
 MIN_FILE_AGE_SECONDS = 600  # 10-minute golden rule
 
@@ -85,6 +87,8 @@ class SyncResult:
     error: Optional[str] = None
     warnings: list[str] = field(default_factory=list)
     report: list[dict] = field(default_factory=list)
+    inventory_natura_xml: Optional[bytes] = None
+    inventory_avon_xml: Optional[bytes] = None
 
 
 class SyncEngine:
@@ -116,6 +120,13 @@ class SyncEngine:
                 result.error = "Nenhum dado encontrado nas planilhas (Listas ou Grade)."
                 return result
 
+            # BRD-011: Inventory (Natura e/ou Avon) — reaproveita o grade_map
+            # já parseado acima, sem reler o Excel (evita duplicar o parse
+            # quando o worker também roda o Catálogo).
+            result.inventory_natura_xml, result.inventory_avon_xml = (
+                self._build_inventories_from_grade(grade_map)
+            )
+
             # Parse current catalog XMLs
             self._progress(40, "Analisando Catálogos Master Data…")
             catalog_state, catalog_id = self._parse_catalogs(catalog_xml_paths)
@@ -144,6 +155,24 @@ class SyncEngine:
             result.error = f"Erro crítico: {str(exc)}"
 
         return result
+
+    # ── Inventory (BRD-011) ─────────────────────────────────────────────────
+    def build_inventories(self, excel_paths: list[str]) -> tuple[Optional[bytes], Optional[bytes]]:
+        """Gera o(s) Inventory XML (Natura e/ou Avon) a partir dos SKUs
+        encontrados na aba GRADE. Independente de Pricebook/Catálogo estarem
+        selecionados — só depende da Grade ter sido carregada. Faz seu
+        próprio parse do Excel: usar apenas quando nenhum outro parse
+        (Catálogo) já rodou nesta execução, para não reler o arquivo à toa."""
+        _, grade_map, _, _ = self._parse_excel_files(excel_paths)
+        return self._build_inventories_from_grade(grade_map)
+
+    def _build_inventories_from_grade(self, grade_map: dict) -> tuple[Optional[bytes], Optional[bytes]]:
+        natura_skus = {pid for pid in grade_map if pid.startswith("NATBRA-")}
+        avon_skus = {pid for pid in grade_map if pid.startswith("AVNBRA-")}
+
+        nat_xml = self._generate_inventory_xml(natura_skus) if natura_skus else None
+        avn_xml = self._generate_inventory_xml(avon_skus) if avon_skus else None
+        return nat_xml, avn_xml
 
     # ── File age check ────────────────────────────────────────────────────
     def _check_file_age(self, path: str) -> Optional[str]:
@@ -712,6 +741,33 @@ class SyncEngine:
                         ca.set("category-id", cat_id)
                         ca.set("product-id", pid_in_xml)
                         ca.set("mode", "delete")
+
+        return etree.tostring(
+            root, xml_declaration=True, encoding="UTF-8", pretty_print=True
+        )
+
+    # ── Inventory XML Generation (BRD-011) ────────────────────────────────
+    def _generate_inventory_xml(self, skus: set[str]) -> bytes:
+        """Gera o XML de Inventory (schema impex/inventory/2007-05-31) para
+        um conjunto de SKUs de uma marca. Mesmo list-id fixo para Natura e
+        Avon (loja combinada "Minha Loja") — só os produtos mudam. allocation
+        e perpetual são sempre fixos (9999 / false), sem lógica de estoque
+        real, reproduzindo o padrão do arquivo de referência do Salesforce."""
+        root = etree.Element("inventory", xmlns=INVENTORY_NS)
+        list_el = etree.SubElement(root, "inventory-list")
+        header_el = etree.SubElement(list_el, "header")
+        header_el.set("list-id", INVENTORY_LIST_ID)
+        instock_el = etree.SubElement(header_el, "default-instock")
+        instock_el.text = "true"
+
+        records_el = etree.SubElement(list_el, "records")
+        for pid in sorted(skus):
+            record_el = etree.SubElement(records_el, "record")
+            record_el.set("product-id", pid)
+            alloc_el = etree.SubElement(record_el, "allocation")
+            alloc_el.text = "9999"
+            perp_el = etree.SubElement(record_el, "perpetual")
+            perp_el.text = "false"
 
         return etree.tostring(
             root, xml_declaration=True, encoding="UTF-8", pretty_print=True
