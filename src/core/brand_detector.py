@@ -6,8 +6,49 @@ Supports multi-brand detection within a single file or across multiple files.
 
 import re
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Set
+
+
+# ── Brazil ID guard (BRD — incidente Chile) ─────────────────────────────────
+# Allowlist exata dos catalog-id Brasil, confirmada em produção (tela de
+# Catálogos do Salesforce Business Manager). Usar match exato para catálogo:
+# é dado real, mais seguro que qualquer heurística por substring.
+BRAZIL_CATALOG_IDS: dict[str, str] = {
+    "natura-br-storefront-catalog": "natura",
+    "avon-br-storefront-catalog": "avon",
+    "cb-br-storefront-catalog": "ml",
+}
+
+# Marcas Natura/Avon/CB fora do Brasil observadas na mesma instância
+# Salesforce (grupo Natura&Co) — usadas só para popular `country_hint` na
+# mensagem de erro, nunca para decidir aprovação/rejeição.
+_COUNTRY_HINTS: dict[str, str] = {
+    "cl": "Chile", "ar": "Argentina", "mx": "México",
+    "co": "Colômbia", "pe": "Peru",
+    "chile": "Chile", "argentina": "Argentina", "mexico": "México",
+    "colombia": "Colômbia", "peru": "Peru",
+}
+
+_BRAND_MARKERS: dict[str, tuple[str, ...]] = {
+    "natura": ("natura",),
+    "avon": ("avon",),
+    "ml": ("cb-br", "cbbrazil", "cbcom", "br-cb"),
+}
+
+
+@dataclass(frozen=True)
+class BrazilIdCheck:
+    """Resultado da checagem 'este ID pertence a uma loja Brasil?'."""
+    raw_id: str
+    brand: Optional[str]           # "natura" | "avon" | "ml" | None
+    is_brazil: bool
+    country_hint: Optional[str] = None  # ex. "Chile", best-effort
+
+    @property
+    def ok(self) -> bool:
+        return self.brand is not None and self.is_brazil
 
 
 class BrandDetector:
@@ -222,3 +263,73 @@ class BrandDetector:
         # Sort to ensure consistent property values for QSS matching
         sorted_brands = sorted(list(brands))
         return "_".join(sorted_brands)
+
+    # ── Brazil ID guard (BRD — incidente Chile) ─────────────────────────────
+    # Funções aditivas: não alteram detect_single/_detect_xml_set/etc. acima,
+    # que continuam sendo usadas só para exibição/agrupamento cosmético. Estas
+    # aqui são a checagem estrita usada para BLOQUEAR execução.
+    @staticmethod
+    def check_brazil_id(raw_id: str, *, strict_catalog: bool = False) -> "BrazilIdCheck":
+        """
+        Checa se `raw_id` (catalog-id ou pricebook-id) pertence a uma loja
+        Brasil (Natura/Avon/CB).
+
+        strict_catalog=True: match exato contra o allowlist real de
+        catalog-id de produção (BRAZIL_CATALOG_IDS) — usar para catalog-id.
+        strict_catalog=False (default): heurística marca + marcador de
+        Brasil ("brazil" ou token "-br") — usar para pricebook-id, que ainda
+        não tem um allowlist exato confirmado.
+        """
+        cid = (raw_id or "").strip().lower()
+        country_hint = None
+        for token, name in _COUNTRY_HINTS.items():
+            if re.search(rf"(^|-){re.escape(token)}(-|$)", cid) or token in cid:
+                country_hint = name
+                break
+
+        if strict_catalog:
+            brand = BRAZIL_CATALOG_IDS.get(cid)
+            return BrazilIdCheck(raw_id=raw_id, brand=brand, is_brazil=brand is not None,
+                                  country_hint=None if brand else country_hint)
+
+        brand = None
+        for b, markers in _BRAND_MARKERS.items():
+            if any(m in cid for m in markers):
+                brand = b
+                break
+
+        is_brazil = bool(re.search(r"(^|-)br(-|$)", cid)) or "brazil" in cid
+        return BrazilIdCheck(raw_id=raw_id, brand=brand, is_brazil=is_brazil,
+                              country_hint=None if (brand and is_brazil) else country_hint)
+
+    @staticmethod
+    def check_catalog_file(path: str) -> "BrazilIdCheck":
+        """Lê o catalog-id do elemento raiz e valida contra o allowlist Brasil."""
+        raw_id = ""
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                header = f.read(1024)
+            m = re.search(r'catalog-id=["\']([^"\']+)["\']', header, re.IGNORECASE)
+            if m:
+                raw_id = m.group(1)
+        except Exception:
+            pass
+        return BrandDetector.check_brazil_id(raw_id, strict_catalog=True)
+
+    @staticmethod
+    def check_pricebook_file(path: str) -> list["BrazilIdCheck"]:
+        """Um BrazilIdCheck por cada pricebook-id distinto encontrado no arquivo."""
+        results: list[BrazilIdCheck] = []
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+            seen: set[str] = set()
+            for m in re.finditer(r'pricebook-id=["\']([^"\']+)["\']', content, re.IGNORECASE):
+                raw_id = m.group(1)
+                if raw_id in seen:
+                    continue
+                seen.add(raw_id)
+                results.append(BrandDetector.check_brazil_id(raw_id, strict_catalog=False))
+        except Exception:
+            pass
+        return results

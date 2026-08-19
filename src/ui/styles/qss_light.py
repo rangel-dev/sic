@@ -678,4 +678,20 @@ QLabel#cert_status_waiting {
     font-size: 11px;
     font-style: italic;
 }
+
+/* ============================================================
+   MESSAGE BOX / DIALOGS
+   ============================================================ */
+QMessageBox {
+    background-color: #ffffff;
+}
+
+QMessageBox QLabel {
+    color: #1a1a1a;
+    min-width: 320px;
+}
+
+QMessageBox QPushButton {
+    min-width: 80px;
+}
 """

@@ -31,7 +31,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.ui.components.base_widgets import Divider, DropZone, SectionHeader, StatPill
+from src.ui.components.base_widgets import Divider, DropZone, SectionHeader, StatPill, show_rejection_dialog
+from src.core.brand_detector import BrandDetector
 from src.core.excel_reader import find_grade_sheet_name, dominant_brand
 from src.core.history_engine import HistoryEngine
 from src.core.sync_engine import SyncResult
@@ -189,6 +190,8 @@ class ExportadorView(QWidget):
             "Arraste o Pricebook XML atual (base de comparação)",
             "XML (*.xml)",
         )
+        self._dz_base.set_validator(self._validate_base_pb_path)
+        self._dz_base.file_rejected.connect(self._on_file_rejected)
         delta_inner.addWidget(self._dz_base)
         self._delta_widget.hide()
         pb_opt_layout.addWidget(self._delta_widget)
@@ -217,13 +220,16 @@ class ExportadorView(QWidget):
         cat_opt_layout.addWidget(lbl_xml)
 
         self._dz_catalog = DropZone(
-            "Arraste os XMLs de Catálogo (Natura, Avon, Minha Loja)",
+            "Arraste os XMLs de Catálogo (Natura, Avon)",
             "XML (*.xml)",
             multiple=True,
         )
         self._dz_catalog.setToolTip(
-            "Regra de Ouro: os XMLs devem ter sido exportados há mais de 10 minutos."
+            "Regra de Ouro: os XMLs devem ter sido exportados há mais de 10 minutos.\n"
+            "Não aceita catálogo Minha Loja (CB) — use a tela Auditor para isso."
         )
+        self._dz_catalog.set_validator(self._validate_catalog_paths)
+        self._dz_catalog.file_rejected.connect(self._on_file_rejected)
         cat_opt_layout.addWidget(self._dz_catalog)
         self._cat_options.hide()
         art_layout.addWidget(self._cat_options)
@@ -485,6 +491,61 @@ class ExportadorView(QWidget):
     def _on_mode_changed(self) -> None:
         self._delta_widget.setVisible(self._radio_delta.isChecked())
 
+    # ── Validação de país (BRD — incidente Chile) ───────────────────────────
+    @staticmethod
+    def _format_rejection(check_path: str, check) -> str:
+        name = Path(check_path).name
+        if check.country_hint:
+            local = f'Parece pertencer a: <b>{check.country_hint}</b>.'
+        else:
+            local = ('País/região não identificado, mas o ID não contém '
+                      'marcador de Brasil ("-br" ou "brazil").')
+        return (
+            "Este arquivo não corresponde a uma loja Brasil.\n\n"
+            f"<b>Arquivo:</b> {name}\n"
+            f'<b>ID encontrado:</b> "{check.raw_id}"\n'
+            f"{local}\n\n"
+            "<b>Esperado:</b> um Catálogo/Pricebook Natura BR, Avon BR ou Minha Loja BR "
+            "(ex.: natura-br-storefront-catalog, avon-br-storefront-catalog, "
+            "cb-br-storefront-catalog).\n\n"
+            "Verifique se você selecionou o arquivo correto antes de tentar novamente."
+        )
+
+    # Catálogo Minha Loja (CB) não é suportado aqui: o motor de sincronização
+    # (SyncEngine._consolidate_brand) só reconhece Natura/Avon — um CB nunca
+    # seria classificado corretamente. Minha Loja é tratado só no Auditor.
+    _CATALOG_BRANDS_SUPORTADOS = ("natura", "avon")
+
+    @staticmethod
+    def _format_brand_not_supported(check_path: str, check) -> str:
+        name = Path(check_path).name
+        return (
+            f"<b>Arquivo:</b> {name}\n"
+            f'<b>ID encontrado:</b> "{check.raw_id}"\n\n'
+            "O Exportador não aceita catálogos <b>Minha Loja (CB)</b> — este módulo "
+            "gera e sincroniza apenas Natura BR e Avon BR.\n\n"
+            "Catálogos Minha Loja são usados na tela <b>Auditor</b>."
+        )
+
+    def _validate_catalog_paths(self, paths: list[str]) -> Optional[str]:
+        for path in paths:
+            check = BrandDetector.check_catalog_file(path)
+            if not check.ok:
+                return self._format_rejection(path, check)
+            if check.brand not in self._CATALOG_BRANDS_SUPORTADOS:
+                return self._format_brand_not_supported(path, check)
+        return None
+
+    def _validate_base_pb_path(self, paths: list[str]) -> Optional[str]:
+        for path in paths:
+            for check in BrandDetector.check_pricebook_file(path):
+                if not check.ok:
+                    return self._format_rejection(path, check)
+        return None
+
+    def _on_file_rejected(self, message: str) -> None:
+        show_rejection_dialog(self, message, header="Este arquivo foi recusado")
+
     # ── Run ───────────────────────────────────────────────────────────────
     def _run(self) -> None:
         gen_pb  = self._chk_pb.isChecked()
@@ -519,6 +580,22 @@ class ExportadorView(QWidget):
         mode     = "delta" if self._radio_delta.isChecked() else "full"
         base_xml = self._dz_base.file_path if mode == "delta" else None
         cat_xmls = self._dz_catalog.file_paths if gen_cat else []
+
+        # Defesa em profundidade (BRD — incidente Chile): re-checa mesmo que
+        # já validado no drop, antes de instanciar o worker.
+        for path in cat_xmls:
+            check = BrandDetector.check_catalog_file(path)
+            if not check.ok:
+                self._on_file_rejected(self._format_rejection(path, check))
+                return
+            if check.brand not in self._CATALOG_BRANDS_SUPORTADOS:
+                self._on_file_rejected(self._format_brand_not_supported(path, check))
+                return
+        if base_xml:
+            for check in BrandDetector.check_pricebook_file(base_xml):
+                if not check.ok:
+                    self._on_file_rejected(self._format_rejection(base_xml, check))
+                    return
 
         self._btn_run.setEnabled(False)
         self._pb_result_widget.hide()

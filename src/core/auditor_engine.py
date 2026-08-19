@@ -19,7 +19,10 @@ from lxml import etree
 from src.core.auditor.integrity import verify_core_integrity
 from src.core.auditor.parity_rules_v12 import execute_parity_rules
 from src.core.auditor.kit_validation import GradeIndex, _so_numeros
+from src.core.brand_detector import BrandDetector
 from src.core.excel_reader import parse_price
+
+_BRAND_DISPLAY = {"natura": "Natura", "avon": "Avon", "ml": "ML"}
 
 # ─── Namespaces ───────────────────────────────────────────────────────────────
 PRICEBOOK_NS = "http://www.demandware.com/xml/impex/pricebook/2006-10-31"
@@ -334,19 +337,11 @@ class AuditorEngine:
         return "Natura" if nat >= avn else "Avon"
 
     def _get_catalog_brand_quick(self, path: str) -> str:
-        """Lê o início do XML para detectar a marca sem parsing total (Gold Rule)."""
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                head = f.read(8192).lower()
-                m = re.search(r'catalog-id="([^"]+)"', head)
-                if m:
-                    cid = m.group(1)
-                    if any(x in cid for x in ["cb-br", "cbbrazil", "cbcom"]): return "ML"
-                    if "natura" in cid: return "Natura"
-                    if "avon" in cid: return "Avon"
-        except:
-            pass
-        return "Desconhecida"
+        """Lê o início do XML para detectar a marca sem parsing total (Gold Rule).
+        Usa o checador central (BrandDetector) — mesma regra Brasil-only usada
+        para bloquear execução (BRD — incidente Chile), consolidada aqui."""
+        check = BrandDetector.check_catalog_file(path)
+        return _BRAND_DISPLAY.get(check.brand or "", "Desconhecida")
 
     def _find_grade_sheet(self, wb):
         """Busca a aba de grade seguindo a prioridade do legado (auditor.js:31)."""
@@ -508,14 +503,11 @@ class AuditorEngine:
                 
                 pb_id = (header.get("pricebook-id") or "").lower()
                 
-                # Identifica a marca do Pricebook (Regra flexível do legado)
-                pb_brand = "Desconhecido"
-                if any(k in pb_id for k in ["cb-br", "cbbrazil", "cbcom", "br-cb"]):
-                    pb_brand = "ML"
-                elif "natura" in pb_id and any(m in pb_id for m in ["brazil", "-br"]):
-                    pb_brand = "Natura"
-                elif "avon" in pb_id and any(m in pb_id for m in ["brazil", "-br"]):
-                    pb_brand = "Avon"
+                # Identifica a marca do Pricebook — consolidado no checador
+                # central (BrandDetector), mesma regra Brasil-only usada para
+                # bloquear execução (BRD — incidente Chile).
+                _pb_check = BrandDetector.check_brazil_id(pb_id, strict_catalog=False)
+                pb_brand = _BRAND_DISPLAY.get(_pb_check.brand or "", "Desconhecido") if _pb_check.ok else "Desconhecido"
                 
                 if pb_brand == "Desconhecido":
                     continue
@@ -577,16 +569,13 @@ class AuditorEngine:
             primary_skus  = set()
             cat_id_str = (root.get("catalog-id") or "").lower()
 
-            # Classificação do catálogo por substring (Paridade V11.6 - ID + Filename)
-            fname = Path(path).name.lower()
-            if any(k in cat_id_str for k in ["cb-br", "cbbrazil", "cbcom", "br-cb"]) or "cb" in fname:
-                brand_cat = "ML"
-            elif "natura" in cat_id_str or "natura" in fname:
-                brand_cat = "Natura"
-            elif "avon" in cat_id_str or "avon" in fname:
-                brand_cat = "Avon"
-            else:
-                brand_cat = "Desconhecido"
+            # Classificação do catálogo — consolidado no checador central
+            # (BrandDetector), allowlist exato Brasil (BRD — incidente
+            # Chile). O fallback por nome de arquivo (Paridade V11.6) foi
+            # removido deliberadamente: um catálogo de outro país renomeado
+            # (ex. "catalog_natura.xml") não deve mais passar despercebido.
+            _cat_check = BrandDetector.check_brazil_id(cat_id_str, strict_catalog=True)
+            brand_cat = _BRAND_DISPLAY.get(_cat_check.brand or "", "Desconhecido")
 
             # Função helper espelho da getTagText (JS) - Busca profunda e ignorando strict namespaces
             def get_tag_text(node, tag: str) -> Optional[str]:

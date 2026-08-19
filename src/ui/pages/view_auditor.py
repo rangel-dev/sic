@@ -41,7 +41,7 @@ from src.core.auditor_engine import AuditResult, ERROR_META
 from src.core.ai_agent import AiAgent
 from src.core.brand_detector import BrandDetector
 from src.core.auditor.kit_validation import KIT_ERROR_META
-from src.ui.components.base_widgets import Divider, DropZone, ErrorCard, SectionHeader
+from src.ui.components.base_widgets import Divider, DropZone, ErrorCard, SectionHeader, show_rejection_dialog
 from src.workers.worker_auditor import AuditorWorker
 from src.core.history_engine import HistoryEngine
 from src.core.utils import get_unique_path
@@ -520,15 +520,43 @@ class AuditorView(QWidget):
         """Registra funções validadoras e conecta o sinal de rejeição em cada DropZone."""
         self._dz_cat.set_validator(self._validate_cat_paths)
         self._dz_excel.set_validator(self._validate_excel_paths)
+        self._dz_pb.set_validator(self._validate_pb_paths)
         self._dz_cat.file_rejected.connect(self._on_file_rejected)
         self._dz_excel.file_rejected.connect(self._on_file_rejected)
+        self._dz_pb.file_rejected.connect(self._on_file_rejected)
+
+    @staticmethod
+    def _format_country_rejection(path: str, check) -> str:
+        """Mensagem de rejeição por país incorreto (BRD — incidente Chile)."""
+        name = Path(path).name
+        if check.country_hint:
+            local = f'Parece pertencer a: <b>{check.country_hint}</b>.'
+        else:
+            local = ('País/região não identificado, mas o ID não contém '
+                      'marcador de Brasil ("-br" ou "brazil").')
+        return (
+            "Este arquivo não corresponde a uma loja Brasil.\n\n"
+            f"<b>Arquivo:</b> {name}\n"
+            f'<b>ID encontrado:</b> "{check.raw_id}"\n'
+            f"{local}\n\n"
+            "<b>Esperado:</b> um Catálogo/Pricebook Natura BR, Avon BR ou Minha Loja BR "
+            "(ex.: natura-br-storefront-catalog, avon-br-storefront-catalog, "
+            "cb-br-storefront-catalog).\n\n"
+            "Verifique se você selecionou o arquivo correto antes de tentar novamente."
+        )
 
     def _validate_cat_paths(self, paths: list[str]) -> "Optional[str]":
         """
         Valida a lista proposta de catálogos antes de qualquer commit no DropZone.
-        Retorna mensagem de erro se houver duplicidade de marca; None se ok.
+        Retorna mensagem de erro se o país estiver incorreto ou houver
+        duplicidade de marca; None se ok.
         (A checagem de quantidade exata de 3 fica reservada para o _run().)
         """
+        for path in paths:
+            check = BrandDetector.check_catalog_file(path)
+            if not check.ok:
+                return self._format_country_rejection(path, check)
+
         brand_map: dict[str, str] = {}
         for path in paths:
             brands = BrandDetector.detect_single(path)
@@ -543,6 +571,15 @@ class AuditorView(QWidget):
                     f"Por favor, verifique os catálogos."
                 )
             brand_map[brand_key] = path
+        return None
+
+    def _validate_pb_paths(self, paths: list[str]) -> "Optional[str]":
+        """Valida o Pricebook proposto (BRD — incidente Chile): rejeita se algum
+        pricebook-id do arquivo não pertencer a uma loja Brasil."""
+        for path in paths:
+            for check in BrandDetector.check_pricebook_file(path):
+                if not check.ok:
+                    return self._format_country_rejection(path, check)
         return None
 
     def _validate_excel_paths(self, paths: list[str]) -> "Optional[str]":
@@ -567,8 +604,8 @@ class AuditorView(QWidget):
         return None
 
     def _on_file_rejected(self, message: str) -> None:
-        """Exibe um aviso quando o DropZone rejeita um arquivo por violação de unicidade."""
-        QMessageBox.warning(self, "Arquivo Recusado", message)
+        """Exibe um aviso quando o DropZone rejeita um arquivo (país incorreto ou violação de unicidade)."""
+        show_rejection_dialog(self, message, header="Este arquivo foi recusado")
 
     # ── Filter pills ──────────────────────────────────────────────────────
     def _make_filter_pill(self, text: str, key: str, checked: bool) -> QPushButton:
@@ -745,6 +782,19 @@ class AuditorView(QWidget):
                 "Selecione os seguintes arquivos antes de executar:\n• " + "\n• ".join(missing)
             )
             return
+
+        # Trava 0: País/loja correta (BRD — incidente Chile). Defesa em
+        # profundidade — re-checa mesmo que já validado no drop.
+        for path in cat_paths:
+            check = BrandDetector.check_catalog_file(path)
+            if not check.ok:
+                self._on_file_rejected(self._format_country_rejection(path, check))
+                return
+        if pb_path:
+            for check in BrandDetector.check_pricebook_file(pb_path):
+                if not check.ok:
+                    self._on_file_rejected(self._format_country_rejection(pb_path, check))
+                    return
 
         # Trava 1: Quantidade exata de catálogos — só na auditoria completa.
         # No modo só-kit qualquer quantidade (1+) é aceita.
