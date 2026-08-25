@@ -2,7 +2,7 @@
 Executive Nexus Dashboard — Home View
 Modern, data-driven landing page for SIC.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtWidgets import (
     QHBoxLayout, 
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from src.ui.components.base_widgets import Divider, PulseStatus, KpiWidget
 from src.core.history_engine import HistoryEngine
 from src.core.version import VERSION
+from src.core import telemetry
 
 # Mapa de módulo → (ícone, índice de navegação, cor do card)
 _MODULE_NAV = {
@@ -86,8 +87,8 @@ class HomeView(QWidget):
         kpi_row.setSpacing(20)
 
         self.kpi_total = KpiWidget("Operações Realizadas", "0", "📊")
-        self.kpi_brands = KpiWidget("Marcas Ativas", "2", "🏢")
-        self.kpi_status = KpiWidget("Saúde do Motor", "100%", "⚡")
+        self.kpi_brands = KpiWidget("Marcas Ativas", "0", "🏢")
+        self.kpi_status = KpiWidget("Módulos Ativos (7 dias)", "0", "🧩")
 
         kpi_row.addWidget(self.kpi_total)
         kpi_row.addWidget(self.kpi_brands)
@@ -200,11 +201,41 @@ class HomeView(QWidget):
         if hour < 18: return "Boa tarde"
         return "Boa noite"
 
+    def _compute_kpis(self, local_entries: list[dict]) -> tuple[int, int, int]:
+        """(operações, marcas ativas, módulos ativos em 7 dias). Usa
+        telemetria de equipe (Tarefa 3) se a pasta compartilhada do Drive
+        estiver configurada; senão cai no history.db local desta instalação."""
+        if telemetry.get_shared_folder_path():
+            kpis = telemetry.compute_team_kpis(telemetry.read_team_events())
+            return kpis["operations"], kpis["brands_active"], kpis["modules_active_7d"]
+
+        total = len(local_entries)
+        brands_active = len({e.get("brand") for e in local_entries if e.get("brand")})
+
+        cutoff = datetime.now() - timedelta(days=7)
+        modules_7d = set()
+        for e in local_entries:
+            ts, module = e.get("timestamp"), e.get("module")
+            if not ts or not module:
+                continue
+            try:
+                when = datetime.fromisoformat(ts)
+            except ValueError:
+                continue
+            if when >= cutoff:
+                modules_7d.add(module)
+
+        return total, brands_active, len(modules_7d)
+
     def refresh_stats(self):
         """Pulls real data from engines."""
         try:
             entries = HistoryEngine.get_entries()
-            self.kpi_total.set_value(len(entries))
+
+            total, brands_active, modules_7d = self._compute_kpis(entries)
+            self.kpi_total.set_value(total)
+            self.kpi_brands.set_value(brands_active)
+            self.kpi_status.set_value(modules_7d)
 
             # ── Atividade Recente (Timeline) ─────────────────────────
             for i in reversed(range(self.activity_container.count())):

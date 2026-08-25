@@ -3,6 +3,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from src.core import telemetry
+
 DB_NAME = "history.db"
 
 class HistoryEngine:
@@ -43,6 +45,10 @@ class HistoryEngine:
                 (timestamp, module, brand, action, details)
             )
             conn.commit()
+
+        # Telemetria de equipe (Tarefa 3) — melhor-esforço, nunca lança
+        # exceção; grava só se a pasta compartilhada estiver configurada.
+        telemetry.write_event(module, brand, action)
 
     @staticmethod
     def get_entries(
