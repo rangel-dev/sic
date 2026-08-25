@@ -527,13 +527,44 @@ class ExportadorView(QWidget):
             "Catálogos Minha Loja são usados na tela <b>Auditor</b>."
         )
 
+    # Trava grade × catálogo (pedido do gestor): o catálogo só pode ser de uma
+    # marca que já tem grade carregada, sem duplicidade e sem passar de 2
+    # (mesmo limite já aplicado à grade em _on_excel_selected).
     def _validate_catalog_paths(self, paths: list[str]) -> Optional[str]:
+        if len(paths) > 2:
+            return ("Insira no máximo <b>dois catálogos</b>: um Natura e um Avon "
+                    "(máximo um por marca).")
+
+        grade_brands = {b for b in self._file_brands.values() if b}
+        brand_map: dict[str, str] = {}
         for path in paths:
             check = BrandDetector.check_catalog_file(path)
             if not check.ok:
                 return self._format_rejection(path, check)
             if check.brand not in self._CATALOG_BRANDS_SUPORTADOS:
                 return self._format_brand_not_supported(path, check)
+
+            if check.brand in brand_map:
+                brand_display = BRAND_LABELS.get(check.brand, check.brand.capitalize())
+                return (
+                    f"Erro de Unicidade: Foram detectados dois catálogos da mesma marca "
+                    f"({brand_display}).\n\n"
+                    f"• {Path(brand_map[check.brand]).name}\n"
+                    f"• {Path(path).name}\n\n"
+                    "Insira no máximo um catálogo por marca."
+                )
+            brand_map[check.brand] = path
+
+            # Só compara com a grade se já houver marca(s) de grade detectada(s)
+            # — evita travar quem solta o catálogo antes da grade (a checagem
+            # completa acontece de qualquer forma em _run()).
+            if grade_brands and check.brand not in grade_brands:
+                brand_display = BRAND_LABELS.get(check.brand, check.brand.capitalize())
+                return (
+                    f"O catálogo é da marca <b>{brand_display}</b>, mas não há "
+                    f"nenhuma grade <b>{brand_display}</b> carregada.\n\n"
+                    "A marca do catálogo precisa corresponder à marca da grade."
+                )
         return None
 
     def _validate_base_pb_path(self, paths: list[str]) -> Optional[str]:
@@ -583,6 +614,7 @@ class ExportadorView(QWidget):
 
         # Defesa em profundidade (BRD — incidente Chile): re-checa mesmo que
         # já validado no drop, antes de instanciar o worker.
+        cat_brands: set[str] = set()
         for path in cat_xmls:
             check = BrandDetector.check_catalog_file(path)
             if not check.ok:
@@ -590,6 +622,29 @@ class ExportadorView(QWidget):
                 return
             if check.brand not in self._CATALOG_BRANDS_SUPORTADOS:
                 self._on_file_rejected(self._format_brand_not_supported(path, check))
+                return
+            cat_brands.add(check.brand)
+
+        # Trava grade × catálogo (pedido do gestor): a checagem no drop
+        # (_validate_catalog_paths) só bloqueia se a grade já existia na hora
+        # — aqui é a garantia final de que as marcas batem 1:1 antes de
+        # gerar/publicar qualquer coisa.
+        if gen_cat:
+            grade_brands = {self._file_brands[p] for p in excel_paths}
+            if cat_brands != grade_brands:
+                faltando = grade_brands - cat_brands
+                sobrando = cat_brands - grade_brands
+                partes = []
+                if faltando:
+                    nomes = ", ".join(BRAND_LABELS.get(b, b.capitalize()) for b in sorted(faltando))
+                    partes.append(f"falta catálogo de: <b>{nomes}</b>")
+                if sobrando:
+                    nomes = ", ".join(BRAND_LABELS.get(b, b.capitalize()) for b in sorted(sobrando))
+                    partes.append(f"catálogo de marca sem grade correspondente: <b>{nomes}</b>")
+                self._on_file_rejected(
+                    "A marca da grade e do catálogo precisa corresponder — "
+                    + "; ".join(partes) + "."
+                )
                 return
         if base_xml:
             for check in BrandDetector.check_pricebook_file(base_xml):
