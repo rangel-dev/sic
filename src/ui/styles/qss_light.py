@@ -587,6 +587,16 @@ QLabel {
     font-size: 12px;
 }
 
+#label_hint {
+    color: #9ca3af;
+    font-size: 12px;
+    font-style: italic;
+}
+
+#label_accent {
+    color: #3b82f6;
+}
+
 #label_stat_value {
     font-size: 36px;
     font-weight: 700;
@@ -693,5 +703,45 @@ QMessageBox QLabel {
 
 QMessageBox QPushButton {
     min-width: 80px;
+}
+
+/* ============================================================
+   FRAMES / DIVIDERS
+   ============================================================ */
+#divider {
+    background-color: #e5e7eb;
+    max-height: 1px;
+    min-height: 1px;
+    border: none;
+}
+
+#divider_v {
+    background-color: #e5e7eb;
+    max-width: 1px;
+    min-width: 1px;
+    border: none;
+}
+
+/* ============================================================
+   BADGES
+   ============================================================ */
+#badge_ok {
+    background-color: #d1fae5;
+    color: #065f46;
+    border: 1px solid #6ee7b7;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+#badge_accent {
+    background-color: #dbeafe;
+    color: #1e40af;
+    border: 1px solid #93c5fd;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 700;
 }
 """
