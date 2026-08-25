@@ -69,14 +69,16 @@ class HomeView(QWidget):
         header.addWidget(PulseStatus())
         
         status_lbl = QLabel("Sistemas Prontos")
-        status_lbl.setStyleSheet("font-size: 12px; color: #4CAF50; font-weight: 600; text-transform: uppercase;")
+        status_lbl.setObjectName("label_success")
+        status_lbl.setStyleSheet("font-size: 12px; font-weight: 600; text-transform: uppercase;")
         header.addWidget(status_lbl)
         
         header.addStretch()
         self.main_layout.addLayout(header)
 
         sub_header = QLabel(f"Bem-vindo ao centro de comando SIC  ·  Versão {VERSION}")
-        sub_header.setStyleSheet("font-size: 13px; color: #777; margin-bottom: 30px;")
+        sub_header.setObjectName("label_muted")
+        sub_header.setStyleSheet("font-size: 13px; margin-bottom: 30px;")
         self.main_layout.addWidget(sub_header)
 
         # ─── KPI ROW ──────────────────────────────────────────────────────────
@@ -126,8 +128,9 @@ class HomeView(QWidget):
     def _build_news_section(self):
         news_header = QHBoxLayout()
         news_title = QLabel("ÚLTIMAS NOVIDADES")
+        news_title.setObjectName("label_muted")
         news_title.setStyleSheet(
-            "font-size: 11px; font-weight: 700; color: #555; letter-spacing: 1.5px;"
+            "font-size: 11px; font-weight: 700; letter-spacing: 1.5px;"
         )
         news_header.addWidget(news_title)
         
@@ -149,13 +152,14 @@ class HomeView(QWidget):
         if latest:
             card = QFrame()
             card.setObjectName("card_flat")
-            card.setStyleSheet("QFrame#card_flat { border-left: 4px solid #BB88FF; }")
+            card.setProperty("accentLeft", "true")
             layout = QVBoxLayout(card)
             layout.setContentsMargins(20, 16, 20, 16)
             layout.setSpacing(8)
 
             ver_lbl = QLabel(f"Versão {latest['version']}  ·  {latest.get('date', '')}")
-            ver_lbl.setStyleSheet("font-size: 12px; font-weight: 700; color: #BB88FF; background: transparent;")
+            ver_lbl.setObjectName("label_accent")
+            ver_lbl.setStyleSheet("font-size: 12px; font-weight: 700;")
             layout.addWidget(ver_lbl)
 
             TYPE_MAP = {
@@ -171,18 +175,21 @@ class HomeView(QWidget):
                     label = TYPE_MAP.get(etype, "Info")
                     lbl = QLabel(f"• <b>{label}:</b> {etext}")
                     lbl.setWordWrap(True)
-                    lbl.setStyleSheet("font-size: 13px; color: #555; background: transparent;")
+                    lbl.setObjectName("label_muted")
+                    lbl.setStyleSheet("font-size: 13px;")
                     layout.addWidget(lbl)
-            
+
             if len(latest["entries"]) > 2:
                 more_lbl = QLabel(f"<i>E mais {len(latest['entries']) - 2} melhorias...</i>")
-                more_lbl.setStyleSheet("font-size: 11px; color: #888; background: transparent;")
+                more_lbl.setObjectName("label_muted")
+                more_lbl.setStyleSheet("font-size: 11px;")
                 layout.addWidget(more_lbl)
 
             self.main_layout.addWidget(card)
         else:
             lbl = QLabel("Nenhuma novidade registrada.")
-            lbl.setStyleSheet("color: #888; font-size: 12px;")
+            lbl.setObjectName("label_muted")
+            lbl.setStyleSheet("font-size: 12px;")
             self.main_layout.addWidget(lbl)
             
         self.main_layout.addSpacing(32)
@@ -205,7 +212,8 @@ class HomeView(QWidget):
 
             if not entries:
                 lbl = QLabel("Nenhuma atividade registrada no histórico.")
-                lbl.setStyleSheet("color: #888; font-style: italic; font-size: 12px;")
+                lbl.setObjectName("label_hint")
+                lbl.setStyleSheet("font-size: 12px;")
                 self.activity_container.addWidget(lbl)
                 return
 
@@ -239,7 +247,8 @@ class HomeView(QWidget):
                     date_str = entry.get('timestamp', '')[:16]
 
                 meta_lbl = QLabel(f"{mod}  ·  {date_str}")
-                meta_lbl.setStyleSheet("font-size: 11px; color: #888; background: transparent;")
+                meta_lbl.setObjectName("label_muted")
+                meta_lbl.setStyleSheet("font-size: 11px;")
                 info_layout.addWidget(meta_lbl)
 
                 row_layout.addLayout(info_layout, 1)
