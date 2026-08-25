@@ -978,13 +978,43 @@ class AuditorView(QWidget):
 
         QTimer.singleShot(0, self._adjust_table_height)
 
-        # Log to History
+        # Log to History — contagens padronizadas (Tarefa 7): no modo só-kit
+        # as 13 regras tradicionais não rodam, então os números vêm do
+        # capítulo de kits (evita gravar "0 divergências" enganoso).
         brands = " / ".join(result.brands_found) if result.brands_found else "Desconhecida"
-        HistoryEngine.add_entry(
-            "Auditor",
-            brands,
-            f"Auditoria concluída: {result.total_excel_skus} SKUs, {total} divergências."
-        )
+        kd = result.kit_data
+        if self._last_kit_only and kd is not None:
+            kit_stats = getattr(kd, "stats", {})
+            kit_ok = kit_stats.get("ok", 0)
+            kit_erro = kit_stats.get("erro", 0)
+            kit_total = kit_stats.get("total", 0)
+            HistoryEngine.add_entry(
+                "Auditor",
+                brands,
+                f"Validação de Kits concluída: {kit_total} kits, {kit_erro} com erro.",
+                ok_count=kit_ok,
+                error_count=kit_erro,
+                total=kit_total,
+                breakdown={"📦 Kits com erro": kit_erro} if kit_erro else None,
+            )
+        else:
+            # Breakdown por tipo de divergência com os rótulos de ERROR_META,
+            # gravado já amigável (o dashboard não precisa conhecer os códigos).
+            by_type = result.stats.get("by_type", {})
+            breakdown = {
+                f"{ERROR_META[code]['icon']} {ERROR_META[code]['title']}": data["total"]
+                for code, data in by_type.items()
+                if code in ERROR_META and data.get("total", 0) > 0
+            }
+            HistoryEngine.add_entry(
+                "Auditor",
+                brands,
+                f"Auditoria concluída: {result.total_excel_skus} SKUs, {total} divergências.",
+                ok_count=len(result.acertos),
+                error_count=total,
+                total=result.total_excel_skus,
+                breakdown=breakdown or None,
+            )
 
     # ── Painel dedicado de kits (BRD-007) ─────────────────────────────────
     def _refresh_kit_panel(self):
@@ -1371,6 +1401,9 @@ class AuditorView(QWidget):
         self._btn_run.setEnabled(True)
         self._progress_bar.hide()
         self._status_lbl.hide()
+        HistoryEngine.add_entry(
+            "Auditor", "N/A", f"Falha na execução: {msg[:200]}", status="falha"
+        )
         QMessageBox.critical(self, "Erro — Auditor", msg)
 
     # ── Card click ────────────────────────────────────────────────────────

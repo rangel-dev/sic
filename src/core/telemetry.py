@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -70,12 +71,25 @@ def _event_file_path(folder: str, install_id: str, when: datetime) -> str:
     return str(Path(folder) / f"{install_id}_{when.strftime('%Y-%m')}.jsonl")
 
 
-def write_event(module: str, brand: str, action: str) -> None:
+def write_event(
+    module: str,
+    brand: str,
+    action: str,
+    *,
+    status: str = "ok",
+    ok_count: Optional[int] = None,
+    error_count: Optional[int] = None,
+    total: Optional[int] = None,
+    breakdown: Optional[dict] = None,
+) -> None:
     """Melhor-esforço: grava uma linha JSON no arquivo do mês corrente desta
     instalação, na pasta compartilhada configurada. Não faz nada
     (silenciosamente) se a pasta não estiver configurada ou não existir —
     nunca deve quebrar o fluxo normal do app (mesmo padrão do teste de
-    webhook em view_settings.py)."""
+    webhook em view_settings.py).
+
+    Contagens (Tarefa 7): campos opcionais e omitidos quando None — JSONL é
+    schemaless, então leitores antigos toleram linhas novas e vice-versa."""
     try:
         folder = get_shared_folder_path()
         if not folder or not os.path.isdir(folder):
@@ -83,10 +97,20 @@ def write_event(module: str, brand: str, action: str) -> None:
 
         now = datetime.now()
         path = _event_file_path(folder, get_install_id(), now)
-        line = json.dumps(
-            {"ts": now.isoformat(), "module": module, "brand": brand, "action": action},
-            ensure_ascii=False,
-        )
+        event: dict = {
+            "ts": now.isoformat(),
+            "module": module,
+            "brand": brand,
+            "action": action,
+            "status": status,
+        }
+        for key, value in (
+            ("ok_count", ok_count), ("error_count", error_count),
+            ("total", total), ("breakdown", breakdown),
+        ):
+            if value is not None:
+                event[key] = value
+        line = json.dumps(event, ensure_ascii=False)
         with open(path, "a", encoding="utf-8") as f:
             f.write(line + "\n")
     except Exception:
@@ -142,10 +166,32 @@ def read_team_events(months_back: int = 2) -> list[dict]:
     return events
 
 
+def normalize_brands(raw) -> set:
+    """Extrai as marcas REAIS de um valor da coluna `brand` do histórico.
+
+    A coluna é usada de forma inconsistente pelas telas (marca real,
+    catalog-id, id de cupom, "NATBRA", "N/A"...), então contar valores
+    distintos infla o KPI "Marcas Ativas" com strings que não são marca.
+    Aqui só Natura, Avon e Minha Loja (CB) contam; o resto vira vazio."""
+    if not raw:
+        return set()
+    s = str(raw).lower()
+    brands = set()
+    if "natura" in s or "natbra" in s:
+        brands.add("Natura")
+    if "avon" in s or "avnbra" in s:
+        brands.add("Avon")
+    if "minha loja" in s or "cbbrazil" in s or re.search(r"\bcb\b", s):
+        brands.add("Minha Loja")
+    return brands
+
+
 def compute_team_kpis(events: list[dict]) -> dict:
     """{"operations": total, "brands_active": marcas distintas,
     "modules_active_7d": módulos distintos com evento nos últimos 7 dias}."""
-    brands = {e.get("brand") for e in events if e.get("brand")}
+    brands: set = set()
+    for e in events:
+        brands |= normalize_brands(e.get("brand"))
 
     cutoff = datetime.now() - timedelta(days=7)
     modules_7d = set()

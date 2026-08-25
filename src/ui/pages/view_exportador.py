@@ -691,6 +691,12 @@ class ExportadorView(QWidget):
         if result.pricebook is not None:
             pb = result.pricebook
             if pb.get("error"):
+                HistoryEngine.add_entry(
+                    "Exportador",
+                    pb.get("brand", "Desconhecida"),
+                    f"Falha ao gerar Pricebook: {str(pb['error'])[:200]}",
+                    status="falha",
+                )
                 QMessageBox.critical(
                     self, "Erro — Pricebook",
                     f"Falha ao gerar Pricebook:\n\n{pb['error']}"
@@ -709,17 +715,28 @@ class ExportadorView(QWidget):
 
                 self._pb_result_widget.show()
 
+                # error_count=0: geração de Pricebook não tem erro por item —
+                # falha é binária e cai no registro status="falha" acima.
                 HistoryEngine.add_entry(
                     "Exportador",
                     pb.get("brand", "Desconhecida"),
                     f"Pricebook gerado ({s.get('mode', 'full').upper()}) — "
                     f"{s.get('total', 0)} SKUs.",
+                    ok_count=s.get("total", 0),
+                    error_count=0,
+                    total=s.get("total", 0),
                 )
 
         # ── Catalog result ─────────────────────────────────────────────────
         if result.catalog is not None:
             cat: SyncResult = result.catalog
             if cat.error:
+                HistoryEngine.add_entry(
+                    "Exportador",
+                    cat.catalog_id or "Desconhecida",
+                    f"Falha ao gerar Catálogo: {cat.error[:200]}",
+                    status="falha",
+                )
                 QMessageBox.critical(
                     self, "Erro — Catálogo",
                     f"Falha ao gerar Catálogo:\n\n{cat.error}"
@@ -758,10 +775,15 @@ class ExportadorView(QWidget):
 
                 self._cat_result_widget.show()
 
+                # ok_count = SKUs da grade que casaram com o XML; error_count=0
+                # porque a geração não tem erro por item (falha é binária).
                 HistoryEngine.add_entry(
                     "Exportador",
                     cat.catalog_id or "Desconhecida",
                     f"Catálogo gerado: {s.get('deltas', 0)} modificações.",
+                    ok_count=s.get("match", 0),
+                    error_count=0,
+                    total=s.get("grade", 0),
                 )
 
         # ── Inventory result (BRD-011) — independente de Pricebook/Catálogo ─
@@ -784,6 +806,9 @@ class ExportadorView(QWidget):
         self._btn_run.setEnabled(True)
         self._progress_bar.hide()
         self._status_lbl.hide()
+        HistoryEngine.add_entry(
+            "Exportador", "N/A", f"Falha na execução: {msg[:200]}", status="falha"
+        )
         QMessageBox.critical(self, "Erro — Exportador", msg)
 
     # ── Save handlers ─────────────────────────────────────────────────────
