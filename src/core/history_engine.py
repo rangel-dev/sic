@@ -1,11 +1,7 @@
-import json
 import sqlite3
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
-
-from src.core import telemetry
 
 DB_NAME = "history.db"
 
@@ -17,17 +13,6 @@ class HistoryEngine:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         return conn
-
-    # Colunas de contagem padronizada de erro/acerto (Tarefa 7). Adicionadas
-    # via ALTER TABLE em bancos antigos; linhas anteriores ficam NULL, o que
-    # significa "sem contagem" — consumidores devem ignorar NULL, não somar 0.
-    _COUNT_COLUMNS = (
-        ("status", "TEXT"),        # "ok" (rodou até o fim) | "falha"
-        ("ok_count", "INTEGER"),   # itens com acerto (NULL = módulo sem essa noção)
-        ("error_count", "INTEGER"),
-        ("total", "INTEGER"),      # universo processado
-        ("breakdown", "TEXT"),     # JSON {rótulo do tipo de erro: contagem} (Tarefa 8)
-    )
 
     @staticmethod
     def init_db():
@@ -43,50 +28,21 @@ class HistoryEngine:
                     details TEXT
                 )
             """)
-            existing = {row["name"] for row in conn.execute("PRAGMA table_info(history)")}
-            for col_name, col_type in HistoryEngine._COUNT_COLUMNS:
-                if col_name not in existing:
-                    conn.execute(f"ALTER TABLE history ADD COLUMN {col_name} {col_type}")
             conn.commit()
 
     @staticmethod
-    def add_entry(
-        module: str,
-        brand: str,
-        action: str,
-        details: str = "",
-        *,
-        status: str = "ok",
-        ok_count: Optional[int] = None,
-        error_count: Optional[int] = None,
-        total: Optional[int] = None,
-        breakdown: Optional[dict] = None,
-    ):
+    def add_entry(module: str, brand: str, action: str, details: str = ""):
         """Adds a new entry to the history."""
         # Ensure DB is initialized
         HistoryEngine.init_db()
-
-        breakdown_json = (
-            json.dumps(breakdown, ensure_ascii=False) if breakdown else None
-        )
+        
         timestamp = datetime.now().isoformat()
         with HistoryEngine._get_connection() as conn:
             conn.execute(
-                "INSERT INTO history (timestamp, module, brand, action, details, "
-                "status, ok_count, error_count, total, breakdown) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (timestamp, module, brand, action, details,
-                 status, ok_count, error_count, total, breakdown_json)
+                "INSERT INTO history (timestamp, module, brand, action, details) VALUES (?, ?, ?, ?, ?)",
+                (timestamp, module, brand, action, details)
             )
             conn.commit()
-
-        # Telemetria de equipe (Tarefa 3) — melhor-esforço, nunca lança
-        # exceção; grava só se a pasta compartilhada estiver configurada.
-        telemetry.write_event(
-            module, brand, action,
-            status=status, ok_count=ok_count, error_count=error_count, total=total,
-            breakdown=breakdown,
-        )
 
     @staticmethod
     def get_entries(

@@ -323,13 +323,6 @@ class CadastroConversorView(QWidget):
                 f"{stats.get('linhas', 0)} linhas geradas · "
                 f"{stats.get('erro', 0)} erros (exceções)."
             ),
-            ok_count=stats.get("match", 0),
-            error_count=stats.get("erro", 0),
-            total=total,
-            breakdown=(
-                {"❓ Não localizados (exceções)": stats.get("erro", 0)}
-                if stats.get("erro", 0) > 0 else None
-            ),
         )
 
         if p := self.parent():
@@ -344,10 +337,6 @@ class CadastroConversorView(QWidget):
         self._btn_run.setEnabled(True)
         self._progress_bar.hide()
         self._status_lbl.hide()
-        HistoryEngine.add_entry(
-            "Cadastro/Pontuação", "NATBRA",
-            f"Falha na execução: {msg[:200]}", status="falha"
-        )
         QMessageBox.critical(self, "Erro — Pontuação", msg)
 
     # ── Export ────────────────────────────────────────────────────────────

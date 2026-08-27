@@ -358,26 +358,17 @@ class MenuValidatorView(QWidget):
             if hasattr(p, "show_status"):
                 p.show_status(f"Menus CB: {total} divergências encontradas")
 
-        # History — só error_count: o denominador (universo de categorias
-        # comparadas) vive dentro do engine e não é exposto no stats; sem
-        # tocar regra de negócio, ok_count/total ficam NULL para este módulo.
-        by_alert = result.stats.get("by_alert", {})
+        # History
         HistoryEngine.add_entry(
             "Menus CB",
             "Natura / Avon / CB",
-            f"Validação concluída: {total} divergências detectadas.",
-            error_count=total,
-            breakdown={k: v for k, v in by_alert.items() if v > 0} or None,
+            f"Validação concluída: {total} divergências detectadas."
         )
 
     def _on_error(self, msg: str):
         self._btn_run.setEnabled(True)
         self._progress_bar.hide()
         self._status_lbl.hide()
-        HistoryEngine.add_entry(
-            "Menus CB", "Natura / Avon / CB",
-            f"Falha na execução: {msg[:200]}", status="falha"
-        )
         QMessageBox.critical(self, "Erro — Menus CB", msg)
 
     def _update_stat_cards(self):

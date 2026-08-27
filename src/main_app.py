@@ -6,7 +6,7 @@ import os
 import sys
 import platform
 
-from PySide6.QtCore import Qt, QSettings, qInstallMessageHandler
+from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QFont, QIcon, QPixmap
 from PySide6.QtWidgets import QApplication, QSplashScreen, QProgressBar, QLabel, QFrame
 
@@ -14,18 +14,6 @@ from src.core.version import VERSION, APP_NAME
 from src.ui.styles.qss_dark  import DARK_STYLESHEET
 from src.ui.styles.qss_light import LIGHT_STYLESHEET
 from src.ui.main_window import MainWindow
-
-
-# Qt emite este aviso ao construir o popup de calendário de QDateEdit
-# (setCalendarPopup(True), usado na tela Histórico): a QSS global define
-# "font-size: 13px" e o widget interno do calendário tenta ler pointSize()
-# de uma fonte que só tem pixelSize definido, o que retorna -1. É um quirk
-# conhecido do Qt (cosmético, não afeta nada visualmente) — só filtramos
-# essa linha específica do console; qualquer outro aviso continua normal.
-def _qt_message_filter(msg_type, context, message):
-    if "QFont::setPointSize" in message:
-        return
-    print(message, file=sys.stderr)
 
 
 def resource_path(relative_path):
@@ -149,8 +137,6 @@ def main():
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
-
-    qInstallMessageHandler(_qt_message_filter)
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
