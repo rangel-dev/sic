@@ -330,6 +330,8 @@ class CadastroPontuacaoView(QWidget):
         self._btn_export_carga.setEnabled(has_carga)
 
         total = stats.get("total", 0)
+        # error_count soma os DOIS tipos de falha: "fora da janela" + "não
+        # encontrado no GCP" (a chave stats["erro"] sozinha é só o segundo).
         HistoryEngine.add_entry(
             "Cadastro/Gestor GCP",
             "NATBRA",
@@ -339,6 +341,15 @@ class CadastroPontuacaoView(QWidget):
                 f"{stats.get('fora', 0)} fora da janela · "
                 f"{stats.get('erro', 0)} não encontrados."
             ),
+            ok_count=stats.get("ok", 0),
+            error_count=stats.get("fora", 0) + stats.get("erro", 0),
+            total=total,
+            breakdown={
+                k: v for k, v in (
+                    ("📆 Fora da janela de ciclo", stats.get("fora", 0)),
+                    ("❓ Não encontrado no GCP", stats.get("erro", 0)),
+                ) if v > 0
+            } or None,
         )
 
         if p := self.parent():
@@ -353,6 +364,10 @@ class CadastroPontuacaoView(QWidget):
         self._btn_run.setEnabled(True)
         self._progress_bar.hide()
         self._status_lbl.hide()
+        HistoryEngine.add_entry(
+            "Cadastro/Gestor GCP", "NATBRA",
+            f"Falha na execução: {msg[:200]}", status="falha"
+        )
         QMessageBox.critical(self, "Erro — Gestor GCP", msg)
 
     # ── Export ────────────────────────────────────────────────────────────

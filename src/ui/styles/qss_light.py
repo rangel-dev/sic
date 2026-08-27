@@ -176,6 +176,10 @@ QMainWindow {
     border-color: #d0d0d0;
 }
 
+#card_flat[accentLeft="true"] {
+    border-left: 4px solid #3b82f6;
+}
+
 #error_card {
     background-color: #ffffff;
     border: 1px solid #e5e7eb;
@@ -595,6 +599,10 @@ QLabel {
 
 #label_accent {
     color: #3b82f6;
+}
+
+#label_success {
+    color: #059669;
 }
 
 #label_stat_value {

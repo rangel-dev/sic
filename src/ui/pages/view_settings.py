@@ -1,10 +1,11 @@
 """Settings view – webhook URL, theme preferences via QSettings."""
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import (
-    QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 from src.ui.components.base_widgets import Divider, SectionHeader
+from src.core import telemetry
 
 
 class SettingsView(QWidget):
@@ -70,6 +71,45 @@ class SettingsView(QWidget):
         form.addRow("", hint)
         layout.addWidget(gchat_box)
 
+        # Telemetria de Equipe (Google Drive) — Tarefa 3
+        drive_box = QGroupBox("Telemetria de Equipe (Google Drive)")
+        drive_form = QFormLayout(drive_box)
+        drive_form.setSpacing(12)
+        drive_form.setContentsMargins(16, 20, 16, 16)
+
+        drive_row = QHBoxLayout()
+        self._drive_path_input = QLineEdit()
+        self._drive_path_input.setPlaceholderText(
+            "Pasta compartilhada no Google Drive (opcional)"
+        )
+        self._drive_path_input.setMinimumWidth(420)
+        drive_row.addWidget(self._drive_path_input)
+
+        btn_browse = QPushButton("Procurar...")
+        btn_browse.setObjectName("btn_secondary")
+        btn_browse.clicked.connect(self._browse_drive_folder)
+        drive_row.addWidget(btn_browse)
+        drive_form.addRow("Pasta compartilhada:", drive_row)
+
+        drive_btn_row = QHBoxLayout()
+        btn_drive_save = QPushButton("Salvar")
+        btn_drive_save.setObjectName("btn_primary")
+        btn_drive_save.clicked.connect(self._save_drive_settings)
+        drive_btn_row.addWidget(btn_drive_save)
+        drive_btn_row.addStretch()
+        drive_form.addRow("", drive_btn_row)
+
+        drive_hint = QLabel(
+            "Registra apenas contagens agregadas por instalação (módulo, marca, "
+            "horário) para métricas de uso da equipe na tela de Início — não "
+            "identifica você. Sem pasta configurada, os KPIs continuam "
+            "funcionando com dado local desta máquina."
+        )
+        drive_hint.setObjectName("label_hint")
+        drive_hint.setWordWrap(True)
+        drive_form.addRow("", drive_hint)
+        layout.addWidget(drive_box)
+
         # Accessibility
         acc_box = QGroupBox("Acessibilidade — Visual")
         acc_layout = QHBoxLayout(acc_box)
@@ -104,9 +144,23 @@ class SettingsView(QWidget):
         self._webhook_input.setText(
             self._settings.value("gchat_webhook", "")
         )
+        self._drive_path_input.setText(telemetry.get_shared_folder_path())
 
     def _save_settings(self):
         self._settings.setValue("gchat_webhook", self._webhook_input.text().strip())
+        QMessageBox.information(self, "Configurações", "Configurações salvas com sucesso.")
+
+    # ── Telemetria de Equipe (Google Drive) ─────────────────────────────────
+    def _browse_drive_folder(self):
+        start_dir = self._drive_path_input.text().strip() or ""
+        folder = QFileDialog.getExistingDirectory(
+            self, "Escolher pasta compartilhada do Drive", start_dir
+        )
+        if folder:
+            self._drive_path_input.setText(folder)
+
+    def _save_drive_settings(self):
+        telemetry.set_shared_folder_path(self._drive_path_input.text().strip())
         QMessageBox.information(self, "Configurações", "Configurações salvas com sucesso.")
 
     def _change_font(self, delta: int):

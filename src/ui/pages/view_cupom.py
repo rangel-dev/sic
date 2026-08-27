@@ -286,6 +286,12 @@ class CupomView(QWidget):
         self._progress_bar.setValue(100)
 
         if result.error:
+            HistoryEngine.add_entry(
+                "Cupons",
+                self._coupon_id.text().strip() or "N/A",
+                f"Falha na execução: {result.error[:200]}",
+                status="falha",
+            )
             QMessageBox.critical(self, "Erro — Cupons SFCC", result.error)
             self._progress_bar.hide()
             self._status_lbl.hide()
@@ -316,6 +322,10 @@ class CupomView(QWidget):
         self._result_widget.show()
         self._status_lbl.hide()
 
+        # Contagens (Tarefa 7): acerto = códigos válidos no XML; erro = códigos
+        # deletados por caractere inválido. Corrigidos/duplicatas são warning/
+        # neutro (seguem só no texto de details), e não há "total lido" bruto
+        # no stats do engine — total fica NULL.
         coupon_id = self._coupon_id.text().strip()
         HistoryEngine.add_entry(
             "Cupons",
@@ -324,6 +334,15 @@ class CupomView(QWidget):
             f"Deletados: {s.get('deleted', 0)} | "
             f"Corrigidos: {s.get('corrected', 0)} | "
             f"Duplicatas: {s.get('duplicates', 0)}",
+            ok_count=s.get("total", 0),
+            error_count=s.get("deleted", 0),
+            breakdown={
+                k: v for k, v in (
+                    ("🗑️ Deletados (caractere inválido)", s.get("deleted", 0)),
+                    ("🔤 Corrigidos p/ maiúsculas", s.get("corrected", 0)),
+                    ("👥 Duplicatas ignoradas", s.get("duplicates", 0)),
+                ) if v > 0
+            } or None,
         )
 
         if p := self.parent():
@@ -336,6 +355,9 @@ class CupomView(QWidget):
         self._btn_run.setEnabled(True)
         self._progress_bar.hide()
         self._status_lbl.hide()
+        HistoryEngine.add_entry(
+            "Cupons", "N/A", f"Falha na execução: {msg[:200]}", status="falha"
+        )
         QMessageBox.critical(self, "Erro — Cupons SFCC", msg)
 
     # ── Salvar arquivos ───────────────────────────────────────────────────
