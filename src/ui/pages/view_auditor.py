@@ -1,7 +1,7 @@
 """
 Auditor View – Double-Blind Price & Catalog Validation Engine.
 The most feature-rich view of the suite:
-  • 3 DropZone inputs  (Pricebook XML, Catalog XMLs, Excel files)
+  • Entrada unificada de arquivos (UnifiedFileDropZone + IngestionChecklist)
   • Run button + QProgressBar
   • 12 clickable ErrorCard tiles
   • Filtered QTableWidget (max 500 rows)
@@ -41,7 +41,8 @@ from src.core.auditor_engine import AuditResult, ERROR_META
 from src.core.ai_agent import AiAgent
 from src.core.brand_detector import BrandDetector
 from src.core.auditor.kit_validation import KIT_ERROR_META
-from src.ui.components.base_widgets import Divider, DropZone, ErrorCard, SectionHeader, show_rejection_dialog
+from src.ui.components.base_widgets import Divider, ErrorCard, SectionHeader, show_rejection_dialog
+from src.ui.components.unified_dropzone import UnifiedFileDropZone, IngestionChecklist
 from src.workers.worker_auditor import AuditorWorker
 from src.core.history_engine import HistoryEngine
 from src.core.utils import get_unique_path
@@ -98,86 +99,24 @@ class AuditorView(QWidget):
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(20)
 
-        # ── Bloco 1: Arquivos de Entrada ──────────────────────────────────
+        # ── Bloco 1: Arquivos de Entrada (entrada unificada) ──────────────
         inputs_box = QGroupBox("Arquivos de Entrada")
         inputs_box_layout = QVBoxLayout(inputs_box)
         inputs_box_layout.setContentsMargins(16, 18, 16, 14)
         inputs_box_layout.setSpacing(12)
 
-        # File inputs row
-        inputs_row = QHBoxLayout()
-        inputs_row.setSpacing(16)
+        self._unified_dz = UnifiedFileDropZone()
+        self._unified_dz.setToolTip(
+            "Solte Pricebook XML, Catálogo(s) XML, Grade(s) Excel e/ou Kit BO Excel — "
+            "de uma vez ou aos poucos. A marca e o tipo de cada arquivo são "
+            "detectados automaticamente."
+        )
+        self._unified_dz.file_rejected.connect(self._on_file_rejected)
+        inputs_box_layout.addWidget(self._unified_dz)
 
-        # 1 – Pricebook XML
-        pb_col = QVBoxLayout()
-        pb_lbl = QLabel("Pricebook XML")
-        pb_lbl.setObjectName("label_section")
-        pb_col.addWidget(pb_lbl)
-        self._dz_pb = DropZone(
-            "Pricebook XML\n(br-natura / brl-avon)",
-            "XML (*.xml)",
-        )
-        self._dz_pb.setToolTip(
-            "XML de Pricebook exportado do Salesforce Business Manager.\n"
-            "Contém os pricebooks de Lista (DE) e Promocional (POR)."
-        )
-        pb_col.addWidget(self._dz_pb)
-        inputs_row.addLayout(pb_col, 1)
-
-        # 2 – Catalog XMLs
-        cat_col = QVBoxLayout()
-        cat_lbl = QLabel("Catálogo(s) XML  (Natura + Avon + ML)")
-        cat_lbl.setObjectName("label_section")
-        cat_col.addWidget(cat_lbl)
-        self._dz_cat = DropZone(
-            "XMLs de Catálogo\n(múltiplos permitidos)",
-            "XML (*.xml)",
-            multiple=True,
-        )
-        self._dz_cat.setToolTip(
-            "XMLs de Catálogo do Salesforce: natura-br, avon-br, cbbrazil.\n"
-            "Contêm category-assignments, online-flag e searchable-flag."
-        )
-        cat_col.addWidget(self._dz_cat)
-        inputs_row.addLayout(cat_col, 1)
-
-        # 3 – Excel files
-        excel_col = QVBoxLayout()
-        excel_lbl = QLabel("Planilha(s) Excel  (GRADE DE ATIVAÇÃO)")
-        excel_lbl.setObjectName("label_section")
-        excel_col.addWidget(excel_lbl)
-        self._dz_excel = DropZone(
-            "Excel(s) comerciais\n(múltiplos permitidos)",
-            "Excel (*.xlsx *.xlsm *.xls)",
-            multiple=True,
-        )
-        self._dz_excel.setToolTip(
-            "Planilha comercial com aba 'GRADE DE ATIVAÇÃO'.\n"
-            "Colunas: SKU, DE (preço lista), POR (preço promo), VISIBLE, SELO."
-        )
-        excel_col.addWidget(self._dz_excel)
-        inputs_row.addLayout(excel_col, 1)
-
-        inputs_box_layout.addLayout(inputs_row)
-
-        # 4 – Planilha BO (Kits) — opcional (BRD-007)
-        bo_col = QVBoxLayout()
-        bo_lbl = QLabel("Planilha BO (Kits)  —  opcional")
-        bo_lbl.setObjectName("label_section")
-        bo_col.addWidget(bo_lbl)
-        self._dz_bo = DropZone(
-            "Excel do BO (opcional)\n(COD_VENDA_PAI / FILHO / QUANTIDADE)",
-            "Excel (*.xlsx *.xlsm *.xls)",
-            default_icon="📦",  # planilha do BO não tem marca (NATBRA-/AVNBRA-);
-                                # sem isto, BrandDetector cai em "unknown" (❓ vermelho)
-        )
-        self._dz_bo.setToolTip(
-            "Opcional. Se anexada, o Auditor valida a composição dos Kits\n"
-            "(Pai/Filho/Quantidade) do Salesforce contra a planilha do BO.\n"
-            "Sem ela, a auditoria roda normalmente, apenas sem o check de Kits."
-        )
-        bo_col.addWidget(self._dz_bo)
-        inputs_box_layout.addLayout(bo_col)
+        self._checklist = IngestionChecklist()
+        self._checklist.bind(self._unified_dz)
+        inputs_box_layout.addWidget(self._checklist)
 
         layout.addWidget(inputs_box)
 
@@ -512,19 +451,10 @@ class AuditorView(QWidget):
 
         root.addWidget(progress_container)
 
-        # Conecta validadores de bloqueio imediato nos DropZones
-        self._setup_dropzone_validators()
-
-    # ── DropZone validators (bloqueio imediato no drag-and-drop) ──────────
-    def _setup_dropzone_validators(self) -> None:
-        """Registra funções validadoras e conecta o sinal de rejeição em cada DropZone."""
-        self._dz_cat.set_validator(self._validate_cat_paths)
-        self._dz_excel.set_validator(self._validate_excel_paths)
-        self._dz_pb.set_validator(self._validate_pb_paths)
-        self._dz_cat.file_rejected.connect(self._on_file_rejected)
-        self._dz_excel.file_rejected.connect(self._on_file_rejected)
-        self._dz_pb.file_rejected.connect(self._on_file_rejected)
-
+    # ── País/loja correta (BRD — incidente Chile) — reusado pela Trava 0 de
+    # _run() (defesa em profundidade); a classificação/roteamento em si e a
+    # unicidade de marca por categoria agora vivem em UnifiedFileDropZone
+    # (src/ui/components/unified_dropzone.py), ligado a _on_file_rejected.
     @staticmethod
     def _format_country_rejection(path: str, check) -> str:
         """Mensagem de rejeição por país incorreto (BRD — incidente Chile)."""
@@ -544,64 +474,6 @@ class AuditorView(QWidget):
             "cb-br-storefront-catalog).\n\n"
             "Verifique se você selecionou o arquivo correto antes de tentar novamente."
         )
-
-    def _validate_cat_paths(self, paths: list[str]) -> "Optional[str]":
-        """
-        Valida a lista proposta de catálogos antes de qualquer commit no DropZone.
-        Retorna mensagem de erro se o país estiver incorreto ou houver
-        duplicidade de marca; None se ok.
-        (A checagem de quantidade exata de 3 fica reservada para o _run().)
-        """
-        for path in paths:
-            check = BrandDetector.check_catalog_file(path)
-            if not check.ok:
-                return self._format_country_rejection(path, check)
-
-        brand_map: dict[str, str] = {}
-        for path in paths:
-            brands = BrandDetector.detect_single(path)
-            brand_key = next(iter(brands)) if brands else "desconhecida"
-            if brand_key in brand_map:
-                brand_display = BrandDetector.get_combined_display_name({brand_key})
-                return (
-                    f"Erro de Unicidade: Foram detectados dois arquivos da mesma marca "
-                    f"({brand_display}).\n\n"
-                    f"• {Path(brand_map[brand_key]).name}\n"
-                    f"• {Path(path).name}\n\n"
-                    f"Por favor, verifique os catálogos."
-                )
-            brand_map[brand_key] = path
-        return None
-
-    def _validate_pb_paths(self, paths: list[str]) -> "Optional[str]":
-        """Valida o Pricebook proposto (BRD — incidente Chile): rejeita se algum
-        pricebook-id do arquivo não pertencer a uma loja Brasil."""
-        for path in paths:
-            for check in BrandDetector.check_pricebook_file(path):
-                if not check.ok:
-                    return self._format_country_rejection(path, check)
-        return None
-
-    def _validate_excel_paths(self, paths: list[str]) -> "Optional[str]":
-        """
-        Valida a lista proposta de grades Excel antes de qualquer commit no DropZone.
-        Retorna mensagem de erro se houver duplicidade de marca; None se ok.
-        """
-        brand_map: dict[str, str] = {}
-        for path in paths:
-            brands = BrandDetector.detect_single(path)
-            brand_key = next(iter(brands)) if brands else "desconhecida"
-            if brand_key in brand_map:
-                brand_display = BrandDetector.get_combined_display_name({brand_key})
-                return (
-                    f"Erro de Unicidade: Foram detectados dois arquivos de Grade "
-                    f"da mesma marca ({brand_display}).\n\n"
-                    f"• {Path(brand_map[brand_key]).name}\n"
-                    f"• {Path(path).name}\n\n"
-                    f"Por favor, verifique as planilhas de Grade."
-                )
-            brand_map[brand_key] = path
-        return None
 
     def _on_file_rejected(self, message: str) -> None:
         """Exibe um aviso quando o DropZone rejeita um arquivo (país incorreto ou violação de unicidade)."""
@@ -753,10 +625,10 @@ class AuditorView(QWidget):
 
     # ── Run ───────────────────────────────────────────────────────────────
     def _run(self):
-        excel_paths = self._dz_excel.file_paths
-        pb_path     = self._dz_pb.file_path
-        cat_paths   = self._dz_cat.file_paths
-        bo_path     = self._dz_bo.file_path
+        excel_paths = self._unified_dz.grade_paths
+        pb_path     = self._unified_dz.pricebook_path
+        cat_paths   = self._unified_dz.catalog_paths
+        bo_path     = self._unified_dz.bo_path
 
         # Modo só-kit (BRD-007): planilha BO anexada SEM Pricebook → valida
         # apenas a composição de kits (catálogo × BO). Exige somente catálogos
@@ -1725,10 +1597,7 @@ class AuditorView(QWidget):
 
     # ── Clear ─────────────────────────────────────────────────────────────
     def _clear(self):
-        self._dz_pb.clear()
-        self._dz_cat.clear()
-        self._dz_excel.clear()
-        self._dz_bo.clear()
+        self._unified_dz.clear()
         self._table.setRowCount(0)
         self._ai_browser.clear()
         self._progress_bar.setValue(0)
@@ -1834,11 +1703,11 @@ class AuditorView(QWidget):
         pdf_path = get_unique_path(pdf_path)
 
         source_files: list[str] = []
-        if pb := self._dz_pb.file_path:
+        if pb := self._unified_dz.pricebook_path:
             source_files.append(Path(pb).name)
-        for p in (self._dz_cat.file_paths or []):
+        for p in (self._unified_dz.catalog_paths or []):
             source_files.append(Path(p).name)
-        for p in (self._dz_excel.file_paths or []):
+        for p in (self._unified_dz.grade_paths or []):
             source_files.append(Path(p).name)
 
         try:
