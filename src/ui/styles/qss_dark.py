@@ -746,6 +746,10 @@ QLabel {
     font-style: italic;
 }
 
+#label_accent {
+    color: #60a5fa;
+}
+
 #label_stat_value {
     font-size: 36px;
     font-weight: 700;
@@ -871,6 +875,16 @@ QSplitter::handle:vertical {
     background-color: #064e3b;
     color: #6ee7b7;
     border: 1px solid #059669;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+#badge_accent {
+    background-color: #1e3a8a;
+    color: #93c5fd;
+    border: 1px solid #3b82f6;
     border-radius: 6px;
     padding: 2px 8px;
     font-size: 10px;

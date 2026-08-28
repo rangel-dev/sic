@@ -28,8 +28,10 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
+    QSpacerItem,
     QVBoxLayout,
     QWidget,
 )
@@ -667,3 +669,59 @@ class KpiWidget(QFrame):
 
     def set_value(self, v):
         self.val_lbl.setText(str(v))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Diálogo de rejeição de arquivo — on-brand, usado por todo DropZone.file_rejected
+#  (país incorreto, marca duplicada, etc.), no lugar do QMessageBox.warning
+#  padrão (ícone nativo do SO + sem estilo, inconsistente com o tema do app).
+# ─────────────────────────────────────────────────────────────────────────────
+def show_rejection_dialog(
+    parent: QWidget,
+    message: str,
+    *,
+    header: str = "Este arquivo foi recusado",
+    window_title: str = "Arquivo Recusado",
+) -> None:
+    """Mostra a mensagem de rejeição (texto simples, pode conter `<b>...</b>`
+    para destacar trechos) num QMessageBox estilizado: sem o triângulo nativo
+    do SO, cabeçalho de aviso e botão no mesmo estilo dos botões primários do
+    app (`#btn_primary`).
+
+    Nota: rich text do Qt (`QLabel`/`QMessageBox`) não é afetado pelo QSS da
+    aplicação — seletores por `#id` só funcionam em QWidgets reais. Por isso
+    a cor do cabeçalho é aplicada via `style=` inline, resolvida pelo tema
+    atual (`QSettings`), em vez de um seletor QSS."""
+    from PySide6.QtCore import QSettings
+    theme = QSettings("SIC", "SIC_Suite").value("theme", "light")
+    warn_color = "#fbbf24" if theme == "dark" else "#d97706"
+
+    html_body = message.replace("\n", "<br>")
+    html = (
+        f'<span style="color:{warn_color}; font-weight:700;">⚠ &nbsp;{header}</span>'
+        '<div style="height:10px;"></div>'
+        + html_body
+    )
+
+    box = QMessageBox(parent)
+    # Sem isto, o background-color do QSS não é aplicado a um QMessageBox
+    # (widget de topo) — no Windows com modo escuro do SO ativo, ele cai pro
+    # fundo nativo escuro por baixo do texto do tema claro.
+    box.setAttribute(Qt.WA_StyledBackground, True)
+    box.setWindowTitle(window_title)
+    box.setIcon(QMessageBox.NoIcon)
+    box.setTextFormat(Qt.RichText)
+    box.setText(html)
+    ok_btn = box.addButton(QMessageBox.Ok)
+    ok_btn.setObjectName("btn_primary")
+    box.setDefaultButton(ok_btn)
+
+    # QMessageBox ignora setMinimumWidth/setFixedWidth diretamente — sem o
+    # ícone nativo (removido acima) a largura calculada encolhe e corta o
+    # texto em vez de quebrar linha. Truque padrão do Qt: injetar um spacer
+    # invisível no layout interno para forçar a largura mínima do diálogo.
+    spacer = QSpacerItem(560, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
+    layout = box.layout()
+    layout.addItem(spacer, layout.rowCount(), 0, 1, layout.columnCount())
+
+    box.exec()

@@ -62,6 +62,24 @@ CONTRIBUTORS = [
 # type: "feat" | "fix" | "chore"
 CHANGELOG = [
     {
+        "version": "1.4.0",
+        "date": "Agosto 2026",
+        "entries": [
+            ("feat", "Auditor: as 4 áreas separadas de upload (Pricebook, Catálogos, Grade, Kit BO) viraram uma única área de arraste — o sistema classifica cada arquivo automaticamente e mostra um checklist do que já foi inserido e do que falta."),
+            ("feat", "Segurança: Exportador e Auditor agora bloqueiam, antes de rodar, qualquer catálogo ou pricebook que não seja de uma loja Brasil — corrige um incidente real em que um catálogo de outro país quase foi usado por engano."),
+            ("chore", "Transparência técnica: a classificação de marca dos catálogos no motor de auditoria não usa mais o nome do arquivo como pista — passou a depender só do identificador real gravado dentro do XML, fechando uma brecha que a trava de upload sozinha não cobria."),
+            ("feat", "Exportador: nova trava garante que a marca do catálogo sempre corresponda à marca da grade carregada, e limita a 2 catálogos por execução (mesma regra que a grade já tinha), a pedido da gestão."),
+            ("feat", "Tela \"Sobre\" reformulada: logo, copyright e link para o repositório, além de consistência total com os temas claro e escuro."),
+        ],
+    },
+    {
+        "version": "1.3.2",
+        "date": "Agosto 2026",
+        "entries": [
+            ("feat", "Exportador: gera automaticamente o Inventory XML por marca (Natura/Avon) sempre que a grade correspondente é carregada — mesmo sem selecionar Pricebook ou Catálogo."),
+        ],
+    },
+    {
         "version": "1.3.1",
         "date": "Julho 2026",
         "entries": [
