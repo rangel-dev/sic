@@ -303,9 +303,11 @@ class ExportadorSegmentadasView(QWidget):
         seg_stats_row = QHBoxLayout()
         self._seg_stat_skus    = StatPill("SKUs Incluídos", "—", "#f0f0f0")
         self._seg_stat_lista   = StatPill("Lista",          "—", "#7e57c2")
+        self._seg_stat_lp      = StatPill("LP",             "—", "#26a69a")
         self._seg_stat_loja    = StatPill("Loja",           "—", "#60a5fa")
         self._seg_stat_periodo = StatPill("Período",        "—", "#888888")
-        for w in (self._seg_stat_skus, self._seg_stat_lista, self._seg_stat_loja, self._seg_stat_periodo):
+        for w in (self._seg_stat_skus, self._seg_stat_lista, self._seg_stat_lp,
+                  self._seg_stat_loja, self._seg_stat_periodo):
             seg_stats_row.addWidget(w)
         seg_stats_row.addStretch()
         seg_res_layout.addLayout(seg_stats_row)
@@ -596,7 +598,8 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_xml = xml_bytes
 
         self._seg_stat_skus.set_value(str(len(candidate.rows)))
-        self._seg_stat_lista.set_value(candidate.lp_label or candidate.sheet_name, "#7e57c2")
+        self._seg_stat_lista.set_value(candidate.sheet_name, "#7e57c2")
+        self._seg_stat_lp.set_value(candidate.lp_label or "—", "#26a69a")
         self._seg_stat_loja.set_value(self._seg_combo_loja.currentText(), "#60a5fa")
         self._seg_stat_periodo.set_value(
             f"{date_start.strftime('%d/%m')} – {date_end.strftime('%d/%m')}", "#888888"
