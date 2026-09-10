@@ -88,6 +88,7 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_scan_result: SegmentScanResult | None = None
         self._seg_selected_lista: ListaCandidate | None = None
         self._seg_xml: bytes | None = None
+        self._seg_detected_brand: Optional[str] = None
         self._setup_ui()
 
     # ── UI Construction ───────────────────────────────────────────────────
@@ -127,31 +128,21 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_input_pbid.setPlaceholderText("Ex: NAT-RR1881")
         params_layout.addWidget(self._seg_input_pbid)
 
-        combo_row = QHBoxLayout()
-        combo_row.setSpacing(16)
-
         loja_col = QVBoxLayout()
+        loja_col.setSpacing(6)
         lbl_loja = QLabel("Loja")
         lbl_loja.setObjectName("label_section")
         loja_col.addWidget(lbl_loja)
         self._seg_combo_loja = QComboBox()
+        self._seg_combo_loja.setFixedWidth(220)
         self._seg_combo_loja.addItem("Natura", "natura")
         self._seg_combo_loja.addItem("Avon", "avon")
         self._seg_combo_loja.addItem("Minha Loja (CB)", "ml")
         loja_col.addWidget(self._seg_combo_loja)
+
+        combo_row = QHBoxLayout()
         combo_row.addLayout(loja_col)
-
-        marca_col = QVBoxLayout()
-        lbl_marca = QLabel("Marca da Grade")
-        lbl_marca.setObjectName("label_section")
-        marca_col.addWidget(lbl_marca)
-        self._seg_combo_marca = QComboBox()
-        self._seg_combo_marca.addItem("Natura", "natura")
-        self._seg_combo_marca.addItem("Avon", "avon")
-        self._seg_combo_marca.currentIndexChanged.connect(self._on_seg_marca_changed)
-        marca_col.addWidget(self._seg_combo_marca)
-        combo_row.addLayout(marca_col)
-
+        combo_row.addStretch()
         params_layout.addLayout(combo_row)
 
         date_row = QHBoxLayout()
@@ -200,6 +191,24 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_badge.setFixedHeight(28)
         self._seg_badge.hide()
         grade_layout.addWidget(self._seg_badge)
+
+        # Seletor manual de Marca — some por padrão. Só aparece quando a
+        # detecção automática (pelo prefixo dos SKUs) falha, como fallback.
+        self._seg_marca_fallback_row = QWidget()
+        marca_fb_layout = QHBoxLayout(self._seg_marca_fallback_row)
+        marca_fb_layout.setContentsMargins(0, 0, 0, 0)
+        marca_fb_layout.setSpacing(8)
+        lbl_marca_fb = QLabel("Selecione a marca manualmente:")
+        lbl_marca_fb.setObjectName("label_muted")
+        marca_fb_layout.addWidget(lbl_marca_fb)
+        self._seg_combo_marca_fallback = QComboBox()
+        self._seg_combo_marca_fallback.addItem("Natura", "natura")
+        self._seg_combo_marca_fallback.addItem("Avon", "avon")
+        self._seg_combo_marca_fallback.currentIndexChanged.connect(self._on_seg_marca_fallback_changed)
+        marca_fb_layout.addWidget(self._seg_combo_marca_fallback)
+        marca_fb_layout.addStretch()
+        self._seg_marca_fallback_row.hide()
+        grade_layout.addWidget(self._seg_marca_fallback_row)
 
         scan_row = QHBoxLayout()
         scan_row.setSpacing(12)
@@ -316,9 +325,9 @@ class ExportadorSegmentadasView(QWidget):
         return None
 
     @staticmethod
-    def _format_seg_brand_rejection(detected: Optional[str], expected: str) -> str:
+    def _format_seg_brand_rejection(detected: Optional[str], expected: Optional[str]) -> str:
         detected_name = BRAND_LABELS.get(detected, detected or "Desconhecida") if detected else "Desconhecida"
-        expected_name = BRAND_LABELS.get(expected, expected)
+        expected_name = BRAND_LABELS.get(expected, expected or "Desconhecida") if expected else "Desconhecida"
         return (
             "A marca detectada nos SKUs das listas segmentadas não corresponde à marca "
             "selecionada.\n\n"
@@ -344,23 +353,28 @@ class ExportadorSegmentadasView(QWidget):
         self._reset_seg_scan_state()
         if not paths:
             self._seg_badge.hide()
+            self._seg_marca_fallback_row.hide()
+            self._set_detected_brand(None)
             return
 
-        # Mesma detecção da tela Grade Completa: a marca da grade ajusta o
-        # seletor automaticamente (o usuário ainda pode trocar depois).
+        # A marca é detectada automaticamente pelo prefixo dos SKUs
+        # (NATBRA-/AVNBRA-) assim que a grade é solta — sem seletor manual.
+        # O seletor de fallback só aparece se a detecção falhar.
         brand = _sniff_brand(paths[0])
         if brand in ("natura", "avon"):
-            idx = self._seg_combo_marca.findData(brand)
-            if idx >= 0:
-                self._seg_combo_marca.setCurrentIndex(idx)
+            self._seg_marca_fallback_row.hide()
             self._apply_badge(brand)
+            self._seg_badge.show()
+            self._set_detected_brand(brand)
         else:
-            self._seg_badge.setText("❓  Marca não identificada — confirme o seletor de Marca")
+            self._seg_badge.setText("❓  Marca não identificada")
             self._seg_badge.setStyleSheet(
                 "font-size:12px; font-weight:700; color:#888888; "
                 "border-radius:5px; padding:0 12px; background:transparent;"
             )
-        self._seg_badge.show()
+            self._seg_badge.show()
+            self._seg_marca_fallback_row.show()
+            self._set_detected_brand(self._seg_combo_marca_fallback.currentData())
 
     def _apply_badge(self, brand: str) -> None:
         color = "#f59e0b" if brand == "natura" else "#c4b5fd"
@@ -371,14 +385,17 @@ class ExportadorSegmentadasView(QWidget):
             "border-radius:5px; padding:0 12px; background:transparent;"
         )
 
-    def _on_seg_marca_changed(self, _index: int) -> None:
+    def _on_seg_marca_fallback_changed(self, _index: int) -> None:
+        self._set_detected_brand(self._seg_combo_marca_fallback.currentData())
+
+    def _set_detected_brand(self, brand: Optional[str]) -> None:
+        self._seg_detected_brand = brand
         # Loja acompanha a marca, exceto quando o alvo é Minha Loja (CB),
         # que aceita SKUs de qualquer marca.
-        if self._seg_combo_loja.currentData() == "ml":
-            return
-        idx = self._seg_combo_loja.findData(self._seg_combo_marca.currentData())
-        if idx >= 0:
-            self._seg_combo_loja.setCurrentIndex(idx)
+        if brand and self._seg_combo_loja.currentData() != "ml":
+            idx = self._seg_combo_loja.findData(brand)
+            if idx >= 0:
+                self._seg_combo_loja.setCurrentIndex(idx)
 
     def _run_seg_scan(self) -> None:
         path = self._seg_dz_grade.file_path
@@ -389,7 +406,14 @@ class ExportadorSegmentadasView(QWidget):
             )
             return
 
-        expected_brand = self._seg_combo_marca.currentData()
+        expected_brand = self._seg_detected_brand
+        if not expected_brand:
+            QMessageBox.warning(
+                self, "Segmentadas",
+                "Não foi possível identificar a marca da grade. "
+                "Selecione manualmente no campo que apareceu abaixo do arquivo."
+            )
+            return
 
         self._reset_seg_scan_state()
         self._seg_btn_scan.setEnabled(False)
@@ -417,7 +441,7 @@ class ExportadorSegmentadasView(QWidget):
             QMessageBox.warning(self, "Segmentadas", result.error)
             return
 
-        expected_brand = self._seg_combo_marca.currentData()
+        expected_brand = self._seg_detected_brand
         if result.brand_mismatch:
             show_rejection_dialog(
                 self,
@@ -514,12 +538,21 @@ class ExportadorSegmentadasView(QWidget):
             )
             return
 
-        marca_key = self._seg_combo_marca.currentData()
+        marca_key = self._seg_detected_brand
+        if not marca_key:
+            QMessageBox.warning(
+                self, "Segmentadas",
+                "Não foi possível identificar a marca da grade. "
+                "Selecione manualmente no campo que apareceu abaixo do arquivo."
+            )
+            return
+
         loja_key = self._seg_combo_loja.currentData()
         if loja_key not in (marca_key, "ml"):
+            marca_label = BRAND_LABELS.get(marca_key, marca_key)
             show_rejection_dialog(
                 self,
-                f"<b>Marca da grade:</b> {self._seg_combo_marca.currentText()}\n"
+                f"<b>Marca da grade:</b> {marca_label}\n"
                 f"<b>Loja selecionada:</b> {self._seg_combo_loja.currentText()}\n\n"
                 "SKUs de uma marca não podem ser publicados na pricebook de outra marca. "
                 "Escolha a Loja da mesma marca ou <b>Minha Loja (CB)</b>, que aceita todas.",
@@ -559,7 +592,7 @@ class ExportadorSegmentadasView(QWidget):
         )
         self._seg_result_widget.show()
 
-        brand_label = self._seg_combo_marca.currentText()
+        brand_label = BRAND_LABELS.get(marca_key, marca_key)
         HistoryEngine.add_entry(
             "Exportador",
             brand_label,
@@ -575,7 +608,8 @@ class ExportadorSegmentadasView(QWidget):
         if not self._seg_xml:
             return
         today = date.today()
-        brand = self._seg_combo_marca.currentText().upper()
+        detected = self._seg_detected_brand
+        brand = (BRAND_LABELS.get(detected, detected) if detected else "").upper()
         pb_id = "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in self._seg_input_pbid.text().strip())
         default = f"---{today.strftime('%d')}.{today.strftime('%m')}-{brand}-PRICEBOOK-SEGMENTADA-{pb_id or 'ID'}.xml"
 
@@ -588,10 +622,12 @@ class ExportadorSegmentadasView(QWidget):
     def _clear_seg_tab(self) -> None:
         self._seg_dz_grade.clear()
         self._seg_badge.hide()
+        self._seg_marca_fallback_row.hide()
+        self._seg_combo_marca_fallback.setCurrentIndex(0)
+        self._seg_detected_brand = None
         self._seg_warn_lbl.hide()
         self._seg_input_pbid.clear()
         self._seg_combo_loja.setCurrentIndex(0)
-        self._seg_combo_marca.setCurrentIndex(0)
         self._seg_date_start.setDate(QDate.currentDate())
         self._seg_date_end.setDate(QDate.currentDate())
         self._seg_table.setRowCount(0)
