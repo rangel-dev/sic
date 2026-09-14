@@ -62,6 +62,16 @@ CONTRIBUTORS = [
 # type: "feat" | "fix" | "chore"
 CHANGELOG = [
     {
+        "version": "1.5.0",
+        "date": "Setembro 2026",
+        "entries": [
+            ("feat", "Exportador: novo fluxo \"Segmentadas\" gera um Pricebook XML enxuto para uma única lista/campanha segmentada — identificada automaticamente na grade pelas colunas POR SEGMENTADO ou POR ORIGEM — totalmente separado do Pricebook DE/POR completo."),
+            ("feat", "Exportador: o botão do módulo virou um menu com \"Grade Completa\" e \"Segmentadas\", no mesmo padrão do Cadastro."),
+            ("feat", "Segmentadas: campos de data ganharam hora e minuto (dropdowns), campo opcional de nome de exibição para o XML, e o nome do arquivo salvo passou a usar a data de início da campanha e o rótulo da lista."),
+            ("fix", "Corrigido um aviso de fonte exibido no terminal ao abrir o app (QFont::setPointSize)."),
+        ],
+    },
+    {
         "version": "1.4.0",
         "date": "Agosto 2026",
         "entries": [
