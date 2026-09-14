@@ -10,10 +10,10 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QDate, QDateTime, QTime
+from PySide6.QtCore import Qt, QDate, QTime
 from PySide6.QtWidgets import (
     QComboBox,
-    QDateTimeEdit,
+    QDateEdit,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -79,6 +79,19 @@ def _sniff_brand(path: str) -> Optional[str]:
         return "natura" if nat >= avn else "avon"
     except Exception:
         return None
+
+
+def _populate_time_combo(combo: QComboBox, include_end_of_day: bool = False) -> None:
+    """Preenche um QComboBox com horários de 30 em 30 minutos (00:00–23:30) —
+    dropdown de verdade para a hora, em vez de exigir digitação/spinner como
+    o QDateTimeEdit nativo faz. `include_end_of_day` adiciona um item extra
+    "23:59" ao final, usado como padrão do campo Fim (mantém o comportamento
+    de "dia inteiro incluído" quando o usuário não mexe na hora)."""
+    for h in range(24):
+        for m in (0, 30):
+            combo.addItem(f"{h:02d}:{m:02d}", QTime(h, m))
+    if include_end_of_day:
+        combo.addItem("23:59 (fim do dia)", QTime(23, 59))
 
 
 class ExportadorSegmentadasView(QWidget):
@@ -162,24 +175,46 @@ class ExportadorSegmentadasView(QWidget):
         lbl_date_start = QLabel("Data/Hora Início")
         lbl_date_start.setObjectName("label_section")
         date_start_col.addWidget(lbl_date_start)
-        self._seg_date_start = QDateTimeEdit()
+        start_row = QHBoxLayout()
+        start_row.setSpacing(6)
+        self._seg_date_start = QDateEdit()
         self._seg_date_start.setCalendarPopup(True)
-        self._seg_date_start.setDisplayFormat("dd/MM/yyyy HH:mm")
-        self._seg_date_start.setDateTime(QDateTime(QDate.currentDate(), QTime(0, 0)))
-        self._seg_date_start.setFixedWidth(170)
-        date_start_col.addWidget(self._seg_date_start)
+        self._seg_date_start.setDisplayFormat("dd/MM/yyyy")
+        self._seg_date_start.setDate(QDate.currentDate())
+        self._seg_date_start.setFixedWidth(120)
+        start_row.addWidget(self._seg_date_start)
+        lbl_start_at = QLabel("às")
+        lbl_start_at.setObjectName("label_muted")
+        start_row.addWidget(lbl_start_at)
+        self._seg_time_start = QComboBox()
+        self._seg_time_start.setFixedWidth(90)
+        _populate_time_combo(self._seg_time_start)
+        self._seg_time_start.setCurrentIndex(0)  # 00:00
+        start_row.addWidget(self._seg_time_start)
+        date_start_col.addLayout(start_row)
 
         date_end_col = QVBoxLayout()
         date_end_col.setSpacing(6)
         lbl_date_end = QLabel("Data/Hora Fim")
         lbl_date_end.setObjectName("label_section")
         date_end_col.addWidget(lbl_date_end)
-        self._seg_date_end = QDateTimeEdit()
+        end_row = QHBoxLayout()
+        end_row.setSpacing(6)
+        self._seg_date_end = QDateEdit()
         self._seg_date_end.setCalendarPopup(True)
-        self._seg_date_end.setDisplayFormat("dd/MM/yyyy HH:mm")
-        self._seg_date_end.setDateTime(QDateTime(QDate.currentDate(), QTime(23, 59)))
-        self._seg_date_end.setFixedWidth(170)
-        date_end_col.addWidget(self._seg_date_end)
+        self._seg_date_end.setDisplayFormat("dd/MM/yyyy")
+        self._seg_date_end.setDate(QDate.currentDate())
+        self._seg_date_end.setFixedWidth(120)
+        end_row.addWidget(self._seg_date_end)
+        lbl_end_at = QLabel("às")
+        lbl_end_at.setObjectName("label_muted")
+        end_row.addWidget(lbl_end_at)
+        self._seg_time_end = QComboBox()
+        self._seg_time_end.setFixedWidth(90)
+        _populate_time_combo(self._seg_time_end, include_end_of_day=True)
+        self._seg_time_end.setCurrentIndex(self._seg_time_end.count() - 1)  # 23:59
+        end_row.addWidget(self._seg_time_end)
+        date_end_col.addLayout(end_row)
 
         date_sep = QLabel("→")
         date_sep.setObjectName("label_muted")
@@ -536,8 +571,10 @@ class ExportadorSegmentadasView(QWidget):
 
         if candidate.periodo_sugerido:
             start, end = candidate.periodo_sugerido
-            self._seg_date_start.setDateTime(QDateTime(QDate(start.year, start.month, start.day), QTime(0, 0)))
-            self._seg_date_end.setDateTime(QDateTime(QDate(end.year, end.month, end.day), QTime(23, 59)))
+            self._seg_date_start.setDate(QDate(start.year, start.month, start.day))
+            self._seg_time_start.setCurrentIndex(0)  # 00:00
+            self._seg_date_end.setDate(QDate(end.year, end.month, end.day))
+            self._seg_time_end.setCurrentIndex(self._seg_time_end.count() - 1)  # 23:59
 
         if candidate.warnings:
             self._seg_warn_lbl.setText("⚠  " + "  |  ".join(candidate.warnings))
@@ -599,10 +636,10 @@ class ExportadorSegmentadasView(QWidget):
             )
             return
 
-        qdt_start = self._seg_date_start.dateTime()
-        qdt_end = self._seg_date_end.dateTime()
-        d_start, t_start = qdt_start.date(), qdt_start.time()
-        d_end, t_end = qdt_end.date(), qdt_end.time()
+        d_start = self._seg_date_start.date()
+        d_end = self._seg_date_end.date()
+        t_start: QTime = self._seg_time_start.currentData()
+        t_end: QTime = self._seg_time_end.currentData()
         dt_start = datetime(d_start.year(), d_start.month(), d_start.day(), t_start.hour(), t_start.minute())
         dt_end = datetime(d_end.year(), d_end.month(), d_end.day(), t_end.hour(), t_end.minute())
         if dt_end <= dt_start:
@@ -678,8 +715,10 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_input_pbid.clear()
         self._seg_input_display_name.clear()
         self._seg_combo_loja.setCurrentIndex(0)
-        self._seg_date_start.setDateTime(QDateTime(QDate.currentDate(), QTime(0, 0)))
-        self._seg_date_end.setDateTime(QDateTime(QDate.currentDate(), QTime(23, 59)))
+        self._seg_date_start.setDate(QDate.currentDate())
+        self._seg_time_start.setCurrentIndex(0)
+        self._seg_date_end.setDate(QDate.currentDate())
+        self._seg_time_end.setCurrentIndex(self._seg_time_end.count() - 1)
         self._seg_table.setRowCount(0)
         self._seg_lista_box.hide()
         self._seg_result_widget.hide()
