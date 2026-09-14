@@ -139,6 +139,13 @@ def main():
     )
 
     app = QApplication(sys.argv)
+    # Estilo Fusion (em vez do nativo do Windows): evita que o estilo
+    # windowsvista/windows11 consulte a fonte de legenda do sistema via
+    # SystemParametersInfo, o que em algumas combinações de escala/DPI
+    # devolve um point-size inválido (-1) e gera o aviso benigno
+    # "QFont::setPointSize: Point size <= 0". Sem efeito visual esperado,
+    # já que o app já é estilizado inteiramente via QSS.
+    app.setStyle("Fusion")
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("RangelDev")
     app.setApplicationVersion(VERSION)

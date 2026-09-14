@@ -155,7 +155,6 @@ class MainWindow(QMainWindow):
 
         NAV_ITEMS = [
             ("⌂",  "Início",      0),
-            ("⊗",  "Exportador",  1),
             ("✓",  "Auditor",     3),
             # Cadastro is now a dropdown with submenu items
             # Menus CB (index 9) está oculto da barra — página preservada no
@@ -171,6 +170,16 @@ class MainWindow(QMainWindow):
             btn.clicked.connect(lambda _checked, i=idx: self._switch(i))
             self._nav_buttons[idx] = btn
             tabs_layout.addWidget(btn)
+
+        # Exportador dropdown: Grade Completa (1) e Segmentadas (10)
+        exportador_btn = DropdownNavButton("⊗", "Exportador")
+        exportador_btn.setFixedHeight(56)
+        exportador_btn.setObjectName("tab_button")
+        exportador_btn.add_submenu_item("Grade Completa", 1, "▪")
+        exportador_btn.add_submenu_item("Segmentadas", 10, "▪")
+        exportador_btn.submenu_clicked.connect(lambda idx: self._switch_exportador(idx))
+        self._nav_buttons[2] = exportador_btn  # Store with index 2 for compatibility
+        tabs_layout.insertWidget(1, exportador_btn)  # Posiciona Exportador logo após Início
 
         # Cadastro dropdown: Gestor GCP (6) e Pontuação (12)
         cadastro_btn = DropdownNavButton("≡", "Cadastro")
@@ -281,6 +290,12 @@ class MainWindow(QMainWindow):
             from src.ui.pages.view_menu_validator import MenuValidatorView
             page = MenuValidatorView(self)
             QApplication.restoreOverrideCursor()
+        elif index == 10:
+            # Exportador submenu: Segmentadas
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            from src.ui.pages.view_exportador_segmentadas import ExportadorSegmentadasView
+            page = ExportadorSegmentadasView(self)
+            QApplication.restoreOverrideCursor()
         elif index == 11:
             from src.ui.pages.view_sobre import SobreView
             page = SobreView(self)
@@ -308,13 +323,15 @@ class MainWindow(QMainWindow):
         for i, btn in self._nav_buttons.items():
             if i == 5:  # Cadastro dropdown — mark as active for sub-pages
                 btn.setChecked(index in (6, 12))
+            elif i == 2:  # Exportador dropdown — mark as active for sub-pages
+                btn.setChecked(index in (1, 10))
             else:
                 btn.setChecked(i == index)
 
         # Map indices to display names
         PAGE_NAMES = {
             0: "Início",
-            1: "Exportador",
+            1: "Exportador → Grade Completa",
             3: "Auditor",
             4: "Volumetria",
             6: "Cadastro → Gestor GCP",
@@ -324,12 +341,17 @@ class MainWindow(QMainWindow):
             11: "Sobre",
             12: "Cadastro → Pontuação",
             13: "Cupons",
+            10: "Exportador → Segmentadas",
         }
         name = PAGE_NAMES.get(index, "Módulo")
         self.statusBar().showMessage(f"Módulo ativo: {name}  |  v{VERSION}")
 
     def _switch_cadastro(self, index: int):
         """Handle Cadastro submenu clicks."""
+        self._switch(index)
+
+    def _switch_exportador(self, index: int):
+        """Handle Exportador submenu clicks."""
         self._switch(index)
 
     # ── Updates ───────────────────────────────────────────────────────────
