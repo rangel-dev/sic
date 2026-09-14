@@ -10,7 +10,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QDate, QTime
+from PySide6.QtCore import Qt, QDate
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -81,17 +81,12 @@ def _sniff_brand(path: str) -> Optional[str]:
         return None
 
 
-def _populate_time_combo(combo: QComboBox, include_end_of_day: bool = False) -> None:
-    """Preenche um QComboBox com horários de 30 em 30 minutos (00:00–23:30) —
-    dropdown de verdade para a hora, em vez de exigir digitação/spinner como
-    o QDateTimeEdit nativo faz. `include_end_of_day` adiciona um item extra
-    "23:59" ao final, usado como padrão do campo Fim (mantém o comportamento
-    de "dia inteiro incluído" quando o usuário não mexe na hora)."""
-    for h in range(24):
-        for m in (0, 30):
-            combo.addItem(f"{h:02d}:{m:02d}", QTime(h, m))
-    if include_end_of_day:
-        combo.addItem("23:59 (fim do dia)", QTime(23, 59))
+def _populate_numeric_combo(combo: QComboBox, count: int) -> None:
+    """Preenche um QComboBox com "00".."{count-1}" — dropdown de verdade
+    (igual ao calendário da data), usado para Hora (0-23) e Minuto (0-59)
+    separadamente, permitindo qualquer combinação HH:MM."""
+    for i in range(count):
+        combo.addItem(f"{i:02d}")
 
 
 class ExportadorSegmentadasView(QWidget):
@@ -186,11 +181,18 @@ class ExportadorSegmentadasView(QWidget):
         lbl_start_at = QLabel("às")
         lbl_start_at.setObjectName("label_muted")
         start_row.addWidget(lbl_start_at)
-        self._seg_time_start = QComboBox()
-        self._seg_time_start.setFixedWidth(90)
-        _populate_time_combo(self._seg_time_start)
-        self._seg_time_start.setCurrentIndex(0)  # 00:00
-        start_row.addWidget(self._seg_time_start)
+        self._seg_hour_start = QComboBox()
+        self._seg_hour_start.setFixedWidth(56)
+        _populate_numeric_combo(self._seg_hour_start, 24)
+        self._seg_hour_start.setCurrentIndex(0)
+        start_row.addWidget(self._seg_hour_start)
+        lbl_colon_start = QLabel(":")
+        start_row.addWidget(lbl_colon_start)
+        self._seg_min_start = QComboBox()
+        self._seg_min_start.setFixedWidth(56)
+        _populate_numeric_combo(self._seg_min_start, 60)
+        self._seg_min_start.setCurrentIndex(0)
+        start_row.addWidget(self._seg_min_start)
         date_start_col.addLayout(start_row)
 
         date_end_col = QVBoxLayout()
@@ -209,11 +211,18 @@ class ExportadorSegmentadasView(QWidget):
         lbl_end_at = QLabel("às")
         lbl_end_at.setObjectName("label_muted")
         end_row.addWidget(lbl_end_at)
-        self._seg_time_end = QComboBox()
-        self._seg_time_end.setFixedWidth(90)
-        _populate_time_combo(self._seg_time_end, include_end_of_day=True)
-        self._seg_time_end.setCurrentIndex(self._seg_time_end.count() - 1)  # 23:59
-        end_row.addWidget(self._seg_time_end)
+        self._seg_hour_end = QComboBox()
+        self._seg_hour_end.setFixedWidth(56)
+        _populate_numeric_combo(self._seg_hour_end, 24)
+        self._seg_hour_end.setCurrentIndex(23)
+        end_row.addWidget(self._seg_hour_end)
+        lbl_colon_end = QLabel(":")
+        end_row.addWidget(lbl_colon_end)
+        self._seg_min_end = QComboBox()
+        self._seg_min_end.setFixedWidth(56)
+        _populate_numeric_combo(self._seg_min_end, 60)
+        self._seg_min_end.setCurrentIndex(59)
+        end_row.addWidget(self._seg_min_end)
         date_end_col.addLayout(end_row)
 
         date_sep = QLabel("→")
@@ -572,9 +581,11 @@ class ExportadorSegmentadasView(QWidget):
         if candidate.periodo_sugerido:
             start, end = candidate.periodo_sugerido
             self._seg_date_start.setDate(QDate(start.year, start.month, start.day))
-            self._seg_time_start.setCurrentIndex(0)  # 00:00
+            self._seg_hour_start.setCurrentIndex(0)
+            self._seg_min_start.setCurrentIndex(0)
             self._seg_date_end.setDate(QDate(end.year, end.month, end.day))
-            self._seg_time_end.setCurrentIndex(self._seg_time_end.count() - 1)  # 23:59
+            self._seg_hour_end.setCurrentIndex(23)
+            self._seg_min_end.setCurrentIndex(59)
 
         if candidate.warnings:
             self._seg_warn_lbl.setText("⚠  " + "  |  ".join(candidate.warnings))
@@ -638,10 +649,14 @@ class ExportadorSegmentadasView(QWidget):
 
         d_start = self._seg_date_start.date()
         d_end = self._seg_date_end.date()
-        t_start: QTime = self._seg_time_start.currentData()
-        t_end: QTime = self._seg_time_end.currentData()
-        dt_start = datetime(d_start.year(), d_start.month(), d_start.day(), t_start.hour(), t_start.minute())
-        dt_end = datetime(d_end.year(), d_end.month(), d_end.day(), t_end.hour(), t_end.minute())
+        dt_start = datetime(
+            d_start.year(), d_start.month(), d_start.day(),
+            self._seg_hour_start.currentIndex(), self._seg_min_start.currentIndex(),
+        )
+        dt_end = datetime(
+            d_end.year(), d_end.month(), d_end.day(),
+            self._seg_hour_end.currentIndex(), self._seg_min_end.currentIndex(),
+        )
         if dt_end <= dt_start:
             QMessageBox.warning(
                 self, "Segmentadas",
@@ -716,9 +731,11 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_input_display_name.clear()
         self._seg_combo_loja.setCurrentIndex(0)
         self._seg_date_start.setDate(QDate.currentDate())
-        self._seg_time_start.setCurrentIndex(0)
+        self._seg_hour_start.setCurrentIndex(0)
+        self._seg_min_start.setCurrentIndex(0)
         self._seg_date_end.setDate(QDate.currentDate())
-        self._seg_time_end.setCurrentIndex(self._seg_time_end.count() - 1)
+        self._seg_hour_end.setCurrentIndex(23)
+        self._seg_min_end.setCurrentIndex(59)
         self._seg_table.setRowCount(0)
         self._seg_lista_box.hide()
         self._seg_result_widget.hide()
