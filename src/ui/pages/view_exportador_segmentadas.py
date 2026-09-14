@@ -6,14 +6,14 @@ pela tela Exportador → Grade Completa.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtCore import Qt, QDate, QDateTime, QTime
 from PySide6.QtWidgets import (
     QComboBox,
-    QDateEdit,
+    QDateTimeEdit,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -89,6 +89,8 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_selected_lista: ListaCandidate | None = None
         self._seg_xml: bytes | None = None
         self._seg_detected_brand: Optional[str] = None
+        self._seg_generated_campaign_start: Optional[date] = None
+        self._seg_generated_label: Optional[str] = None
         self._setup_ui()
 
     # ── UI Construction ───────────────────────────────────────────────────
@@ -100,7 +102,8 @@ class ExportadorSegmentadasView(QWidget):
         outer.addWidget(SectionHeader(
             "⊗  Exportador — Segmentadas",
             "Gera um Pricebook XML enxuto (override de preço) para uma lista/campanha "
-            "segmentada, identificada na grade pela coluna POR SEGMENTADO."
+            "segmentada, identificada na grade por colunas de preço final "
+            "(POR SEGMENTADO, POR ORIGEM)."
         ))
         outer.addWidget(Divider())
 
@@ -128,6 +131,15 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_input_pbid.setPlaceholderText("Ex: NAT-RR1881")
         params_layout.addWidget(self._seg_input_pbid)
 
+        lbl_display_name = QLabel("Nome de Exibição do Pricebook (opcional)")
+        lbl_display_name.setObjectName("label_section")
+        params_layout.addWidget(lbl_display_name)
+        self._seg_input_display_name = QLineEdit()
+        self._seg_input_display_name.setPlaceholderText(
+            "Ex: Campanha Favoritos RR18/21 — deixe em branco para omitir do XML"
+        )
+        params_layout.addWidget(self._seg_input_display_name)
+
         loja_col = QVBoxLayout()
         loja_col.setSpacing(6)
         lbl_loja = QLabel("Loja")
@@ -147,24 +159,26 @@ class ExportadorSegmentadasView(QWidget):
 
         date_start_col = QVBoxLayout()
         date_start_col.setSpacing(6)
-        lbl_date_start = QLabel("Data Início")
+        lbl_date_start = QLabel("Data/Hora Início")
         lbl_date_start.setObjectName("label_section")
         date_start_col.addWidget(lbl_date_start)
-        self._seg_date_start = QDateEdit()
+        self._seg_date_start = QDateTimeEdit()
         self._seg_date_start.setCalendarPopup(True)
-        self._seg_date_start.setDate(QDate.currentDate())
-        self._seg_date_start.setFixedWidth(150)
+        self._seg_date_start.setDisplayFormat("dd/MM/yyyy HH:mm")
+        self._seg_date_start.setDateTime(QDateTime(QDate.currentDate(), QTime(0, 0)))
+        self._seg_date_start.setFixedWidth(170)
         date_start_col.addWidget(self._seg_date_start)
 
         date_end_col = QVBoxLayout()
         date_end_col.setSpacing(6)
-        lbl_date_end = QLabel("Data Fim")
+        lbl_date_end = QLabel("Data/Hora Fim")
         lbl_date_end.setObjectName("label_section")
         date_end_col.addWidget(lbl_date_end)
-        self._seg_date_end = QDateEdit()
+        self._seg_date_end = QDateTimeEdit()
         self._seg_date_end.setCalendarPopup(True)
-        self._seg_date_end.setDate(QDate.currentDate())
-        self._seg_date_end.setFixedWidth(150)
+        self._seg_date_end.setDisplayFormat("dd/MM/yyyy HH:mm")
+        self._seg_date_end.setDateTime(QDateTime(QDate.currentDate(), QTime(23, 59)))
+        self._seg_date_end.setFixedWidth(170)
         date_end_col.addWidget(self._seg_date_end)
 
         date_sep = QLabel("→")
@@ -251,9 +265,10 @@ class ExportadorSegmentadasView(QWidget):
         lista_layout.setSpacing(10)
 
         self._seg_table = QTableWidget()
-        self._seg_table.setColumnCount(5)
+        self._seg_table.setColumnCount(6)
         self._seg_table.setHorizontalHeaderLabels([
-            "LISTA (ABA)", "LP", "PERÍODO SUGERIDO", "SKUs c/ POR SEGMENTADO", "TOTAL INFORMADO"
+            "LISTA (ABA)", "LP", "PERÍODO SUGERIDO", "COLUNA DETECTADA",
+            "SKUs c/ preço válido", "TOTAL INFORMADO"
         ])
         self._seg_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self._seg_table.verticalHeader().hide()
@@ -360,6 +375,8 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_scan_result = None
         self._seg_selected_lista = None
         self._seg_xml = None
+        self._seg_generated_campaign_start = None
+        self._seg_generated_label = None
         self._seg_btn_generate.setEnabled(False)
 
     def _on_seg_file_selected(self, paths: list[str]) -> None:
@@ -485,16 +502,17 @@ class ExportadorSegmentadasView(QWidget):
             else:
                 periodo_str = "—"
             self._seg_table.setItem(row, 2, QTableWidgetItem(periodo_str))
+            self._seg_table.setItem(row, 3, QTableWidgetItem(c.matched_header))
 
             item_skus = QTableWidgetItem(str(len(c.rows)))
             if c.warnings:
                 item_skus.setForeground(Qt.GlobalColor.yellow)
             elif c.rows:
                 item_skus.setForeground(Qt.GlobalColor.green)
-            self._seg_table.setItem(row, 3, item_skus)
+            self._seg_table.setItem(row, 4, item_skus)
 
             total_str = str(c.total_skus_informado) if c.total_skus_informado is not None else "—"
-            self._seg_table.setItem(row, 4, QTableWidgetItem(total_str))
+            self._seg_table.setItem(row, 5, QTableWidgetItem(total_str))
 
             if c.warnings:
                 tip = "\n".join(f"• {w}" for w in c.warnings)
@@ -518,8 +536,8 @@ class ExportadorSegmentadasView(QWidget):
 
         if candidate.periodo_sugerido:
             start, end = candidate.periodo_sugerido
-            self._seg_date_start.setDate(QDate(start.year, start.month, start.day))
-            self._seg_date_end.setDate(QDate(end.year, end.month, end.day))
+            self._seg_date_start.setDateTime(QDateTime(QDate(start.year, start.month, start.day), QTime(0, 0)))
+            self._seg_date_end.setDateTime(QDateTime(QDate(end.year, end.month, end.day), QTime(23, 59)))
 
         if candidate.warnings:
             self._seg_warn_lbl.setText("⚠  " + "  |  ".join(candidate.warnings))
@@ -577,32 +595,44 @@ class ExportadorSegmentadasView(QWidget):
         if not candidate or not candidate.rows:
             QMessageBox.warning(
                 self, "Segmentadas",
-                "Selecione uma lista com pelo menos um SKU com preço POR SEGMENTADO válido."
+                "Selecione uma lista com pelo menos um SKU com preço segmentado válido."
             )
             return
 
-        qd_start = self._seg_date_start.date()
-        qd_end = self._seg_date_end.date()
-        date_start = date(qd_start.year(), qd_start.month(), qd_start.day())
-        date_end = date(qd_end.year(), qd_end.month(), qd_end.day())
-        if date_end < date_start:
-            QMessageBox.warning(self, "Segmentadas", "A <b>Data Fim</b> não pode ser anterior à Data Início.")
+        qdt_start = self._seg_date_start.dateTime()
+        qdt_end = self._seg_date_end.dateTime()
+        d_start, t_start = qdt_start.date(), qdt_start.time()
+        d_end, t_end = qdt_end.date(), qdt_end.time()
+        dt_start = datetime(d_start.year(), d_start.month(), d_start.day(), t_start.hour(), t_start.minute())
+        dt_end = datetime(d_end.year(), d_end.month(), d_end.day(), t_end.hour(), t_end.minute())
+        if dt_end <= dt_start:
+            QMessageBox.warning(
+                self, "Segmentadas",
+                "A <b>Data/Hora Fim</b> deve ser posterior à Data/Hora Início."
+            )
             return
 
         parent_id = LOJA_PARENT_IDS[loja_key]
 
-        online_from, online_to = SegmentadoEngine.compute_online_window(date_start, date_end)
+        online_from, online_to = SegmentadoEngine.compute_online_window(dt_start, dt_end)
+        display_name = self._seg_input_display_name.text().strip() or None
         xml_bytes = SegmentadoEngine.build_xml(
-            pricebook_id, parent_id, online_from, online_to, candidate.rows
+            pricebook_id, parent_id, online_from, online_to, candidate.rows,
+            display_name=display_name,
         )
         self._seg_xml = xml_bytes
+        # Capturados no momento da geração (não relidos ao salvar) — o nome
+        # do arquivo sugerido precisa refletir o que está dentro do XML, não
+        # o que os campos mostram se o usuário mexer neles depois de gerar.
+        self._seg_generated_campaign_start = dt_start.date()
+        self._seg_generated_label = candidate.lp_label or candidate.sheet_name
 
         self._seg_stat_skus.set_value(str(len(candidate.rows)))
         self._seg_stat_lista.set_value(candidate.sheet_name, "#7e57c2")
         self._seg_stat_lp.set_value(candidate.lp_label or "—", "#26a69a")
         self._seg_stat_loja.set_value(self._seg_combo_loja.currentText(), "#60a5fa")
         self._seg_stat_periodo.set_value(
-            f"{date_start.strftime('%d/%m')} – {date_end.strftime('%d/%m')}", "#888888"
+            f"{dt_start.strftime('%d/%m %H:%M')} – {dt_end.strftime('%d/%m %H:%M')}", "#888888"
         )
         self._seg_result_widget.show()
 
@@ -621,11 +651,16 @@ class ExportadorSegmentadasView(QWidget):
     def _save_seg_pricebook(self) -> None:
         if not self._seg_xml:
             return
-        today = date.today()
+        campaign_start = self._seg_generated_campaign_start or date.today()
         detected = self._seg_detected_brand
         brand = (BRAND_LABELS.get(detected, detected) if detected else "").upper()
         pb_id = "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in self._seg_input_pbid.text().strip())
-        default = f"---{today.strftime('%d')}.{today.strftime('%m')}-{brand}-PRICEBOOK-SEGMENTADA-{pb_id or 'ID'}.xml"
+        label_raw = (self._seg_generated_label or "").strip().upper()
+        label_token = "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in label_raw) or "LISTA"
+        default = (
+            f"---{campaign_start.strftime('%d')}.{campaign_start.strftime('%m')}"
+            f"-{brand}-PRICEBOOK-SEGMENTADA-{label_token}-{pb_id or 'ID'}.xml"
+        )
 
         path, _ = QFileDialog.getSaveFileName(self, "Salvar Pricebook Segmentado XML", default, "XML (*.xml)")
         if path:
@@ -641,9 +676,10 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_detected_brand = None
         self._seg_warn_lbl.hide()
         self._seg_input_pbid.clear()
+        self._seg_input_display_name.clear()
         self._seg_combo_loja.setCurrentIndex(0)
-        self._seg_date_start.setDate(QDate.currentDate())
-        self._seg_date_end.setDate(QDate.currentDate())
+        self._seg_date_start.setDateTime(QDateTime(QDate.currentDate(), QTime(0, 0)))
+        self._seg_date_end.setDateTime(QDateTime(QDate.currentDate(), QTime(23, 59)))
         self._seg_table.setRowCount(0)
         self._seg_lista_box.hide()
         self._seg_result_widget.hide()
@@ -653,3 +689,5 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_scan_result = None
         self._seg_selected_lista = None
         self._seg_xml = None
+        self._seg_generated_campaign_start = None
+        self._seg_generated_label = None

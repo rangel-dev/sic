@@ -35,7 +35,7 @@ RESERVED_PRICEBOOK_IDS: frozenset[str] = frozenset(
 
 BRAND_PREFIX: dict[str, str] = {"natura": "NATBRA-", "avon": "AVNBRA-"}
 
-HEADER_TARGET = "POR SEGMENTADO"
+HEADER_TARGETS: tuple[str, ...] = ("POR SEGMENTADO", "POR ORIGEM")
 _HEADER_SCAN_ROWS = 15
 
 _WS_RE = re.compile(r"\s+")
@@ -55,6 +55,7 @@ class ListaCandidate:
     total_skus_informado: Optional[int]
     rows: list[SegmentedSku]
     rows_scanned: int
+    matched_header: str
     nat_count: int = 0
     avn_count: int = 0
     warnings: list[str] = field(default_factory=list)
@@ -109,20 +110,18 @@ class SegmentadoEngine:
 
     # ── Detecção de aba candidata ─────────────────────────────────────────
     @classmethod
-    def _find_header_row(cls, rows: list[tuple]) -> Optional[tuple[int, dict[str, int]]]:
+    def _find_header_row(cls, rows: list[tuple]) -> Optional[tuple[int, dict[str, int], str]]:
         for i, row in enumerate(rows[:_HEADER_SCAN_ROWS]):
             header_map: dict[str, int] = {}
-            found = False
             for j, cell in enumerate(row):
                 norm = cls._normalize(cell)
                 if not norm:
                     continue
                 if norm not in header_map:
                     header_map[norm] = j
-                if norm == HEADER_TARGET:
-                    found = True
-            if found:
-                return i, header_map
+            matched = next((t for t in HEADER_TARGETS if t in header_map), None)
+            if matched is not None:
+                return i, header_map, matched
         return None
 
     @staticmethod
@@ -181,7 +180,7 @@ class SegmentadoEngine:
         rows: list[tuple],
         header_row_idx: int,
         product_id_col: int,
-        por_seg_col: int,
+        price_col: int,
         expected_prefix: Optional[str],
     ) -> tuple[list[SegmentedSku], dict[str, int]]:
         """Retorna os SKUs com preço segmentado válido (deduplicados — a
@@ -214,7 +213,7 @@ class SegmentadoEngine:
                 stats["foreign"] += 1
                 continue
 
-            price_val = row[por_seg_col] if por_seg_col < len(row) else None
+            price_val = row[price_col] if price_col < len(row) else None
             price = cls._parse_price_cell(price_val)
             if price is None or price <= 0:
                 stats["no_price"] += 1
@@ -234,9 +233,9 @@ class SegmentadoEngine:
         found = cls._find_header_row(head)
         if found is None:
             return None
-        header_row_idx, header_map = found
-        por_seg_col = header_map.get(HEADER_TARGET)
-        if por_seg_col is None:
+        header_row_idx, header_map, matched_header = found
+        price_col = header_map.get(matched_header)
+        if price_col is None:
             return None
 
         rows = list(ws.iter_rows(max_row=10000, values_only=True))
@@ -250,7 +249,7 @@ class SegmentadoEngine:
             warnings.append("Aba sem SKUs — nenhuma linha com NATBRA-/AVNBRA- encontrada.")
         else:
             seg_rows, stats = cls._extract_rows(
-                rows, header_row_idx, product_id_col, por_seg_col, expected_prefix
+                rows, header_row_idx, product_id_col, price_col, expected_prefix
             )
 
         total_informado = cls._extract_total_informado(rows)
@@ -269,7 +268,7 @@ class SegmentadoEngine:
             if stats["no_price"] == stats["scanned"] - stats["foreign"]:
                 hint = " Se a coluna for fórmula, abra e salve a planilha no Excel antes de importar."
             warnings.append(
-                f"{stats['no_price']} SKU(s) sem preço POR SEGMENTADO válido serão ignorados.{hint}"
+                f"{stats['no_price']} SKU(s) sem preço {matched_header} válido serão ignorados.{hint}"
             )
         if stats["dup"]:
             warnings.append(
@@ -283,6 +282,7 @@ class SegmentadoEngine:
             total_skus_informado=total_informado,
             rows=seg_rows,
             rows_scanned=stats["scanned"],
+            matched_header=matched_header,
             nat_count=stats["nat"],
             avn_count=stats["avn"],
             warnings=warnings,
@@ -331,7 +331,8 @@ class SegmentadoEngine:
 
         error = None
         if not candidates:
-            error = "Nenhuma aba com coluna 'POR SEGMENTADO' encontrada nesta grade."
+            targets = " ou ".join(f"'{t}'" for t in HEADER_TARGETS)
+            error = f"Nenhuma aba com coluna {targets} encontrada nesta grade."
 
         return SegmentScanResult(
             candidates=candidates,
@@ -340,11 +341,16 @@ class SegmentadoEngine:
             error=error,
         )
 
-    # ── Janela online-from / online-to (BRT → UTC, fim inclusivo) ──────────
+    # ── Janela online-from / online-to (BRT → UTC, sem DST) ─────────────────
     @staticmethod
-    def compute_online_window(date_start: date, date_end: date) -> tuple[str, str]:
-        online_from = f"{date_start.isoformat()}T03:00:00.000Z"
-        online_to = f"{(date_end + timedelta(days=1)).isoformat()}T02:59:00.000Z"
+    def compute_online_window(dt_start: datetime, dt_end: datetime) -> tuple[str, str]:
+        """Converte hora local (Brasília, UTC-3 fixo, sem horário de verão)
+        para UTC. Segundos/microssegundos são zerados — o seletor da UI só
+        produz granularidade de minuto."""
+        utc_start = dt_start.replace(second=0, microsecond=0) + timedelta(hours=3)
+        utc_end = dt_end.replace(second=0, microsecond=0) + timedelta(hours=3)
+        online_from = utc_start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        online_to = utc_end.strftime("%Y-%m-%dT%H:%M:%S.000Z")
         return online_from, online_to
 
     # ── Geração do XML ──────────────────────────────────────────────────────
@@ -355,6 +361,7 @@ class SegmentadoEngine:
         online_from: str,
         online_to: str,
         skus: list[SegmentedSku],
+        display_name: Optional[str] = None,
     ) -> bytes:
         NS = PRICEBOOK_NS
         root = etree.Element("pricebooks", xmlns=NS)
@@ -365,6 +372,11 @@ class SegmentadoEngine:
 
         curr = etree.SubElement(header, f"{{{NS}}}currency")
         curr.text = "BRL"
+
+        if display_name:
+            disp = etree.SubElement(header, f"{{{NS}}}display-name")
+            disp.set("{http://www.w3.org/XML/1998/namespace}lang", "x-default")
+            disp.text = display_name
 
         online_flag = etree.SubElement(header, f"{{{NS}}}online-flag")
         online_flag.text = "true"
