@@ -40,6 +40,15 @@ PRESENTE_CATEGORY_IDS_AVON = (
 )
 
 
+def _titulo_bate(v: str, alvo: str) -> bool:
+    """BRD-011: compara título de coluna tolerando futura remoção de
+    espaço/underscore na Grade. Aditivo — a igualdade exata (título de hoje)
+    é sempre checada primeiro e continua bastando sozinha."""
+    if v == alvo:
+        return True
+    return re.sub(r"[\s_]+", "", v) == re.sub(r"[\s_]+", "", alvo)
+
+
 def _price_bucket(price: float) -> str:
     """Mapeia o "Preço POR" para uma das 4 faixas de presente Natura
     (BRD-008 §4.2). Limites superiores inclusivos."""
@@ -314,7 +323,7 @@ class SyncEngine:
                                 selo_col = j
                             if val == "POR":  # BRD-008: "Preço POR" — cabeçalho real é só "POR"
                                 por_col = j
-                            if val == "CATEGORIA PLANEJAMENTO":  # BRD-008
+                            if _titulo_bate(val, "CATEGORIA PLANEJAMENTO"):  # BRD-008 / BRD-011
                                 plan_col = j
                             if sku_col is None and SKU_PATTERN.match(str(cell.value).strip()):
                                 sku_col = j
