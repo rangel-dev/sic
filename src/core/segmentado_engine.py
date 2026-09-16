@@ -39,6 +39,7 @@ HEADER_TARGETS: tuple[str, ...] = ("POR SEGMENTADO", "POR ORIGEM")
 _HEADER_SCAN_ROWS = 15
 
 _WS_RE = re.compile(r"\s+")
+_WS_US_RE = re.compile(r"[\s_]+")  # BRD-011: usado só no fallback de _find_header_row
 
 
 @dataclass
@@ -109,6 +110,13 @@ class SegmentadoEngine:
             return None
 
     # ── Detecção de aba candidata ─────────────────────────────────────────
+    @staticmethod
+    def _loose(s: str) -> str:
+        """BRD-011: versão 'frouxa' p/ fallback — remove todo espaço/underscore.
+        Nunca substitui `_normalize`; só é chamada quando a busca exata (título
+        com espaço, como hoje) não encontrar nada."""
+        return _WS_US_RE.sub("", s)
+
     @classmethod
     def _find_header_row(cls, rows: list[tuple]) -> Optional[tuple[int, dict[str, int], str]]:
         for i, row in enumerate(rows[:_HEADER_SCAN_ROWS]):
@@ -120,6 +128,14 @@ class SegmentadoEngine:
                 if norm not in header_map:
                     header_map[norm] = j
             matched = next((t for t in HEADER_TARGETS if t in header_map), None)
+            if matched is None:
+                # BRD-011: fallback aditivo, só roda se a busca exata acima
+                # não achou nada — tolera título sem espaço/underscore.
+                loose_targets = {cls._loose(t) for t in HEADER_TARGETS}
+                matched = next(
+                    (key for key in header_map if cls._loose(key) in loose_targets),
+                    None,
+                )
             if matched is not None:
                 return i, header_map, matched
         return None
@@ -168,7 +184,9 @@ class SegmentadoEngine:
         if len(rows) < 3 or len(rows[2]) < 2:
             return None
         label_cell, value_cell = rows[2][0], rows[2][1]
-        if (cls._normalize(label_cell) == "TOTAL SKUS"
+        label_norm = cls._normalize(label_cell)
+        # BRD-011: segunda condição é fallback aditivo (título sem espaço).
+        if ((label_norm == "TOTAL SKUS" or cls._loose(label_norm) == "TOTALSKUS")
                 and isinstance(value_cell, (int, float))
                 and not isinstance(value_cell, bool)):
             return int(value_cell)

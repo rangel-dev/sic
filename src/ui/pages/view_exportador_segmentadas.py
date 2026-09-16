@@ -1,8 +1,10 @@
 """
 Exportador — Segmentadas: gera um Pricebook XML enxuto (override de preço)
 para uma única lista/campanha segmentada, identificada na grade pela coluna
-"POR SEGMENTADO". Totalmente separado do Pricebook DE/POR completo gerado
-pela tela Exportador → Grade Completa.
+de preço final (hoje "POR SEGMENTADO"/"POR ORIGEM" — ver
+core.segmentado_engine.HEADER_TARGETS; a busca tolera título sem
+espaço/underscore, BRD-011). Totalmente separado do Pricebook DE/POR
+completo gerado pela tela Exportador → Grade Completa.
 """
 from __future__ import annotations
 
@@ -111,7 +113,7 @@ class ExportadorSegmentadasView(QWidget):
             "⊗  Exportador — Segmentadas",
             "Gera um Pricebook XML enxuto (override de preço) para uma lista/campanha "
             "segmentada, identificada na grade por colunas de preço final "
-            "(POR SEGMENTADO, POR ORIGEM)."
+            "(ex.: POR SEGMENTADO, POR ORIGEM — com ou sem espaço no título)."
         ))
         outer.addWidget(Divider())
 
