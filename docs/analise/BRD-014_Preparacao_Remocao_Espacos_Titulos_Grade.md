@@ -1,10 +1,11 @@
 # Análise de Negócio — Preparação para Remoção de Espaços nos Títulos de Coluna da Grade
 
-**Documento:** BRD-011
+**Documento:** BRD-014
 **Autor:** Marcos (Analista de Negócios Jr)
 **Data:** 16-09-2026
 **Status:** Rascunho — pendente de definição do novo padrão de título pelo time responsável pela Grade
 **Branch:** A definir
+**Nota de numeração:** este documento foi publicado originalmente como **BRD-011**. O número já identificava a geração de Inventory XML (commit `9328d00`, sem documento em `docs/analise/`), então foi renumerado para **BRD-014**. Os commits `1bcd926`, `04f5e26` e `9b8241b` (já publicados) ainda citam BRD-011 e se referem **a este documento**. Comentários "BRD-011" em `sync_engine.py` (Inventory), `view_exportador.py`, `worker_exportador.py` e `kit_validation.py` **não** são deste BRD.
 **Motivação:** A Grade de Ativação passará por uma reanálise na qual os títulos de coluna
 deixarão de conter espaço (ex.: hoje `"TIPO MATERIAL"`, `"CATEGORIA PLANEJAMENTO"`, `"POR
 SEGMENTADO"`, `"POR ORIGEM"`; formato final — `TipoMaterial`, `TIPO_MATERIAL` etc. — ainda

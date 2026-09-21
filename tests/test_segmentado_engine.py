@@ -1,8 +1,8 @@
 """Suíte de testes do SegmentadoEngine.
 
-Não existia nenhum teste dedicado a este engine antes do BRD-011. Cobre o
+Não existia nenhum teste dedicado a este engine antes do BRD-014. Cobre o
 parsing/scan (comportamento pré-existente, sem nenhuma mudança de
-comportamento) e, em especial, prova que o fallback do BRD-011 (título de
+comportamento) e, em especial, prova que o fallback do BRD-014 (título de
 coluna sem espaço/underscore, ex.: 'PORSEGMENTADO' no lugar de
 'POR SEGMENTADO') é estritamente aditivo: toda entrada que já funcionava com
 o título de hoje continua produzindo exatamente o mesmo resultado, e o
@@ -54,7 +54,7 @@ class TestNormalize:
 # ─── _find_header_row — comportamento de hoje (título com espaço) ─────────
 
 class TestFindHeaderRowTituloComEspacoDeHoje:
-    """Este grupo prova que o BRD-011 não mudou nada do que já funcionava."""
+    """Este grupo prova que o BRD-014 não mudou nada do que já funcionava."""
 
     def test_por_segmentado_com_espaco_simples(self):
         rows = [("SKU", "POR SEGMENTADO", "OUTRA")]
@@ -83,9 +83,9 @@ class TestFindHeaderRowTituloComEspacoDeHoje:
         assert E._find_header_row(rows) is None
 
 
-# ─── _find_header_row — fallback do BRD-011 (título futuro sem espaço) ────
+# ─── _find_header_row — fallback do BRD-014 (título futuro sem espaço) ────
 
-class TestFindHeaderRowFallbackBRD011:
+class TestFindHeaderRowFallbackBRD014:
     """Título futuro (espaço/underscore removido) só é aceito quando a busca
     exata (título com espaço, o de hoje) não encontrar nada."""
 
@@ -137,7 +137,7 @@ class TestExtractTotalInformado:
         rows = [(None,), (None,), ("TOTAL SKUS", 42)]
         assert E._extract_total_informado(rows) == 42
 
-    def test_total_skus_sem_espaco_fallback_brd011(self):
+    def test_total_skus_sem_espaco_fallback_brd014(self):
         rows = [(None,), (None,), ("TOTALSKUS", 42)]
         assert E._extract_total_informado(rows) == 42
 
@@ -345,9 +345,9 @@ class TestScanWorkbookTituloComEspacoDeHoje:
         assert "Nenhuma aba" in result.error
 
 
-# ─── scan_workbook — fallback do BRD-011 é aditivo ─────────────────────────
+# ─── scan_workbook — fallback do BRD-014 é aditivo ─────────────────────────
 
-class TestScanWorkbookFallbackBRD011:
+class TestScanWorkbookFallbackBRD014:
     """Prova, de ponta a ponta, que reconhecer o título futuro sem espaço
     não altera em nada o resultado do título de hoje: as duas planilhas
     (só muda a grafia do cabeçalho) produzem exatamente o mesmo resultado."""
