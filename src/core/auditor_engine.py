@@ -67,7 +67,7 @@ def _is_production_environment() -> bool:
 
 
 def _titulo_bate(v: str, alvo: str) -> bool:
-    """BRD-011: compara título de coluna tolerando futura remoção de
+    """BRD-014: compara título de coluna tolerando futura remoção de
     espaço/underscore na Grade. Aditivo — a igualdade exata (título de hoje)
     é sempre checada primeiro e continua bastando sozinha."""
     if v == alvo:
@@ -386,7 +386,7 @@ class AuditorEngine:
                     por_col = j
                 elif vu == "CM":            # Código de Material (exato; não casa "CMV")
                     cm_col = j
-                elif _titulo_bate(vu, "TIPO MATERIAL"):  # ZEST = kit; ZPAC/ZPRO = item simples (BRD-011)
+                elif _titulo_bate(vu, "TIPO MATERIAL"):  # ZEST = kit; ZPAC/ZPRO = item simples (BRD-014)
                     tipo_col = j
                 elif "VISIBLE" in vu or "VISIBILIDADE" in vu:
                     vis_col = j

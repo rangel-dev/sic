@@ -3,7 +3,7 @@ Exportador — Segmentadas: gera um Pricebook XML enxuto (override de preço)
 para uma única lista/campanha segmentada, identificada na grade pela coluna
 de preço final (hoje "POR SEGMENTADO"/"POR ORIGEM" — ver
 core.segmentado_engine.HEADER_TARGETS; a busca tolera título sem
-espaço/underscore, BRD-011). Totalmente separado do Pricebook DE/POR
+espaço/underscore, BRD-014). Totalmente separado do Pricebook DE/POR
 completo gerado pela tela Exportador → Grade Completa.
 """
 from __future__ import annotations
