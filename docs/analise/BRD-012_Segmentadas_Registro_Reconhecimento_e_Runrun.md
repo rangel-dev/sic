@@ -92,15 +92,39 @@ A separação do repositório em código privado e instaladores públicos, neces
 
 O envelope carrega `schema_version` para permitir migração. **Só metadados saem do computador — nenhum preço e nenhuma lista de SKUs.**
 
+⚠️ **A migração dos registros locais é explícita.** As Etapas 2 e 3 rodam antes de a planilha existir, então, quando esta etapa entrar, haverá registros criados sob o combinado de que ficariam na máquina. Subi-los automaticamente mudaria a regra depois do fato. O envio inicial precisa **mostrar o que será enviado e pedir confirmação**; nunca ocorre sozinho.
+
 ### Etapa 2 — Registro passivo
 
 O SIC passa a gravar um registro a cada segmentada gerada, **sem alterar o fluxo de trabalho**. Entrega valor sozinha: o registro começa a ser alimentado.
 
 - Novo `src/core/app_paths.py` — caminho de dados válido dentro do executável (`QStandardPaths.AppDataLocation`, com fallback em `%APPDATA%\SIC`). **Não** reutilizar o padrão de `history_engine.py:6,12` (`Path(__file__).parent.parent.parent`), que dentro do executável aponta para uma pasta temporária.
 - Novo `src/core/segmentada_registry.py` — `SegmentadaRecord`; `RegistryStore` **orientado a registro** (`load`, `upsert`, `mark_ended`; uma API de "salvar a lista inteira" reintroduziria a perda de escrita de um colega); `GoogleSheetRegistryStore(url, token, timeout=5)` via `requests` (já em `pyproject.toml:15`); `JsonFileRegistryStore` como cache local com escrita atômica; `CachedRegistry` (Sheets disponível → atualiza o cache; indisponível → devolve o cache marcado como desatualizado, com o horário).
-- `view_settings.py` (já usa `QSettings` e `QFormLayout`, linhas 13 e 40-48): bloco "Registry de Segmentadas" com URL, token, botão **Testar** (modelo `_test_webhook`, `:129`) e chave liga/desliga.
-- `view_exportador_segmentadas.py`: após o `HistoryEngine.add_entry` (`~:699`), gravar em segundo plano (padrão de `worker_segmentado.py:13-17`), dentro de `try/except`.
-- **Desligado por padrão:** sem URL configurada, o SIC não faz nenhuma chamada nova.
+- `view_settings.py` (já usa `QSettings` e `QFormLayout`, linhas 13 e 40-48): bloco "Registry de Segmentadas" com URL, token, botão **Testar** (modelo `_test_webhook`, `:129`) e chave liga/desliga do **compartilhamento**.
+
+**Quando gravar — o registro é confirmado no salvamento, não na geração.**
+
+`_run_seg_generate` apenas monta o XML em memória (`self._seg_xml`); o arquivo só vai para o disco em `_save_seg_pricebook`, na linha 721, **dentro do `if path:`**. Gravar o registro logo após o `HistoryEngine.add_entry` (`:694`) criaria um vínculo para um pricebook que o operador pode ter cancelado na caixa de salvar — e, na importação seguinte daquela aba, o SIC ofereceria "ATUALIZAÇÃO" de algo que nunca existiu. Esse é exatamente o erro que este BRD existe para evitar.
+
+Portanto:
+
+1. Em `_run_seg_generate`, montar um **registro pendente** com o que entrou no XML (aba, LP, ID, marca, loja, datas, contagem de SKUs, nome da campanha). É o padrão que o próprio arquivo já adota nas linhas 678-680, onde `_seg_generated_campaign_start` e `_seg_generated_label` são capturados na geração justamente para não refletirem edições posteriores da tela.
+2. Em `_save_seg_pricebook`, **depois** de `f.write(self._seg_xml)` concluir, gravar o registro pendente em segundo plano (padrão de `worker_segmentado.py:13-17`), dentro de `try/except`.
+
+**Limite conhecido:** salvar não é importar. O operador ainda sobe o arquivo no Business Manager. O registro afirma "este XML foi gerado e salvo", nunca "este pricebook está no ar" — distinção que volta a importar na Etapa 5.
+
+**Origem do `campaign_name`.** A tela já tem o campo "Nome de Exibição do Pricebook" (`_seg_input_display_name`, `:147`), que alimenta o `display_name` do XML (`:672`). Ele é a fonte do `campaign_name` desde esta etapa — sem campo novo e sem depender da Etapa 4.
+
+**O que fica ligado e o que é opt-in.** O registro tem duas partes de natureza diferente:
+
+| | O que é | Rede | Padrão |
+|---|---|---|---|
+| Registro local | Arquivo em `%APPDATA%\SIC` | Não | **Ligado**, com opção de desligar |
+| Compartilhamento | Planilha da equipe (Etapa 1) | Sim | **Desligado** até configurar URL e token |
+
+O registro local é da mesma natureza do `history.db`, que o SIC já grava hoje sem perguntar: arquivo na máquina da própria pessoa, nenhum dado saindo dali. Mantê-lo ligado é necessário para o recurso funcionar — memória desligada por padrão nasce vazia, e a pessoa só descobre que precisava dela na manutenção seguinte, quando já é tarde. O que exige decisão consciente é o dado **sair** da máquina, e é esse o opt-in.
+
+Assim a promessa do `README.md:115` ("sem auto-update, nenhuma conexão de rede") continua exata enquanto só o registro local existir, e o compartilhamento acrescenta destinos de rede explicitamente documentados.
 
 ### Etapa 3 — Reconhecimento na importação
 
@@ -129,7 +153,7 @@ Em `view_exportador_segmentadas.py`:
 - Número inexistente → aviso claro, **sem travar o campo**.
 - Integração desligada, sem credencial ou Runrun.it indisponível → a tela funciona exatamente como hoje.
 
-O título retornado passa a preencher o campo `campaign_name` do registro, hoje digitado à mão.
+O título retornado **confirma** o `campaign_name` do registro, que a partir da Etapa 2 já vem do campo "Nome de Exibição do Pricebook". A diferença é a fonte: na Etapa 2 é o que o operador digitou; aqui é o que o Runrun.it afirma. É justamente a divergência entre os dois que a conferência cruzada abaixo aproveita.
 
 **Conferência cruzada.** Passam a existir três fontes sobre a mesma lista:
 
@@ -172,6 +196,21 @@ Geração de um XML com `online-to` no passado, usando o `pricebook_id` do regis
 - **Confiança do vínculo:** `exact` (aba + `lp_label` + marca batem), `sheet_only` (só a aba bate — chave fraca), `ambiguous` (2 ou mais registros para a mesma aba) e `none`. Em `sheet_only`, `ambiguous`, registro expirado, `lp_label` divergente ou registro com mais de 90 dias, o banner fica **vermelho** e explica que o nome da aba é reaproveitado entre ciclos.
 - **O registro nunca bloqueia o trabalho.** Toda leitura e gravação ocorre fora da tela principal, com tempo limite de 5 segundos; falha do registro **jamais impede gerar ou salvar o XML**.
 - **Aditivo.** O fluxo atual — digitar o ID à mão — permanece idêntico. Nenhuma linha de `segmentado_engine.py` muda.
+- **Só o que foi salvo é registrado.** Um XML gerado e não salvo não gera vínculo (ver Etapa 2).
+
+### Ordem de execução — diferente da numeração
+
+As etapas estão numeradas por dependência de conceito, não pela ordem em que o trabalho começa. A Etapa 1 depende de confirmações da TI e da definição da conta de equipe, enquanto o núcleo da Etapa 2 é código isolado e testável que não depende de nada. A ordem de trabalho é:
+
+| Ordem | O quê | Depende de |
+|---|---|---|
+| 1 | Núcleo testável: `app_paths.py` e `segmentada_registry.py` com armazenamento local e funções puras | nada |
+| 2 | Gravação local (Etapa 2, sem a parte de planilha) | ordem 1 |
+| 3 | Reconhecimento (Etapa 3) | ordem 2 |
+| 4 | Planilha, automação e compartilhamento (Etapa 1 + parte da 2) | TI e conta de equipe |
+| 5 | Runrun.it (Etapa 4) | pendência 4 da seção 10 |
+
+Ao fim da ordem 3 o recurso **já resolve o retrabalho** para quem gerou as listas, ainda sem compartilhar. É um ponto de parada seguro: se a publicação do Apps Script for barrada, o que foi entregue continua de pé.
 
 ---
 
@@ -195,7 +234,7 @@ Geração de um XML com `online-to` no passado, usando o `pricebook_id` do regis
 - **O que sai do computador:** nome da aba, ID da tarefa, nome da campanha, datas, marca e quantidade de produtos. **Nenhum preço e nenhuma lista de SKUs.**
 - **Segredos** (URL e token do registro; App-Key e User-Token do Runrun.it) ficam em `QSettings("SIC","SIC_Suite")`, nunca no repositório.
 - ⚠️ O `README.md` (`:46-65`, `:69-74`, `:93-115`) afirma hoje "Não persiste dados na nuvem", "Não se conecta a servidores internos", "A única URL externa é `api.github.com`" e "Nenhuma outra conexão de rede é feita". **Essas afirmações deixam de valer** e devem ser reescritas. A tabela de firewall precisa acrescentar `script.google.com` e `script.googleusercontent.com` (registro) e `runrun.it` (Etapa 4). Aproveitar para corrigir o que **já está defasado**: o webhook do Google Chat (`chat.googleapis.com`) nunca entrou na lista.
-- Como o registro e o Runrun.it são **opt-in e desligados por padrão**, a promessa de que "sem auto-update o SIC não faz conexão de rede" passa a ter chaves independentes, todas documentadas.
+- O que sai da máquina é **opt-in e desligado por padrão**: o compartilhamento (Etapa 1) e o Runrun.it (Etapa 4) têm chaves independentes. O registro local não é opt-in e também não é destino de rede — ver "O que fica ligado e o que é opt-in", na Etapa 2. A promessa de "sem auto-update, nenhuma conexão de rede" continua exata, agora com chaves separadas e documentadas.
 
 ---
 
@@ -203,8 +242,11 @@ Geração de um XML com `online-to` no passado, usando o `pricebook_id` do regis
 
 | # | Critério |
 |---|---|
-| CA-01 | Cada segmentada gerada resulta em um registro na planilha com os campos do formato da Etapa 1 |
-| CA-02 | Registro desligado, sem URL, token inválido ou rede indisponível → o XML é gerado e salvo normalmente, com aviso discreto |
+| CA-01 | Cada segmentada **salva em disco** resulta em um registro com os campos do formato da Etapa 1 |
+| CA-01b | Gerar e **cancelar** a caixa de salvar **não** cria registro — e a importação seguinte daquela aba não oferece "ATUALIZAÇÃO" |
+| CA-01c | O `campaign_name` gravado é o texto do campo "Nome de Exibição do Pricebook", sem o operador digitar nada a mais |
+| CA-01d | O registro local funciona com o compartilhamento desligado, e o envio inicial para a planilha só ocorre após confirmação explícita do que será enviado |
+| CA-02 | Compartilhamento desligado, sem URL, token inválido ou rede indisponível → o XML é gerado e salvo normalmente, com aviso discreto |
 | CA-03 | Sem rede, o painel de configuração e o reconhecimento usam o cache local, indicando o horário da última sincronização |
 | CA-04 | Reimportar uma aba conhecida exibe o banner com o vínculo correto; "Ignorar" mantém o campo de ID livre; **nada é preenchido sem clique** |
 | CA-05 | Vínculo `sheet_only`, `ambiguous`, expirado ou antigo → banner vermelho |
