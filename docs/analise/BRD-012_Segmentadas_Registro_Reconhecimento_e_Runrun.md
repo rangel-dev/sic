@@ -3,7 +3,7 @@
 **Documento:** BRD-012
 **Autor:** Marcos (Analista de Negócios Jr)
 **Data:** 21-09-2026
-**Status:** Em construção — **P0 e P1 concluídos** (`src/core/app_paths.py`, `src/core/segmentada_registry.py`, com testes); nenhuma tela ainda foi tocada
+**Status:** Em construção — **P0, P1 e P2 concluídos**; a primeira tela já grava, sem mudança visual no fluxo de gerar/salvar
 **Solicitação:** "Manutenção das Ações Segmentadas" (formulário Solicitação de Evolução Integrada)
 **Branch:** A definir (este documento sobe em `docs/brd-012-registry-segmentadas`)
 **Pré-requisitos:** nenhum. Independente do BRD-014.
@@ -74,10 +74,10 @@ Registros gravados com o modelo errado viram migração em máquina de gente de 
 `app_paths.py` e `segmentada_registry.py`: modelo, montagem do ID, cálculo de status, regra de reconhecimento e armazenamento local, tudo com teste puro.
 **Pronto quando:** testes verdes e `git diff` mostrando apenas arquivos novos. ✅ 159 testes verdes (47 novos), `git status` só com arquivos novos (`app_paths.py`, `segmentada_registry.py`, `test_app_paths.py`, `test_segmentada_registry.py`).
 
-### P2 — Gravar de verdade, com escape
+### P2 — Gravar de verdade, com escape ✅ *concluído*
 
 A gravação no salvamento (ver Etapa 2) **mais um caminho de correção**: sem ele, o primeiro engano vira um registro errado sem saída — nas P2 e P3 a planilha ainda não existe, então a única alternativa seria editar um JSON na mão. O mínimo é apagar um registro e abrir a pasta do registro a partir de Configurações.
-**Pronto quando:** CA-01 a CA-04 e CA-20.
+**Pronto quando:** CA-01 a CA-04 e CA-20. ✅ Verificado manualmente (sem tela automatizada — o projeto não tem `pytest-qt`): gerar e cancelar não grava nada (CA-02); salvar grava o registro completo, com `campaign_name` vindo do nome de exibição sem digitação extra (CA-01, CA-03); salvar o mesmo `pricebook_id` de novo atualiza no lugar, sem duplicar e sem resetar `created_at` (CA-04, D1). Escape hatch em Configurações → "Registry de Segmentadas (local)": lista os registros, apaga um selecionado, abre a pasta do registro.
 
 ### P3 — Reconhecimento na importação (uma lista)
 
@@ -369,6 +369,7 @@ Ver NR3 para as duas hipóteses de mecanismo e a decisão de negócio pendente.
 | `tools/apps_script/registry.gs` *(novo)* | 1 | Automação da planilha | Baixo — fora do executável |
 | `src/core/app_paths.py` *(novo)* | 2 | Caminho de dados no executável | Baixo |
 | `src/core/segmentada_registry.py` *(novo)* | 2, 3, 4 | Registro, cache, resolução de vínculo | Baixo — código novo e isolado |
+| `src/workers/worker_segmentada_registry.py` *(novo)* | 2 | Grava o registro em segundo plano, fora da UI thread | Baixo |
 | `src/core/runrun_client.py` *(novo)* | 5 | Cliente somente leitura | Baixo |
 | `src/ui/pages/view_settings.py` | 2, 5 | Blocos de configuração do registro e do Runrun.it | Baixo |
 | `src/ui/pages/view_exportador_segmentadas.py` | 2, 3, 4, 5 | Gravação, campo do Runrun.it, banner, seleção múltipla, tela de conferência. Validações 601-620 **intactas** | **Médio-alto** — a Etapa 4 é a maior mudança estrutural da tela |

@@ -8,7 +8,8 @@ completo gerado pela tela Exportador → Grade Completa.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+import getpass
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -32,6 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.core.app_paths import data_file
 from src.core.excel_reader import find_grade_sheet_name
 from src.core.history_engine import HistoryEngine
 from src.core.segmentado_engine import (
@@ -41,8 +43,10 @@ from src.core.segmentado_engine import (
     SegmentadoEngine,
     SegmentScanResult,
 )
+from src.core.segmentada_registry import JsonFileRegistryStore, SegmentadaRecord
 from src.ui.components.base_widgets import Divider, DropZone, SectionHeader, StatPill, show_rejection_dialog
 from src.workers.worker_segmentado import SegmentadoScanWorker
+from src.workers.worker_segmentada_registry import SegmentadaRegistryWriteWorker
 
 import openpyxl
 
@@ -101,6 +105,13 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_detected_brand: Optional[str] = None
         self._seg_generated_campaign_start: Optional[date] = None
         self._seg_generated_label: Optional[str] = None
+        # BRD-012, P2: registro pendente, montado na geração e só persistido
+        # depois que o XML realmente for escrito em disco (_save_seg_pricebook)
+        # — nunca na geração, para não criar um vínculo "fantasma" se o
+        # usuário cancelar a caixa de salvar.
+        self._seg_pending_record: Optional[SegmentadaRecord] = None
+        self._seg_registry_store = JsonFileRegistryStore(data_file("segmentadas_registry.json"))
+        self._seg_registry_worker: Optional[SegmentadaRegistryWriteWorker] = None
         self._setup_ui()
 
     # ── UI Construction ───────────────────────────────────────────────────
@@ -423,6 +434,7 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_xml = None
         self._seg_generated_campaign_start = None
         self._seg_generated_label = None
+        self._seg_pending_record = None
         self._seg_btn_generate.setEnabled(False)
 
     def _on_seg_file_selected(self, paths: list[str]) -> None:
@@ -681,6 +693,28 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_generated_campaign_start = dt_start.date()
         self._seg_generated_label = candidate.lp_label or candidate.sheet_name
 
+        # BRD-012, P2: registro pendente — só grava de verdade em
+        # _save_seg_pricebook, depois que o arquivo for escrito.
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        existing = next(
+            (r for r in self._seg_registry_store.load() if r.pricebook_id == pricebook_id),
+            None,
+        )
+        self._seg_pending_record = SegmentadaRecord(
+            pricebook_id=pricebook_id,
+            sheet_name=candidate.sheet_name,
+            brand=marca_key,
+            loja=loja_key,
+            lp_label=candidate.lp_label,
+            campaign_name=display_name or candidate.lp_label or candidate.sheet_name,
+            online_from=online_from,
+            online_to=online_to,
+            sku_count=len(candidate.rows),
+            created_at=existing.created_at if existing else now_iso,
+            updated_at=now_iso,
+            created_by=getpass.getuser(),
+        )
+
         self._seg_stat_skus.set_value(str(len(candidate.rows)))
         self._seg_stat_lista.set_value(candidate.sheet_name, "#7e57c2")
         self._seg_stat_lp.set_value(candidate.lp_label or "—", "#26a69a")
@@ -722,6 +756,15 @@ class ExportadorSegmentadasView(QWidget):
                 f.write(self._seg_xml)
             QMessageBox.information(self, "Salvo", f"Pricebook Segmentado salvo em:\n{path}")
 
+            # BRD-012, P2: só agora o registro é persistido — o XML foi
+            # de fato escrito em disco. Em segundo plano; falha nunca
+            # impede o salvamento, que já aconteceu.
+            if self._seg_pending_record:
+                self._seg_registry_worker = SegmentadaRegistryWriteWorker(
+                    self._seg_registry_store, self._seg_pending_record, self,
+                )
+                self._seg_registry_worker.start()
+
     def _clear_seg_tab(self) -> None:
         self._seg_dz_grade.clear()
         self._seg_badge.hide()
@@ -749,3 +792,4 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_xml = None
         self._seg_generated_campaign_start = None
         self._seg_generated_label = None
+        self._seg_pending_record = None

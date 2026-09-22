@@ -181,6 +181,7 @@ class RegistryStore(Protocol):
     def load(self) -> list[SegmentadaRecord]: ...
     def upsert(self, record: SegmentadaRecord) -> None: ...
     def mark_ended(self, pricebook_id: str, ended_at: str) -> None: ...
+    def delete(self, pricebook_id: str) -> None: ...
 
 
 class InMemoryRegistryStore:
@@ -198,6 +199,9 @@ class InMemoryRegistryStore:
     def mark_ended(self, pricebook_id: str, ended_at: str) -> None:
         if pricebook_id in self._records:
             self._records[pricebook_id].ended_at = ended_at
+
+    def delete(self, pricebook_id: str) -> None:
+        self._records.pop(pricebook_id, None)
 
 
 class JsonFileRegistryStore:
@@ -231,6 +235,12 @@ class JsonFileRegistryStore:
         for r in records:
             if r.pricebook_id == pricebook_id:
                 r.ended_at = ended_at
+        self._save(records)
+
+    def delete(self, pricebook_id: str) -> None:
+        """Escape hatch da P2 (Configurações → Registry de Segmentadas):
+        corrige um vínculo salvo errado enquanto a planilha (P5) não existe."""
+        records = [r for r in self.load() if r.pricebook_id != pricebook_id]
         self._save(records)
 
     def _save(self, records: list[SegmentadaRecord]) -> None:

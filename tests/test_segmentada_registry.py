@@ -245,6 +245,16 @@ class TestInMemoryRegistryStore:
         store.mark_ended("NAT-RR9999", "2026-09-20T00:00:00.000Z")
         assert store.load() == []
 
+    def test_delete(self):
+        store = InMemoryRegistryStore([_record()])
+        store.delete("NAT-RR1111")
+        assert store.load() == []
+
+    def test_delete_de_id_inexistente_nao_quebra(self):
+        store = InMemoryRegistryStore()
+        store.delete("NAT-RR9999")
+        assert store.load() == []
+
 
 # ─── JsonFileRegistryStore ───────────────────────────────────────────────
 
@@ -304,3 +314,17 @@ class TestJsonFileRegistryStore:
         path = tmp_path / "sub" / "dir" / "registry.json"
         JsonFileRegistryStore(path).upsert(_record())
         assert path.exists()
+
+    def test_delete(self, tmp_path: Path):
+        path = tmp_path / "registry.json"
+        store = JsonFileRegistryStore(path)
+        store.upsert(_record())
+        store.delete("NAT-RR1111")
+        assert store.load() == []
+
+    def test_delete_de_id_inexistente_nao_quebra(self, tmp_path: Path):
+        path = tmp_path / "registry.json"
+        store = JsonFileRegistryStore(path)
+        store.upsert(_record())
+        store.delete("NAT-RR9999")
+        assert len(store.load()) == 1
