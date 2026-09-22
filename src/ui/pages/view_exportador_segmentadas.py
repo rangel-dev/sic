@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 from src.core.app_paths import data_file
 from src.core.excel_reader import find_grade_sheet_name
 from src.core.history_engine import HistoryEngine
+from src.core.runrun_client import RunrunClient, RunrunTask
 from src.core.segmentado_engine import (
     LOJA_PARENT_IDS,
     RESERVED_PRICEBOOK_IDS,
@@ -56,7 +57,14 @@ from src.core.segmentada_registry import (
     write_xlsx_snapshot,
 )
 from src.ui.components.base_widgets import Divider, DropZone, SectionHeader, StatPill, show_rejection_dialog
-from src.ui.pages.view_settings import SEG_SHARED_ENABLED_KEY, SEG_SHARED_FOLDER_KEY
+from src.ui.pages.view_settings import (
+    RUNRUN_APP_KEY_KEY,
+    RUNRUN_ENABLED_KEY,
+    RUNRUN_USER_TOKEN_KEY,
+    SEG_SHARED_ENABLED_KEY,
+    SEG_SHARED_FOLDER_KEY,
+)
+from src.workers.worker_runrun_task import RunrunTaskFetchWorker
 from src.workers.worker_segmentado import SegmentadoScanWorker
 from src.workers.worker_segmentada_registry import SegmentadaRegistryWriteWorker
 
@@ -136,6 +144,13 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_pbid_touched: bool = False
         self._seg_resolve_result: Optional[ResolveResult] = None
         self._seg_is_update_mode: bool = False
+        # BRD-012, Etapa 5/P6: conferência da tarefa no Runrun.it — cache em
+        # memória por sessão (CA-26/proteção da App-Key) e intervalo mínimo
+        # entre consultas, além de nunca disparar por tecla (editingFinished).
+        self._seg_runrun_cache: dict[str, RunrunTask] = {}
+        self._seg_runrun_worker: Optional[RunrunTaskFetchWorker] = None
+        self._seg_runrun_task: Optional[RunrunTask] = None
+        self._seg_runrun_last_query_at: Optional[datetime] = None
         self._setup_ui()
 
     # ── UI Construction ───────────────────────────────────────────────────
@@ -175,7 +190,16 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_input_runrun_id = QLineEdit()
         self._seg_input_runrun_id.setPlaceholderText("Ex: 1111 — monta o ID abaixo automaticamente")
         self._seg_input_runrun_id.textEdited.connect(self._on_seg_runrun_id_edited)
+        self._seg_input_runrun_id.editingFinished.connect(self._on_seg_runrun_id_editing_finished)
         params_layout.addWidget(self._seg_input_runrun_id)
+
+        # BRD-012, Etapa 5/P6: título da tarefa, consultado só ao sair do
+        # campo (editingFinished) ou Enter — nunca a cada tecla (CA-26).
+        self._seg_runrun_status_lbl = QLabel("")
+        self._seg_runrun_status_lbl.setWordWrap(True)
+        self._seg_runrun_status_lbl.setStyleSheet("font-size:11px; background:transparent; color:#9e9e9e;")
+        self._seg_runrun_status_lbl.hide()
+        params_layout.addWidget(self._seg_runrun_status_lbl)
 
         lbl_pbid = QLabel("ID do Pricebook (Salesforce)")
         lbl_pbid.setObjectName("label_section")
@@ -673,6 +697,10 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_btn_generate.setEnabled(bool(candidate.rows))
         self._seg_is_update_mode = False
         self._update_seg_banner(candidate)
+        # Reexibe a conferência contra o título já consultado, se houver —
+        # o vínculo pode ter mudado com a nova lista selecionada.
+        if self._seg_runrun_task:
+            self._on_seg_runrun_task_fetched(self._seg_runrun_task)
 
     # ── BRD-012, P3: reconhecimento na importação ───────────────────────────
     @staticmethod
@@ -807,6 +835,10 @@ class ExportadorSegmentadasView(QWidget):
 
     def _on_seg_runrun_id_edited(self, _text: str) -> None:
         self._apply_pbid_from_runrun_id()
+        # O número mudou — o título mostrado (se algum) não vale mais pro
+        # texto atual do campo.
+        self._seg_runrun_task = None
+        self._seg_runrun_status_lbl.hide()
 
     def _on_seg_pbid_edited(self, _text: str) -> None:
         self._seg_pbid_touched = True
@@ -816,6 +848,76 @@ class ExportadorSegmentadasView(QWidget):
         self._apply_pbid_from_runrun_id()
         if self._seg_selected_lista:
             self._update_seg_banner(self._seg_selected_lista)
+
+    # ── BRD-012, Etapa 5/P6: conferência da tarefa no Runrun.it ────────────
+    def _seg_runrun_client(self) -> Optional[RunrunClient]:
+        if not self._seg_settings.value(RUNRUN_ENABLED_KEY, False, type=bool):
+            return None
+        app_key = self._seg_settings.value(RUNRUN_APP_KEY_KEY, "")
+        user_token = self._seg_settings.value(RUNRUN_USER_TOKEN_KEY, "")
+        if not (app_key and user_token):
+            return None
+        return RunrunClient(app_key, user_token, timeout=5)
+
+    def _on_seg_runrun_id_editing_finished(self) -> None:
+        """Perda de foco ou Enter — nunca a cada tecla (CA-26)."""
+        number = self._seg_input_runrun_id.text().strip()
+        if not number:
+            self._seg_runrun_status_lbl.hide()
+            return
+
+        cached = self._seg_runrun_cache.get(number)
+        if cached:
+            self._on_seg_runrun_task_fetched(cached)
+            return
+
+        client = self._seg_runrun_client()
+        if not client:
+            return  # integração desligada/sem credencial — tela segue como hoje (CA-23)
+
+        # Intervalo mínimo entre consultas — defesa extra além de nunca
+        # disparar por tecla (proteção da App-Key, Etapa 5).
+        now = datetime.now(timezone.utc)
+        if self._seg_runrun_last_query_at and (now - self._seg_runrun_last_query_at).total_seconds() < 1.5:
+            return
+        self._seg_runrun_last_query_at = now
+
+        self._seg_runrun_status_lbl.setText("Consultando tarefa no Runrun.it…")
+        self._seg_runrun_status_lbl.setStyleSheet("font-size:11px; background:transparent; color:#9e9e9e;")
+        self._seg_runrun_status_lbl.show()
+
+        self._seg_runrun_worker = RunrunTaskFetchWorker(client, number, self)
+        self._seg_runrun_worker.finished.connect(self._on_seg_runrun_task_fetched)
+        self._seg_runrun_worker.error.connect(self._on_seg_runrun_task_error)
+        self._seg_runrun_worker.start()
+
+    def _on_seg_runrun_task_fetched(self, task: RunrunTask) -> None:
+        self._seg_runrun_cache[task.number] = task
+        self._seg_runrun_task = task
+
+        parts = [f'"{task.title}"' if task.title else "(sem título)"]
+        is_risky = False
+        if task.is_closed:
+            parts.append("⚠ tarefa encerrada no Runrun.it")
+            is_risky = True
+
+        record = self._seg_resolve_result.record if self._seg_resolve_result else None
+        if record and record.campaign_name and task.title:
+            if record.campaign_name.strip().upper() != task.title.strip().upper():
+                parts.append(f'⚠ diverge do registro ("{record.campaign_name}")')
+                is_risky = True
+
+        self._seg_runrun_status_lbl.setText("  ·  ".join(parts))
+        color = "#ff8a80" if is_risky else "#9e9e9e"
+        self._seg_runrun_status_lbl.setStyleSheet(f"font-size:11px; background:transparent; color:{color};")
+        self._seg_runrun_status_lbl.show()
+
+    def _on_seg_runrun_task_error(self, message: str) -> None:
+        # CA-22/CA-23: discreto — nunca trava o campo nem bloqueia nada.
+        self._seg_runrun_task = None
+        self._seg_runrun_status_lbl.setText("Não foi possível confirmar a tarefa no Runrun.it.")
+        self._seg_runrun_status_lbl.setStyleSheet("font-size:11px; background:transparent; color:#9e9e9e;")
+        self._seg_runrun_status_lbl.show()
 
     def _run_seg_generate(self) -> None:
         pricebook_id = self._seg_input_pbid.text().strip()
@@ -902,6 +1004,27 @@ class ExportadorSegmentadasView(QWidget):
                 )
             resp = QMessageBox.question(
                 self, "Confirmar atualização", confirm_msg,
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if resp != QMessageBox.Yes:
+                return
+
+        # BRD-012, Etapa 5 (CA-24): título do Runrun.it divergente do
+        # registro exige confirmação explícita — independe do modo
+        # ATUALIZAÇÃO, porque pode ser o primeiro cadastro com o número
+        # errado digitado.
+        runrun_record = self._seg_resolve_result.record if self._seg_resolve_result else None
+        if (
+            self._seg_runrun_task and self._seg_runrun_task.title
+            and runrun_record and runrun_record.campaign_name
+            and runrun_record.campaign_name.strip().upper() != self._seg_runrun_task.title.strip().upper()
+        ):
+            resp = QMessageBox.question(
+                self, "Conferir tarefa do Runrun.it",
+                f"O título da tarefa no Runrun.it é <b>\"{self._seg_runrun_task.title}\"</b>, "
+                f"diferente da campanha registrada (<b>\"{runrun_record.campaign_name}\"</b>).\n\n"
+                "Isso pode indicar número de tarefa errado ou registro desatualizado. "
+                "Confirma que é a campanha certa mesmo assim?",
                 QMessageBox.Yes | QMessageBox.No,
             )
             if resp != QMessageBox.Yes:
@@ -1015,6 +1138,8 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_warn_lbl.hide()
         self._seg_banner.hide()
         self._seg_input_runrun_id.clear()
+        self._seg_runrun_task = None
+        self._seg_runrun_status_lbl.hide()
         self._seg_input_pbid.clear()
         self._seg_pbid_touched = False
         self._seg_resolve_result = None

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 from src.core.app_paths import data_file, user_data_dir
+from src.core.runrun_client import RunrunClient
 from src.core.segmentada_registry import JsonFileRegistryStore, SyncedFolderRegistryStore
 from src.ui.components.base_widgets import Divider, SectionHeader
 
@@ -15,6 +16,12 @@ from src.ui.components.base_widgets import Divider, SectionHeader
 # view_exportador_segmentadas.py, para não duplicar o nome da chave.
 SEG_SHARED_ENABLED_KEY = "seg_registry_shared_enabled"
 SEG_SHARED_FOLDER_KEY = "seg_registry_shared_folder"
+
+# Chaves do QSettings para a conferência no Runrun.it (Etapa 5/P6) —
+# importadas também por view_exportador_segmentadas.py.
+RUNRUN_ENABLED_KEY = "runrun_enabled"
+RUNRUN_APP_KEY_KEY = "runrun_app_key"
+RUNRUN_USER_TOKEN_KEY = "runrun_user_token"
 
 
 class SettingsView(QWidget):
@@ -154,6 +161,51 @@ class SettingsView(QWidget):
 
         layout.addWidget(seg_box)
 
+        # Runrun.it — conferência da tarefa (BRD-012, Etapa 5/P6)
+        runrun_box = QGroupBox("Runrun.it — Conferência de Tarefa")
+        runrun_form = QFormLayout(runrun_box)
+        runrun_form.setSpacing(12)
+        runrun_form.setContentsMargins(16, 20, 16, 16)
+
+        self._runrun_enabled_check = QCheckBox("Ativar conferência com o Runrun.it")
+        runrun_form.addRow("", self._runrun_enabled_check)
+
+        self._runrun_app_key_input = QLineEdit()
+        self._runrun_app_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self._runrun_app_key_input.setPlaceholderText("App-Key da conta (Configurações → Integrações → App)")
+        self._runrun_app_key_input.setMinimumWidth(420)
+        runrun_form.addRow("App-Key:", self._runrun_app_key_input)
+
+        self._runrun_user_token_input = QLineEdit()
+        self._runrun_user_token_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self._runrun_user_token_input.setPlaceholderText("User-Token pessoal (perfil → API)")
+        runrun_form.addRow("User-Token:", self._runrun_user_token_input)
+
+        runrun_btn_row = QHBoxLayout()
+        btn_runrun_save = QPushButton("Salvar")
+        btn_runrun_save.setObjectName("btn_primary")
+        btn_runrun_save.clicked.connect(self._save_runrun_settings)
+        runrun_btn_row.addWidget(btn_runrun_save)
+
+        btn_runrun_test = QPushButton("Testar Conexão")
+        btn_runrun_test.setObjectName("btn_secondary")
+        btn_runrun_test.clicked.connect(self._test_runrun_connection)
+        runrun_btn_row.addWidget(btn_runrun_test)
+        runrun_btn_row.addStretch()
+        runrun_form.addRow("", runrun_btn_row)
+
+        runrun_hint = QLabel(
+            "Ao sair do campo \"Nº da tarefa Runrun.it\" no Exportador → Segmentadas, o SIC "
+            "consulta a tarefa e mostra o título antes de gerar o XML — nunca a cada tecla "
+            "digitada. Só leitura: o SIC nunca cria, comenta ou altera nada no Runrun.it. "
+            "O User-Token é pessoal e dá acesso à sua conta inteira lá — revogável a "
+            "qualquer momento no seu perfil do Runrun.it."
+        )
+        runrun_hint.setObjectName("label_hint")
+        runrun_hint.setWordWrap(True)
+        runrun_form.addRow("", runrun_hint)
+        layout.addWidget(runrun_box)
+
         # Accessibility
         acc_box = QGroupBox("Acessibilidade — Visual")
         acc_layout = QHBoxLayout(acc_box)
@@ -191,6 +243,11 @@ class SettingsView(QWidget):
         shared_enabled = self._settings.value(SEG_SHARED_ENABLED_KEY, False, type=bool)
         self._seg_shared_check.setChecked(shared_enabled)
         self._seg_shared_folder_input.setText(self._settings.value(SEG_SHARED_FOLDER_KEY, ""))
+
+        runrun_enabled = self._settings.value(RUNRUN_ENABLED_KEY, False, type=bool)
+        self._runrun_enabled_check.setChecked(runrun_enabled)
+        self._runrun_app_key_input.setText(self._settings.value(RUNRUN_APP_KEY_KEY, ""))
+        self._runrun_user_token_input.setText(self._settings.value(RUNRUN_USER_TOKEN_KEY, ""))
 
     def _save_settings(self):
         self._settings.setValue("gchat_webhook", self._webhook_input.text().strip())
@@ -314,3 +371,35 @@ class SettingsView(QWidget):
             )
             return resp == QMessageBox.Yes
         return True
+
+    # ── Runrun.it — conferência de tarefa (Etapa 5/P6) ──────────────────────
+    def _save_runrun_settings(self) -> None:
+        enabled = self._runrun_enabled_check.isChecked()
+        app_key = self._runrun_app_key_input.text().strip()
+        user_token = self._runrun_user_token_input.text().strip()
+        if enabled and not (app_key and user_token):
+            QMessageBox.warning(
+                self, "Runrun.it",
+                "Informe a App-Key e o User-Token antes de ativar a conferência."
+            )
+            return
+        self._settings.setValue(RUNRUN_ENABLED_KEY, enabled)
+        self._settings.setValue(RUNRUN_APP_KEY_KEY, app_key)
+        self._settings.setValue(RUNRUN_USER_TOKEN_KEY, user_token)
+        QMessageBox.information(self, "Runrun.it", "Configuração salva com sucesso.")
+
+    def _test_runrun_connection(self) -> None:
+        app_key = self._runrun_app_key_input.text().strip()
+        user_token = self._runrun_user_token_input.text().strip()
+        if not (app_key and user_token):
+            QMessageBox.warning(self, "Runrun.it", "Informe a App-Key e o User-Token antes de testar.")
+            return
+        client = RunrunClient(app_key, user_token, timeout=8)
+        name = client.get_current_user_name()
+        if name:
+            QMessageBox.information(self, "Runrun.it", f"Conexão OK — conectado como {name}.")
+        else:
+            QMessageBox.warning(
+                self, "Runrun.it",
+                "Não foi possível confirmar a conexão. Confira a App-Key e o User-Token."
+            )

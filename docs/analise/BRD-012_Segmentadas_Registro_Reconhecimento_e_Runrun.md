@@ -3,7 +3,7 @@
 **Documento:** BRD-012
 **Autor:** Marcos (Analista de Negócios Jr)
 **Data:** 21-09-2026
-**Status:** Em construção — **P0, P1, P2, P3 e P5 concluídos no código** (registro local + reconhecimento + compartilhamento via pasta do Google Drive, com testes). **P4 pausada**, aguardando o gestor responder V7 e a rodada de desenho da NR1. O caminho de compartilhamento via **OAuth foi abandonado por ora** (ver "Revisão da Etapa 1" e "Segunda revisão" abaixo) em favor de uma pasta sincronizada — zero Google Cloud, zero API. **Falta só a parte de infraestrutura, fora do código**: criar/compartilhar a pasta de verdade no Drive da equipe e apontar o SIC pra ela em Configurações.
+**Status:** Em construção — **P0, P1, P2, P3, P5 e P6 concluídos no código** (registro local + reconhecimento + compartilhamento via pasta do Google Drive + conferência da tarefa no Runrun.it, com testes). **P4 pausada**, aguardando o gestor responder V7 e a rodada de desenho da NR1 — é o único item de código que falta pra fechar tudo que não depende de terceiros. O caminho de compartilhamento via **OAuth foi abandonado por ora** (ver "Revisão da Etapa 1") em favor de uma pasta sincronizada — zero Google Cloud, zero API. **Falta, fora do código:** compartilhar a pasta de verdade no Drive da equipe (P5) e cadastrar App-Key/User-Token do Runrun.it em Configurações (P6).
 **Solicitação:** "Manutenção das Ações Segmentadas" (formulário Solicitação de Evolução Integrada)
 **Branch:** A definir (este documento sobe em `docs/brd-012-registry-segmentadas`)
 **Pré-requisitos:** nenhum. Independente do BRD-014.
@@ -109,10 +109,12 @@ Implementado: `SyncedFolderRegistryStore` (um arquivo `.json` por `pricebook_id`
 
 **Diferença importante do desenho original:** não existe mais "fila de pendências" nem "resolução de colisão na migração" como funcionalidades de código — a sincronização em si é responsabilidade do Google Drive para computador, não do SIC.
 
-### P6 — Conferência no Runrun.it
+### P6 — Conferência no Runrun.it ✅ *concluído*
 
 Cliente somente leitura, Configurações e conferência cruzada na tela. Também é aqui que `created_by` passa a vir do Runrun.it (D2).
-**Pronto quando:** CA-21 a CA-28.
+**Pronto quando:** CA-21 a CA-28. ✅ Verificado manualmente (sem `pytest-qt`) — ver seção 11 para o detalhe de cada critério. `RunrunClient` com 13 testes automatizados isolados (sem chamada de rede real); suíte inteira: 193 testes verdes. `segmentado_engine.py` intocado.
+
+⚠️ **`created_by` automático via Runrun.it (D2) ainda não foi ligado.** O cliente já tem `get_current_user_name()` (`/users/me`, V8 confirmada), mas a P2 (onde `created_by` é resolvido) continua usando só `getpass.getuser()` — trocar a ordem de fontes definida em D2 (Runrun.it → Configurações → Windows) fica como ajuste pequeno e isolado, não incluído nesta rodada.
 
 ### P7 — Painel e Encerrar
 
@@ -396,7 +398,7 @@ O registro local é da mesma natureza do `history.db`, que o SIC já grava hoje 
 
 **Dados que já existem e serão reaproveitados:** cada candidata já traz `sheet_name`, `lp_label`, `periodo_sugerido`, contagem de SKUs e avisos próprios (`ListaCandidate`, `segmentado_engine.py`). O período de cada lista vem do sugerido pela aba, editável na tela de conferência. A **loja** continua sendo uma escolha única para o lote, já que a grade é de uma marca.
 
-### Etapa 5 — Confirmação da tarefa no Runrun.it *(antigo BRD-013)*
+### Etapa 5 — Confirmação da tarefa no Runrun.it *(antigo BRD-013)* ✅ *concluída*
 
 **Situação desejada.** Ao sair do campo "Nº da tarefa Runrun.it" (perda de foco ou Enter — **nunca a cada tecla**), o SIC consulta a tarefa e exibe o título ao lado do ID montado:
 
@@ -464,9 +466,10 @@ Ver NR3 para as duas hipóteses de mecanismo e a decisão de negócio pendente.
 | `src/core/app_paths.py` *(novo)* | 2 | Caminho de dados no executável | Baixo |
 | `src/core/segmentada_registry.py` *(novo)* | 2, 3, 4, 5 | Registro, resolução de vínculo, `SyncedFolderRegistryStore`, `merge_by_pricebook_id`, `write_xlsx_snapshot` | Baixo — código novo e isolado |
 | `src/workers/worker_segmentada_registry.py` *(novo)* | 2, 5 | Grava o registro (local e/ou pasta compartilhada) e regera o `.xlsx`, em segundo plano | Baixo |
-| `src/core/runrun_client.py` *(novo)* | 5 (Runrun.it) | Cliente somente leitura | Baixo |
-| `src/ui/pages/view_settings.py` | 2, 5 | Bloco "Registry de Segmentadas": registro local (listar/apagar/abrir pasta) + compartilhamento (checkbox + seletor de pasta) | Baixo |
-| `src/ui/pages/view_exportador_segmentadas.py` | 2, 3, 4, 5 | Gravação, campo do Runrun.it, banner, seleção múltipla, tela de conferência. Validações 601-620 **intactas** | **Médio-alto** — a Etapa 4 é a maior mudança estrutural da tela |
+| `src/core/runrun_client.py` *(novo)* | 5 | Cliente somente leitura (`get_task`, `get_current_user_name`) | Baixo — 13 testes isolados, sem Qt |
+| `src/workers/worker_runrun_task.py` *(novo)* | 5 | Consulta a tarefa em segundo plano | Baixo |
+| `src/ui/pages/view_settings.py` | 2, 5 | Bloco "Registry de Segmentadas" (local + compartilhamento) e bloco "Runrun.it — Conferência de Tarefa" (App-Key/User-Token mascarados, liga/desliga, testar) | Baixo |
+| `src/ui/pages/view_exportador_segmentadas.py` | 2, 3, 5 | Gravação, campo do Runrun.it com consulta ao sair do campo, banner, conferência cruzada. Validações 601-620 **intactas**. Etapa 4 (lote) ainda não construída | Baixo-médio — aditivo, sem tela nova de lote ainda |
 | `README.md` e `docs/seguranca/` | 2, 5 | Ver seção 11 | Nulo em runtime |
 | `segmentado_engine.py` e demais engines | — | **Nenhuma alteração** | — |
 
@@ -530,18 +533,18 @@ Ver NR3 para as duas hipóteses de mecanismo e a decisão de negócio pendente.
 |---|---|
 | CA-20 | O fluxo atual (ID digitado à mão, uma lista por vez) funciona idêntico, com e sem registro configurado |
 
-**Runrun.it (P6)**
+**Runrun.it (P6)** — todos ✅ verificados manualmente (roteiro de smoke test dedicado) e/ou cobertos pelos 13 testes automatizados de `RunrunClient`.
 
-| # | Critério |
-|---|---|
-| CA-21 | Número válido → título da tarefa exibido antes de gerar o XML |
-| CA-22 | Número inexistente → aviso claro, campo continua utilizável |
-| CA-23 | Integração desligada, sem credencial ou indisponível → a tela se comporta exatamente como hoje |
-| CA-24 | Título divergente do registro → alerta vermelho com confirmação obrigatória |
-| CA-25 | Tarefa encerrada no Runrun.it → aviso exibido |
-| CA-26 | Nenhuma consulta é disparada por tecla digitada |
-| CA-27 | HTTP 429 → mensagem ao usuário e parada, sem repetição automática |
-| CA-28 | Nenhuma requisição de escrita é emitida contra a API em nenhum fluxo |
+| # | Critério | Situação |
+|---|---|---|
+| CA-21 | Número válido → título da tarefa exibido antes de gerar o XML | ✅ |
+| CA-22 | Número inexistente → aviso claro, campo continua utilizável | ✅ (`RunrunClient.get_task` levanta `RunrunUnavailable` em 404; a tela mostra aviso discreto, campo segue editável) |
+| CA-23 | Integração desligada, sem credencial ou indisponível → a tela se comporta exatamente como hoje | ✅ (`_seg_runrun_client()` devolve `None`, nenhuma consulta é feita) |
+| CA-24 | Título divergente do registro → alerta vermelho com confirmação obrigatória | ✅ |
+| CA-25 | Tarefa encerrada no Runrun.it → aviso exibido | ✅ |
+| CA-26 | Nenhuma consulta é disparada por tecla digitada | ✅ (consulta só em `editingFinished`, nunca em `textEdited`) |
+| CA-27 | HTTP 429 → mensagem ao usuário e parada, sem repetição automática | ✅ (`RunrunRateLimited`, testado — nenhuma tentativa automática de novo) |
+| CA-28 | Nenhuma requisição de escrita é emitida contra a API em nenhum fluxo | ✅ (`RunrunClient` só tem métodos `GET`) |
 
 ---
 
@@ -599,3 +602,13 @@ Caminho adotado: o token ficou apenas num arquivo `.env` local, **na raiz do rep
 
 - **Sem conflito de leitura entre integrações.** Cada consulta é feita pelo número da tarefa (`/tasks/{numero}`), e cada tarefa é um recurso isolado — não existe cenário em que a leitura de uma tarefa por uma integração interfira na leitura da mesma ou de outra tarefa por outra integração. O risco documentado na Etapa 5 (estourar os 100 req/min e arriscar a revogação da App-Key) continua válido como cuidado de engenharia, mas não é um risco de **conflito** com outro sistema.
 - **Esta é a primeira integração do usuário dono deste token.** Não há hoje nenhum outro sistema consumindo a API do Runrun.it com essas credenciais — logo, não há nada em produção que o SIC possa atrapalhar ao começar a usá-las.
+
+### Achado adicional (22-09-2026): campo "Possui segmentação?" no formulário do Runrun.it
+
+Fora do escopo original do teste, mas relevante para qualquer trabalho futuro de busca/filtro de tarefas de Segmentadas. O formulário "Solicitação de Promoção (Cupons e Mecânicas)" (`form_id: 133302`) tem, na aba lateral da tarefa, uma pergunta estruturada **"Possui segmentação? Sim/Não"** — documentada no arquivo local `Formulário Runrun x Salesforce.pdf` (fora do repositório), que mapeia os campos do formulário do Runrun.it para o Salesforce (ex.: *Possui segmentação = Customer Groups (Campaign)*).
+
+Comparando os `custom_fields` de duas tarefas reais via API — **#2388** ("Segmentada - Ofertas Semanais...") e **#2626** ("cupom dia da cb ML", não-segmentada) — o campo **`custom_38` é "Possui segmentação?"** (`Sim` na #2388, `Não` na #2626), com evidência cruzada de dois outros campos-texto que só apareciam preenchidos quando a pergunta correspondente do formulário era "Sim" (`custom_78`/`custom_75`, ligados a "possui mensagem de erro"/"possui limite por CPF").
+
+**Tratado como fixo por decisão do usuário (22-09-2026), até segunda ordem:** o número do campo (`custom_38`) pode mudar se o formulário for editado por quem administra o Runrun.it — o formulário já está ganhando campos novos (ver PDF, itens marcados "*Novo campo"). Não é o SIC nem quem mantém este documento que administra esse formulário; **se mudar, a pessoa responsável pelo formulário no Runrun.it precisa avisar**, e este documento é atualizado a partir daí. Até lá, `custom_38 = "Possui segmentação?"` é tratado como verdade conhecida.
+
+Não implica código novo agora — é só um achado registrado para o dia em que uma busca/filtro por "tarefas de Segmentadas" via API for construída (ver conversa sobre busca de cards, fora do escopo formal do BRD).
