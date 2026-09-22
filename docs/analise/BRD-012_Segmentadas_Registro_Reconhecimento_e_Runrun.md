@@ -168,11 +168,13 @@ A proposta previa um `segmentadas_registry.json` versionado no repositório e si
 
 Registrado aqui para não se perder. Nenhum destes itens tem solução fechada.
 
-### NR1 — Criação de listas novas em lote
+### NR1 — Criação de listas novas em lote ⚠️ *escalado pela V9*
 
-A Etapa 4 cobre o **lote de manutenção**: listas que o SIC já conhece. Uma planilha que traga várias abas **inéditas** continua exigindo uma passada por lista, porque cada uma precisa do número da tarefa digitado e do cuidado da primeira vez.
+A Etapa 4, como desenhada, cobre só o **lote de manutenção**: listas que o SIC já conhece. Uma planilha que traga várias abas **inéditas** exigiria uma passada por lista, porque cada uma precisa do número da tarefa digitado e do cuidado da primeira vez.
 
-Isso é aceitável para o cenário descrito na solicitação, que é explicitamente de manutenção. Mas se a criação em lote também for comum na prática, é trabalho não coberto. **A operação precisa dizer com que frequência isso acontece.**
+**V9 respondida: abas inéditas chegam algumas vezes ao dia.** Isso não é um caso raro — é rotina. Com a frequência confirmada, criar em lote deixa de ser "trabalho não coberto, a avaliar" e passa a ser **lacuna real no desenho da Etapa 4**: mesmo depois de pronta, quem recebe uma planilha com abas novas ainda enfrentaria o problema original, uma aba de cada vez.
+
+**Ainda não é uma decisão fechada — é uma decisão que falta tomar**, e que muda o desenho da Etapa 4, não só o cronograma. Um caminho possível: a tela de conferência (Etapa 4) já mostra cada lista com seu vínculo ou a falta dele; poderia aceitar, ali mesmo, o número da tarefa digitado para as linhas "novas", em vez de exigir sair do lote para cadastrá-las uma a uma. Isso precisa ser desenhado e não está neste documento — **retorna como pendência para a próxima rodada de análise antes de a Etapa 4 ser fechada para construção.**
 
 ### NR2 — O Painel: o que significa "ativa"?
 
@@ -463,14 +465,39 @@ Ver NR3 para as duas hipóteses de mecanismo e a decisão de negócio pendente.
 
 | # | O quê | Bloqueia | Situação |
 |---|---|---|---|
-| V1 | **TI:** confirmar que a automação da planilha pode ser publicada com acesso "Qualquer pessoa" e liberar `script.google.com` e `script.googleusercontent.com` no firewall | P5 | Aberta |
-| V2 | **Conta de equipe** (não pessoal) dona da planilha e da automação | P5 | Aberta |
+| V1 | **TI:** confirmar que a automação da planilha pode ser publicada com acesso "Qualquer pessoa" e liberar `script.google.com` e `script.googleusercontent.com` no firewall | P5 | ✅ **Confirmada** |
+| V2 | **Conta de equipe** (não pessoal) dona da planilha e da automação | P5 | ✅ **Confirmada** — conta do gestor, com acesso de equipe à planilha |
 | V3 | **Salesforce:** reimportar o mesmo `pricebook-id` substitui ou mescla? | P3, P4 | ✅ **Respondida: substitui** |
-| V4 | **Runrun.it:** `/tasks/:id` aceita o número visível da tarefa ou um identificador interno? | P6 | Aberta — teste de 10 min com token real |
-| V5 | **Runrun.it:** nomes exatos dos campos de **título** e **situação** na resposta | P6 | Aberta — mesmo teste da V4 |
-| V6 | **Runrun.it:** confirmar que o consumo do SIC não conflita com outras integrações da mesma App-Key, e que o plano cobre acesso à API | P6 | Aberta |
-| V7 | **Salesforce:** qual mecanismo derruba a promoção, e qual comportamento se **deseja**? | P7 | Aberta — ver NR3 |
-| V8 | **Runrun.it:** como obter o nome da pessoa dona do token | Melhor fonte de `created_by` — **não bloqueia a P2** | Aberta — mesmo teste da V4 |
-| V9 | **Operação:** com que frequência chegam planilhas com várias abas **inéditas**? | Define se NR1 vira trabalho | Aberta |
+| V4 | **Runrun.it:** `/tasks/:id` aceita o número visível da tarefa ou um identificador interno? | P6 | ✅ **Respondida: aceita o número visível** — ver seção 14 |
+| V5 | **Runrun.it:** nomes exatos dos campos de **título** e **situação** na resposta | P6 | ✅ **Respondida** — ver seção 14 |
+| V6 | **Runrun.it:** confirmar que o consumo do SIC não conflita com outras integrações da mesma App-Key, e que o plano cobre acesso à API | P6 | ✅ **Respondida** — ver seção 14 |
+| V7 | **Salesforce:** qual mecanismo derruba a promoção, e qual comportamento se **deseja**? | P7 | 🟡 Enviada ao gestor — aguardando resposta |
+| V8 | **Runrun.it:** como obter o nome da pessoa dona do token | Melhor fonte de `created_by` — **não bloqueia a P2** | ✅ **Respondida: `GET /users/me`** — ver seção 14 |
+| V9 | **Operação:** com que frequência chegam planilhas com várias abas **inéditas**? | Define se NR1 vira trabalho | ✅ **Respondida: algumas vezes ao dia** — ver NR1, escalado |
 
-**V1 e V2 podem entrar na fila agora**, porque a P5 depende delas e costumam demorar. As prioridades **P0 a P4 não dependem de nenhuma validação em aberto** — a única que as afetava, a V3, já foi respondida.
+**V1, V2, V4, V5, V6 e V8 confirmadas: a P5 e a P6 não têm mais nenhuma pendência bloqueante de negócio**, só a execução. As prioridades **P0 a P4 não dependem de nenhuma validação em aberto**. Resta aberta apenas a V7 (aguardando o gestor), que bloqueia só a P7. A V9 não bloqueia nenhuma prioridade em execução, mas **precisa ser resolvida antes de a Etapa 4 ser fechada para construção** — ver NR1.
+
+---
+
+## 14. Teste da API do Runrun.it (V4, V5, V6, V8) — resultado
+
+Teste manual, fora do código do SIC, com um `App-Key` e `User-Token` reais. Cobriu as pendências que só um teste com credencial real resolve.
+
+**Como o teste foi feito — por segurança, não pela via mais direta.**
+
+O `User-Token` age em nome da pessoa dona dele na conta inteira do Runrun.it, não só na leitura de uma tarefa — é mais parecido com uma senha do que com uma chave de leitura. Colar o token diretamente numa mensagem de chat o deixaria registrado no histórico da conversa de forma permanente, o que foi evitado.
+
+Caminho adotado: o token ficou apenas num arquivo `.env` local, **na raiz do repositório mas coberto pelo `.gitignore`** (`.env` e `.env.*`, adicionados antes de o arquivo existir, como rede de segurança — confirmado com `git check-ignore` que ele nunca aparece em `git status` nem seria commitado). Cada chamada à API rodou só depois de autorização explícita, uma por vez — nenhuma foi encadeada, e nenhuma escrita foi feita, só leitura. O valor do token nunca apareceu na saída de nenhum comando. O arquivo `.env` foi mantido localmente por decisão do usuário, para servir de base a testes futuros importantes.
+
+**Roteiro e resultado:**
+
+1. `GET /api/v1.0/tasks/2388` (tarefa real, enviada pelo gestor) → **HTTP 200**, com os dados da tarefa certa (`title: "Segmentada - Ofertas Semanais Exclusivo Ecom - sem 3"`, `id: 2388`). **V4 resolvida: o número visível da tarefa é aceito diretamente — não existe identificador interno separado.**
+2. Nomes de campo confirmados na mesma resposta — **V5 resolvida:**
+   - Título: `title`.
+   - Situação: não há um único campo "status"; a resposta traz várias fontes coerentes entre si — `task_status_name`, `task_status_id`, `state`, `is_closed`, `board_stage_name`, `board_stage_id`. Para o alerta de "tarefa encerrada" (Etapa 5), o candidato mais direto é `is_closed`, com `task_status_name` como texto de apoio no aviso.
+3. `GET /api/v1.0/users` (rodado numa etapa anterior) devolveu a lista completa de 24 pessoas da conta, sem marcação de "esta é você". Um teste seguinte a `GET /api/v1.0/users/me` respondeu **HTTP 200** (enquanto `/me`, `/whoami` e `/user` responderam 404). Inspecionando o corpo: **a rota devolve um único registro** — o da pessoa dona do token, não a lista inteira — com `id`, `name`, `email` entre outros campos. **V8 resolvida: `GET /api/v1.0/users/me` é a fonte automática de `created_by` (D2).** *(Nomes e e-mails reais que apareceram no teste não são citados aqui por serem dado pessoal, desnecessário num repositório público — o que importa para o desenho é o formato da resposta, já confirmado.)*
+
+**V6 — resolvida por resposta da operação, sem chamada de API:**
+
+- **Sem conflito de leitura entre integrações.** Cada consulta é feita pelo número da tarefa (`/tasks/{numero}`), e cada tarefa é um recurso isolado — não existe cenário em que a leitura de uma tarefa por uma integração interfira na leitura da mesma ou de outra tarefa por outra integração. O risco documentado na Etapa 5 (estourar os 100 req/min e arriscar a revogação da App-Key) continua válido como cuidado de engenharia, mas não é um risco de **conflito** com outro sistema.
+- **Esta é a primeira integração do usuário dono deste token.** Não há hoje nenhum outro sistema consumindo a API do Runrun.it com essas credenciais — logo, não há nada em produção que o SIC possa atrapalhar ao começar a usá-las.
