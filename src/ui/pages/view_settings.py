@@ -1,13 +1,20 @@
 """Settings view – webhook URL, theme preferences via QSettings."""
+from pathlib import Path
+
 from PySide6.QtCore import QSettings, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
+    QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 from src.core.app_paths import data_file, user_data_dir
-from src.core.segmentada_registry import JsonFileRegistryStore
+from src.core.segmentada_registry import JsonFileRegistryStore, SyncedFolderRegistryStore
 from src.ui.components.base_widgets import Divider, SectionHeader
+
+# Chaves do QSettings para o compartilhamento (P5) — importadas também por
+# view_exportador_segmentadas.py, para não duplicar o nome da chave.
+SEG_SHARED_ENABLED_KEY = "seg_registry_shared_enabled"
+SEG_SHARED_FOLDER_KEY = "seg_registry_shared_folder"
 
 
 class SettingsView(QWidget):
@@ -75,9 +82,10 @@ class SettingsView(QWidget):
         form.addRow("", hint)
         layout.addWidget(gchat_box)
 
-        # Registry de Segmentadas (BRD-012, P2 — armazenamento local; o
-        # compartilhamento pela planilha da equipe entra na P5)
-        seg_box = QGroupBox("Registry de Segmentadas (local)")
+        # Registry de Segmentadas (BRD-012, P2 — armazenamento local; P5 —
+        # compartilhamento via pasta do Google Drive sincronizada, revisado
+        # em 22-09-2026: sem Google Cloud, sem OAuth, sem API)
+        seg_box = QGroupBox("Registry de Segmentadas")
         seg_form = QFormLayout(seg_box)
         seg_form.setSpacing(12)
         seg_form.setContentsMargins(16, 20, 16, 16)
@@ -108,6 +116,42 @@ class SettingsView(QWidget):
         seg_hint.setObjectName("label_hint")
         seg_hint.setWordWrap(True)
         seg_form.addRow("", seg_hint)
+
+        seg_form.addRow("", Divider())
+
+        self._seg_shared_check = QCheckBox("Compartilhar com a equipe")
+        seg_form.addRow("", self._seg_shared_check)
+
+        seg_folder_row = QHBoxLayout()
+        self._seg_shared_folder_input = QLineEdit()
+        self._seg_shared_folder_input.setReadOnly(True)
+        self._seg_shared_folder_input.setPlaceholderText(
+            "Pasta do Google Drive sincronizada (Google Drive para computador)"
+        )
+        self._seg_shared_folder_input.setMinimumWidth(360)
+        seg_folder_row.addWidget(self._seg_shared_folder_input)
+        btn_seg_choose_folder = QPushButton("Escolher pasta...")
+        btn_seg_choose_folder.setObjectName("btn_secondary")
+        btn_seg_choose_folder.clicked.connect(self._choose_seg_shared_folder)
+        seg_folder_row.addWidget(btn_seg_choose_folder)
+        seg_form.addRow("Pasta compartilhada:", seg_folder_row)
+
+        btn_seg_save_sharing = QPushButton("Salvar compartilhamento")
+        btn_seg_save_sharing.setObjectName("btn_primary")
+        btn_seg_save_sharing.clicked.connect(self._save_seg_sharing_settings)
+        seg_form.addRow("", btn_seg_save_sharing)
+
+        seg_shared_hint = QLabel(
+            "A pasta precisa estar sincronizada pelo Google Drive para computador "
+            "(instalado e logado com a conta da equipe) em todas as máquinas. O SIC só "
+            "lê e escreve arquivos nela — não fala com nenhuma API do Google. Cada "
+            "pricebook salvo grava um arquivo próprio na pasta, e uma planilha .xlsx "
+            "de leitura é atualizada junto, para conferir sem abrir o SIC."
+        )
+        seg_shared_hint.setObjectName("label_hint")
+        seg_shared_hint.setWordWrap(True)
+        seg_form.addRow("", seg_shared_hint)
+
         layout.addWidget(seg_box)
 
         # Accessibility
@@ -144,6 +188,9 @@ class SettingsView(QWidget):
         self._webhook_input.setText(
             self._settings.value("gchat_webhook", "")
         )
+        shared_enabled = self._settings.value(SEG_SHARED_ENABLED_KEY, False, type=bool)
+        self._seg_shared_check.setChecked(shared_enabled)
+        self._seg_shared_folder_input.setText(self._settings.value(SEG_SHARED_FOLDER_KEY, ""))
 
     def _save_settings(self):
         self._settings.setValue("gchat_webhook", self._webhook_input.text().strip())
@@ -221,3 +268,49 @@ class SettingsView(QWidget):
 
     def _open_seg_registry_folder(self) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(user_data_dir())))
+
+    # ── Compartilhamento (P5) — pasta do Google Drive sincronizada ─────────
+    def _choose_seg_shared_folder(self) -> None:
+        start_dir = self._seg_shared_folder_input.text().strip() or str(Path.home())
+        folder = QFileDialog.getExistingDirectory(self, "Escolher pasta compartilhada", start_dir)
+        if folder:
+            self._seg_shared_folder_input.setText(folder)
+
+    def _save_seg_sharing_settings(self) -> None:
+        enabled = self._seg_shared_check.isChecked()
+        folder_text = self._seg_shared_folder_input.text().strip()
+        if enabled and not folder_text:
+            QMessageBox.warning(
+                self, "Registry de Segmentadas",
+                "Escolha a pasta compartilhada antes de ligar o compartilhamento."
+            )
+            return
+
+        if enabled and not self._confirm_seg_shared_folder_looks_right(Path(folder_text)):
+            return
+
+        self._settings.setValue(SEG_SHARED_ENABLED_KEY, enabled)
+        self._settings.setValue(SEG_SHARED_FOLDER_KEY, folder_text)
+        QMessageBox.information(self, "Registry de Segmentadas", "Compartilhamento salvo com sucesso.")
+
+    def _confirm_seg_shared_folder_looks_right(self, folder: Path) -> bool:
+        """Trava de segurança: se a pasta escolhida já tiver algo dentro mas
+        nada que pareça registro do SIC, é bem provável que seja a pasta
+        errada (Desktop, Documentos etc.) escolhida por engano — pede
+        confirmação explícita antes de ligar o compartilhamento nela."""
+        if not folder.exists():
+            return True
+        has_any_content = any(folder.iterdir())
+        has_sic_records = bool(SyncedFolderRegistryStore(folder).load())
+        if has_any_content and not has_sic_records:
+            resp = QMessageBox.question(
+                self, "Confirmar pasta compartilhada",
+                f"A pasta escolhida já tem arquivos, mas nenhum deles parece ser "
+                f"registro do SIC:\n\n{folder}\n\n"
+                "Isso pode ser a pasta certa na primeira vez que alguém liga o "
+                "compartilhamento, ou pode ser a pasta errada escolhida por engano.\n\n"
+                "Confirma que é a pasta compartilhada certa?",
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            return resp == QMessageBox.Yes
+        return True

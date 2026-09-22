@@ -4,9 +4,17 @@ BRD-012, P1: núcleo testável, sem tela. Cobre o modelo do vínculo
 aba-da-planilha ↔ tarefa do Runrun.it, a montagem/leitura do `pricebook_id`
 (D1: identidade do registro), o cálculo de status por janela online-from/
 online-to e a regra de reconhecimento na importação (Etapa 3), incluindo o
-armazenamento local (`JsonFileRegistryStore`). O compartilhamento via
-planilha (`GoogleSheetRegistryStore`, P5) e o cache entre as duas fontes
-(`CachedRegistry`) ainda não existem — entram quando a P5 for construída.
+armazenamento local (`JsonFileRegistryStore`).
+
+P5 (compartilhamento, revisado em 22-09-2026): em vez de planilha + Apps
+Script/OAuth (que esbarrou em política do Workspace — ver BRD, "Revisão da
+Etapa 1"), o compartilhamento é uma **pasta do Google Drive sincronizada
+localmente** (Google Drive para computador). Do ponto de vista do SIC é só
+um caminho de pasta — zero API, zero OAuth. `SyncedFolderRegistryStore`
+grava **um arquivo por `pricebook_id`** nela (evita a maior parte dos
+conflitos de sincronização do Drive) e `write_xlsx_snapshot` gera, na
+mesma pasta, um `.xlsx` só de leitura — abre como planilha direto pelo
+Google Drive, sem o SIC precisar falar com a API do Sheets.
 """
 from __future__ import annotations
 
@@ -18,6 +26,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional, Protocol
+
+import openpyxl
 
 _SCHEMA_VERSION = 1
 
@@ -257,3 +267,105 @@ class JsonFileRegistryStore:
                 os.replace(self._path, backup)
             except OSError:
                 pass
+
+
+_FILENAME_SAFE_RE = re.compile(r"[^A-Za-z0-9_-]+")
+
+
+def _safe_filename(pricebook_id: str) -> str:
+    return _FILENAME_SAFE_RE.sub("_", pricebook_id.strip()) or "_"
+
+
+def merge_by_pricebook_id(*record_lists: list[SegmentadaRecord]) -> list[SegmentadaRecord]:
+    """Junta registros de várias fontes (ex.: local + pasta compartilhada),
+    resolvendo `pricebook_id` repetido pelo `updated_at` mais recente."""
+    by_id: dict[str, SegmentadaRecord] = {}
+    for records in record_lists:
+        for r in records:
+            current = by_id.get(r.pricebook_id)
+            if current is None or (r.updated_at or "") >= (current.updated_at or ""):
+                by_id[r.pricebook_id] = r
+    return list(by_id.values())
+
+
+class SyncedFolderRegistryStore:
+    """Compartilhamento via pasta do Google Drive sincronizada localmente
+    (P5, revisado). Um arquivo `<pricebook_id>.json` por registro — duas
+    pessoas mexendo em campanhas diferentes nunca disputam o mesmo arquivo,
+    o que evita a maioria das "cópias conflitantes" que o Drive cria quando
+    o mesmo arquivo é editado por duas máquinas quase ao mesmo tempo.
+
+    Mesma escrita atômica (`tmp` + `os.replace`) do `JsonFileRegistryStore`;
+    um arquivo individual corrompido é isolado (`.bak`) sem derrubar os
+    demais registros da pasta.
+    """
+
+    def __init__(self, folder: Path) -> None:
+        self._folder = folder
+
+    def load(self) -> list[SegmentadaRecord]:
+        if not self._folder.exists():
+            return []
+        records: list[SegmentadaRecord] = []
+        for path in sorted(self._folder.glob("*.json")):
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                records.append(SegmentadaRecord(**raw))
+            except (json.JSONDecodeError, TypeError, OSError):
+                self._quarantine(path)
+        return records
+
+    def upsert(self, record: SegmentadaRecord) -> None:
+        self._folder.mkdir(parents=True, exist_ok=True)
+        path = self._folder / f"{_safe_filename(record.pricebook_id)}.json"
+        tmp_path = path.with_name(path.name + ".tmp")
+        tmp_path.write_text(json.dumps(asdict(record), ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp_path, path)
+
+    def mark_ended(self, pricebook_id: str, ended_at: str) -> None:
+        for record in self.load():
+            if record.pricebook_id == pricebook_id:
+                record.ended_at = ended_at
+                self.upsert(record)
+                return
+
+    def delete(self, pricebook_id: str) -> None:
+        path = self._folder / f"{_safe_filename(pricebook_id)}.json"
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _quarantine(self, path: Path) -> None:
+        try:
+            os.replace(path, path.with_name(path.name + ".bak"))
+        except OSError:
+            pass
+
+
+# Ordem fixa das colunas do .xlsx — segue a mesma ordem da tabela "Formato
+# do registro" no BRD-012, seção 7 (Etapa 1).
+_XLSX_FIELDS: list[str] = [
+    "pricebook_id", "sheet_name", "lp_label", "runrun_id", "brand", "loja",
+    "campaign_name", "online_from", "online_to", "sku_count",
+    "created_at", "updated_at", "created_by", "task_creator",
+    "ended_at", "source_file",
+]
+
+
+def write_xlsx_snapshot(records: list[SegmentadaRecord], path: Path) -> None:
+    """Gera um `.xlsx` só de leitura na pasta compartilhada — abre direto
+    pelo Google Drive como planilha, sem o SIC precisar da API do Sheets.
+    Escrita atômica: nunca deixa a pasta com um arquivo pela metade."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "registry"
+    ws.append(_XLSX_FIELDS)
+    for r in sorted(records, key=lambda r: r.pricebook_id):
+        row = asdict(r)
+        ws.append([row.get(f) for f in _XLSX_FIELDS])
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(path.name + ".tmp")
+    wb.save(tmp_path)
+    os.replace(tmp_path, path)

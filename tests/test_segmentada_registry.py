@@ -12,16 +12,21 @@ from pathlib import Path
 
 import pytest
 
+import openpyxl
+
 from src.core.segmentada_registry import (
     InMemoryRegistryStore,
     JsonFileRegistryStore,
     MatchConfidence,
     SegmentadaRecord,
+    SyncedFolderRegistryStore,
     build_pricebook_id,
     compute_status,
+    merge_by_pricebook_id,
     normalize_sheet_name,
     parse_runrun_id,
     resolve,
+    write_xlsx_snapshot,
 )
 
 
@@ -328,3 +333,133 @@ class TestJsonFileRegistryStore:
         store.upsert(_record())
         store.delete("NAT-RR9999")
         assert len(store.load()) == 1
+
+
+# ─── merge_by_pricebook_id ────────────────────────────────────────────────
+
+class TestMergeByPricebookId:
+    def test_junta_fontes_sem_sobreposicao(self):
+        local = [_record(pricebook_id="NAT-RR1111")]
+        shared = [_record(pricebook_id="NAT-RR2222")]
+        merged = merge_by_pricebook_id(local, shared)
+        assert {r.pricebook_id for r in merged} == {"NAT-RR1111", "NAT-RR2222"}
+
+    def test_mesmo_id_em_duas_fontes_fica_com_o_updated_at_mais_novo(self):
+        old = _record(sku_count=128, updated_at="2026-08-01T00:00:00.000Z")
+        new = _record(sku_count=118, updated_at="2026-09-01T00:00:00.000Z")
+        merged = merge_by_pricebook_id([old], [new])
+        assert len(merged) == 1
+        assert merged[0].sku_count == 118
+
+    def test_ordem_dos_argumentos_nao_importa_quando_ha_updated_at(self):
+        old = _record(sku_count=128, updated_at="2026-08-01T00:00:00.000Z")
+        new = _record(sku_count=118, updated_at="2026-09-01T00:00:00.000Z")
+        merged = merge_by_pricebook_id([new], [old])
+        assert merged[0].sku_count == 118
+
+    def test_sem_updated_at_nao_quebra(self):
+        a = _record(updated_at=None)
+        merged = merge_by_pricebook_id([a])
+        assert merged == [a]
+
+
+# ─── SyncedFolderRegistryStore (P5, pasta do Google Drive) ────────────────
+
+class TestSyncedFolderRegistryStore:
+    def test_pasta_ausente_devolve_lista_vazia(self, tmp_path: Path):
+        store = SyncedFolderRegistryStore(tmp_path / "nao_existe")
+        assert store.load() == []
+
+    def test_upsert_cria_um_arquivo_por_pricebook_id(self, tmp_path: Path):
+        folder = tmp_path / "drive"
+        store = SyncedFolderRegistryStore(folder)
+        store.upsert(_record(pricebook_id="NAT-RR1111"))
+        store.upsert(_record(pricebook_id="NAT-RR2222"))
+        assert sorted(p.name for p in folder.glob("*.json")) == ["NAT-RR1111.json", "NAT-RR2222.json"]
+
+    def test_upsert_por_pricebook_id_atualiza_no_lugar_sem_duplicar(self, tmp_path: Path):
+        store = SyncedFolderRegistryStore(tmp_path / "drive")
+        store.upsert(_record(sku_count=128))
+        store.upsert(_record(sku_count=118))
+        loaded = store.load()
+        assert len(loaded) == 1
+        assert loaded[0].sku_count == 118
+
+    def test_duas_campanhas_diferentes_nao_disputam_o_mesmo_arquivo(self, tmp_path: Path):
+        folder = tmp_path / "drive"
+        store = SyncedFolderRegistryStore(folder)
+        store.upsert(_record(pricebook_id="NAT-RR1111", sheet_name="LISTA_A"))
+        store.upsert(_record(pricebook_id="NAT-RR2222", sheet_name="LISTA_B"))
+        names = {r.pricebook_id: r.sheet_name for r in store.load()}
+        assert names == {"NAT-RR1111": "LISTA_A", "NAT-RR2222": "LISTA_B"}
+
+    def test_mark_ended(self, tmp_path: Path):
+        store = SyncedFolderRegistryStore(tmp_path / "drive")
+        store.upsert(_record())
+        store.mark_ended("NAT-RR1111", "2026-09-20T00:00:00.000Z")
+        assert store.load()[0].ended_at == "2026-09-20T00:00:00.000Z"
+
+    def test_delete(self, tmp_path: Path):
+        store = SyncedFolderRegistryStore(tmp_path / "drive")
+        store.upsert(_record())
+        store.delete("NAT-RR1111")
+        assert store.load() == []
+
+    def test_delete_de_id_inexistente_nao_quebra(self, tmp_path: Path):
+        store = SyncedFolderRegistryStore(tmp_path / "drive")
+        store.delete("NAT-RR9999")
+        assert store.load() == []
+
+    def test_arquivo_individual_corrompido_e_isolado_sem_derrubar_os_demais(self, tmp_path: Path):
+        folder = tmp_path / "drive"
+        store = SyncedFolderRegistryStore(folder)
+        store.upsert(_record(pricebook_id="NAT-RR1111"))
+        (folder / "NAT-RR2222.json").write_text("{ nao e json valido", encoding="utf-8")
+
+        loaded = store.load()
+        assert [r.pricebook_id for r in loaded] == ["NAT-RR1111"]
+        assert (folder / "NAT-RR2222.json.bak").exists()
+
+    def test_pricebook_id_com_caractere_incomum_vira_nome_de_arquivo_seguro(self, tmp_path: Path):
+        folder = tmp_path / "drive"
+        store = SyncedFolderRegistryStore(folder)
+        store.upsert(_record(pricebook_id="CB/Promo Verão!"))
+        files = list(folder.glob("*.json"))
+        assert len(files) == 1
+        assert store.load()[0].pricebook_id == "CB/Promo Verão!"
+
+
+# ─── write_xlsx_snapshot ───────────────────────────────────────────────────
+
+class TestWriteXlsxSnapshot:
+    def test_gera_cabecalho_e_uma_linha_por_registro(self, tmp_path: Path):
+        path = tmp_path / "drive" / "registry.xlsx"
+        records = [_record(pricebook_id="NAT-RR1111"), _record(pricebook_id="NAT-RR2222")]
+        write_xlsx_snapshot(records, path)
+
+        wb = openpyxl.load_workbook(path)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        assert rows[0][0] == "pricebook_id"
+        assert len(rows) == 3  # cabeçalho + 2 registros
+
+    def test_lista_vazia_gera_so_o_cabecalho(self, tmp_path: Path):
+        path = tmp_path / "registry.xlsx"
+        write_xlsx_snapshot([], path)
+        wb = openpyxl.load_workbook(path)
+        rows = list(wb.active.iter_rows(values_only=True))
+        assert len(rows) == 1
+
+    def test_escrita_e_atomica_nao_deixa_tmp_para_tras(self, tmp_path: Path):
+        path = tmp_path / "registry.xlsx"
+        write_xlsx_snapshot([_record()], path)
+        assert path.exists()
+        assert not path.with_name(path.name + ".tmp").exists()
+
+    def test_sobrescreve_snapshot_anterior(self, tmp_path: Path):
+        path = tmp_path / "registry.xlsx"
+        write_xlsx_snapshot([_record(pricebook_id="NAT-RR1111")], path)
+        write_xlsx_snapshot([_record(pricebook_id="NAT-RR2222")], path)
+        wb = openpyxl.load_workbook(path)
+        rows = list(wb.active.iter_rows(values_only=True))
+        assert len(rows) == 2  # cabeçalho + 1 registro (não acumula do anterior)

@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtCore import Qt, QDate, QSettings
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -49,10 +49,14 @@ from src.core.segmentada_registry import (
     MatchConfidence,
     ResolveResult,
     SegmentadaRecord,
+    SyncedFolderRegistryStore,
     build_pricebook_id,
+    merge_by_pricebook_id,
     resolve as resolve_seg_registry,
+    write_xlsx_snapshot,
 )
 from src.ui.components.base_widgets import Divider, DropZone, SectionHeader, StatPill, show_rejection_dialog
+from src.ui.pages.view_settings import SEG_SHARED_ENABLED_KEY, SEG_SHARED_FOLDER_KEY
 from src.workers.worker_segmentado import SegmentadoScanWorker
 from src.workers.worker_segmentada_registry import SegmentadaRegistryWriteWorker
 
@@ -120,6 +124,11 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_pending_record: Optional[SegmentadaRecord] = None
         self._seg_registry_store = JsonFileRegistryStore(data_file("segmentadas_registry.json"))
         self._seg_registry_worker: Optional[SegmentadaRegistryWriteWorker] = None
+        # BRD-012, P5 (revisado): compartilhamento via pasta do Google Drive
+        # sincronizada — configurado em Configurações, opcional e desligado
+        # por padrão. `_seg_settings` é lido de novo a cada gravação/consulta
+        # para refletir uma mudança feita em Configurações sem reiniciar o app.
+        self._seg_settings = QSettings("SIC", "SIC_Suite")
         # BRD-012, P3: reconhecimento na importação — a flag impede que o
         # ID montado automaticamente sobrescreva o que o operador já digitou
         # à mão (nem na direção contrária: digitar o nº da tarefa não some
@@ -684,6 +693,33 @@ class ExportadorSegmentadasView(QWidget):
         loja_key = self._seg_combo_loja.currentData()
         return loja_key, self._seg_detected_brand
 
+    def _seg_shared_store(self) -> Optional[SyncedFolderRegistryStore]:
+        """BRD-012, P5 (revisado): pasta do Google Drive sincronizada,
+        configurada em Configurações. `None` se desligado ou sem pasta —
+        nesse caso o SIC segue só com o registro local, como hoje."""
+        if not self._seg_settings.value(SEG_SHARED_ENABLED_KEY, False, type=bool):
+            return None
+        folder = self._seg_settings.value(SEG_SHARED_FOLDER_KEY, "")
+        if not folder:
+            return None
+        return SyncedFolderRegistryStore(Path(folder))
+
+    def _seg_all_records(self) -> list[SegmentadaRecord]:
+        """Registros locais + compartilhados (quando ligado), para o
+        reconhecimento (Etapa 3) enxergar o que a equipe inteira já sabe,
+        não só o que esta máquina gravou. Falha ao ler a pasta compartilhada
+        (Drive fora do ar, ainda sincronizando) nunca impede nada — cai só
+        no que já existe localmente, mesma regra da seção 8."""
+        local = self._seg_registry_store.load()
+        shared_store = self._seg_shared_store()
+        if not shared_store:
+            return local
+        try:
+            shared = shared_store.load()
+        except OSError:
+            return local
+        return merge_by_pricebook_id(local, shared)
+
     def _update_seg_banner(self, candidate: ListaCandidate) -> None:
         loja_key, marca_key = self._current_loja_and_brand()
         if not marca_key:
@@ -693,7 +729,7 @@ class ExportadorSegmentadasView(QWidget):
 
         result = resolve_seg_registry(
             candidate.sheet_name, candidate.lp_label, marca_key, loja_key or "",
-            self._seg_registry_store.load(),
+            self._seg_all_records(),
         )
         self._seg_resolve_result = result
 
@@ -890,7 +926,7 @@ class ExportadorSegmentadasView(QWidget):
         # _save_seg_pricebook, depois que o arquivo for escrito.
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
         existing = next(
-            (r for r in self._seg_registry_store.load() if r.pricebook_id == pricebook_id),
+            (r for r in self._seg_all_records() if r.pricebook_id == pricebook_id),
             None,
         )
         self._seg_pending_record = SegmentadaRecord(
@@ -949,12 +985,24 @@ class ExportadorSegmentadasView(QWidget):
                 f.write(self._seg_xml)
             QMessageBox.information(self, "Salvo", f"Pricebook Segmentado salvo em:\n{path}")
 
-            # BRD-012, P2: só agora o registro é persistido — o XML foi
-            # de fato escrito em disco. Em segundo plano; falha nunca
-            # impede o salvamento, que já aconteceu.
+            # BRD-012, P2/P5: só agora o registro é persistido — o XML foi
+            # de fato escrito em disco. Em segundo plano; falha em qualquer
+            # fonte nunca impede o salvamento, que já aconteceu.
             if self._seg_pending_record:
+                stores: list = [self._seg_registry_store]
+                xlsx_source = None
+                xlsx_path = None
+                shared_store = self._seg_shared_store()
+                if shared_store is not None:
+                    stores.append(shared_store)
+                    xlsx_source = shared_store
+                    folder = self._seg_settings.value(SEG_SHARED_FOLDER_KEY, "")
+                    if folder:
+                        xlsx_path = Path(folder) / "segmentadas_registry.xlsx"
+
                 self._seg_registry_worker = SegmentadaRegistryWriteWorker(
-                    self._seg_registry_store, self._seg_pending_record, self,
+                    stores, self._seg_pending_record, self,
+                    xlsx_source=xlsx_source, xlsx_path=xlsx_path,
                 )
                 self._seg_registry_worker.start()
 

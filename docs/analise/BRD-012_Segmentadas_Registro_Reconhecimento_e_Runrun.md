@@ -3,7 +3,7 @@
 **Documento:** BRD-012
 **Autor:** Marcos (Analista de Negócios Jr)
 **Data:** 21-09-2026
-**Status:** Em construção — **P0, P1, P2 e P3 concluídos**; a tela já reconhece abas conhecidas e pede confirmação antes de atualizar
+**Status:** Em construção — **P0, P1, P2, P3 e P5 concluídos no código** (registro local + reconhecimento + compartilhamento via pasta do Google Drive, com testes). **P4 pausada**, aguardando o gestor responder V7 e a rodada de desenho da NR1. O caminho de compartilhamento via **OAuth foi abandonado por ora** (ver "Revisão da Etapa 1" e "Segunda revisão" abaixo) em favor de uma pasta sincronizada — zero Google Cloud, zero API. **Falta só a parte de infraestrutura, fora do código**: criar/compartilhar a pasta de verdade no Drive da equipe e apontar o SIC pra ela em Configurações.
 **Solicitação:** "Manutenção das Ações Segmentadas" (formulário Solicitação de Evolução Integrada)
 **Branch:** A definir (este documento sobe em `docs/brd-012-registry-segmentadas`)
 **Pré-requisitos:** nenhum. Independente do BRD-014.
@@ -91,10 +91,23 @@ Várias listas numa passada só: uma tela de conferência, uma confirmação, um
 
 > **Este é o melhor ponto de parada.** O retrabalho acabou para quem gera as listas — sem rede, sem TI, sem dado saindo da máquina. Se a publicação do Apps Script for barrada, tudo o que foi entregue até aqui continua de pé.
 
-### P5 — Compartilhar entre a equipe
+### P5 — Compartilhar entre a equipe ✅ *código concluído (desenho revisado — pasta do Google Drive, não planilha/API)*
 
-Planilha, automação, Configurações e migração explícita. Inclui **fila de pendências**: sem ela, uma falha de rede deixaria o registro só na máquina de quem gerou e a colega nunca o veria — o compartilhamento seria silenciosamente furado. Inclui também a **resolução de colisão** na migração, para o caso de duas pessoas terem registrado a mesma aba antes de a planilha existir.
-**Pronto quando:** CA-15 a CA-18.
+Implementado: `SyncedFolderRegistryStore` (um arquivo `.json` por `pricebook_id` na pasta sincronizada), `write_xlsx_snapshot` (planilha `.xlsx` de leitura, regerada a cada gravação) e `merge_by_pricebook_id` (junta local + compartilhado para o reconhecimento, seção 8). Em Configurações: checkbox "Compartilhar com a equipe" + seletor de pasta, desligado por padrão. Verificado manualmente (sem `pytest-qt`): gerar+salvar grava no local **e** na pasta compartilhada, o `.xlsx` é gerado, e uma segunda "máquina" (registro local vazio) reconhece um vínculo que só existe na pasta compartilhada.
+
+**Trava contra escolher a pasta errada por engano.** A pasta só é selecionável por um seletor de diretório (não dá pra digitar um caminho à mão), o que já elimina erro de digitação. Além disso, se a pasta escolhida já tiver conteúdo mas **nada que pareça registro do SIC**, o SIC pede confirmação explícita antes de salvar — evita que alguém aponte sem querer pro Desktop ou Documentos e o compartilhamento fique "ligado" apontando pro lugar errado, silenciosamente sem sincronizar com ninguém. Isso nunca gera erro visível — só não compartilha de verdade, o que é bem menos grave do que parecer que "o programa deu problema".
+
+**Pronto quando:** CA-15 a CA-19 (revisadas abaixo, o desenho mudou de planilha/API para pasta sincronizada) — CA-29 e CA-30 **não se aplicam mais** (não há chamada de API pra regular; ler/escrever arquivo local não tem o mesmo risco de estourar cota).
+
+| # | Critério | Situação |
+|---|---|---|
+| CA-15 | Compartilhamento desligado ou pasta inacessível → XML gerado normalmente | ✅ Verificado — `_seg_shared_store()` devolve `None`; falha de escrita cai em `try/except` no worker |
+| CA-16 | Sem rede, o reconhecimento usa o que está disponível localmente | 🔵 Coberto **pelo Google Drive para computador** (modo "Mirror files" mantém cópia local), não por código do SIC — recomendar esse modo no guia de configuração |
+| CA-17 | Duas pessoas registrando quase ao mesmo tempo → nenhum registro perdido | ✅ Verificado **para `pricebook_id` diferentes** (arquivos distintos, sem disputa). Para o mesmo `pricebook_id` editado por duas pessoas quase ao mesmo tempo, quem resolve é o próprio Google Drive (cria "cópia conflitante") — não testado, risco residual baixo com 3 pessoas |
+| CA-18 | Registro gravado offline sobe sozinho depois | 🔵 Coberto pelo Google Drive (sincronização automática da pasta), não por código do SIC |
+| CA-19 | Envio inicial dos registros locais pré-existentes só após confirmação | ⚠️ **Não construído.** Registros gravados antes de ligar o compartilhamento **não migram sozinhos** para a pasta — só entram registros novos, a partir de quando a P5 for ligada. Migração explícita fica como trabalho futuro, se for necessária |
+
+**Diferença importante do desenho original:** não existe mais "fila de pendências" nem "resolução de colisão na migração" como funcionalidades de código — a sincronização em si é responsabilidade do Google Drive para computador, não do SIC.
 
 ### P6 — Conferência no Runrun.it
 
@@ -217,10 +230,91 @@ A separação do repositório em código privado e instaladores públicos, neces
 ### Etapa 1 — Planilha e automação (fora do código Python)
 
 - Planilha no Drive de uma **conta de equipe** (não pessoal), aba `registry`, acesso restrito ao time.
-- Automação publicada como Web App, com as ações `list`, `upsert` e `mark_ended`. O `upsert` age **por `pricebook_id`** (D1) — nunca reescreve a lista inteira.
-- Toda escrita sob `LockService.getScriptLock()`. O token é lido de `PropertiesService.getScriptProperties()`: **nunca fica no código do script**.
-- ⚠️ Um aplicativo de desktop sem login Google só chama o Web App se ele for publicado com acesso **"Qualquer pessoa"**. Nesse modelo a URL é alcançável sem autenticação e **o token é a única proteção** — deve ser tratado como senha (longo, aleatório, rotacionável).
-- Referência do script versionada em `tools/apps_script/registry.gs`, **sem token**.
+- ~~Automação publicada como Web App, com as ações `list`, `upsert`, `upsert_batch` e `mark_ended`... acesso "Qualquer pessoa"... o token é a única proteção~~ — **superado, ver "Revisão" abaixo.** Testado com a implantação real em 22-09-2026: o Google intercepta a chamada e redireciona para login **antes** de o script rodar, porque a implantação está (e provavelmente só pode estar, por política do Workspace) como "Qualquer pessoa **na Natura**", não anônima de verdade — e um `requests`/`curl` sem sessão de navegador não tem como provar login nenhum. O desenho original de token-só não funciona contra essa implantação.
+- Referência antiga do script em `tools/apps_script/registry.gs` — local (`tools/` no `.gitignore`), mantida como **Plano B documentado**, não como caminho principal.
+
+### ⚠️ Revisão da Etapa 1 — de token anônimo para OAuth *(achado em teste real, 22-09-2026)*
+
+**O problema não é a pessoa ter conta `natura.net` — é o processo que faz a chamada.** O SIC é um programa de desktop, sem sessão de navegador: uma chamada HTTP crua não carrega login Google nenhum, então "Qualquer pessoa na Natura" barra o SIC do mesmo jeito que barraria um estranho.
+
+| | Continuar anônimo | **Autenticar de verdade (recomendado)** |
+|---|---|---|
+| Como | Pedir à TI uma exceção pra publicar como "Qualquer pessoa" (sem restrição de domínio) | O SIC abre o navegador, a pessoa loga uma vez com a conta Natura, o app guarda um token renovável |
+| Depende de | Uma exceção de política que pode nem existir no Workspace da Natura — e que, se existir, expõe o endpoint à internet inteira, protegido só por um token compartilhado | Nada de exceção — é o jeito padrão do Google para apps de desktop (OAuth 2.0 "Installed App") |
+| Autoria | Um segredo compartilhado pelas 3 pessoas — indistinguível quem escreveu o quê | Cada gravação carrega a identidade Google real de quem operou — resolve D2 de graça |
+| Esforço | Já está pronto — só falta a permissão, que já se mostrou improvável | Código novo (fluxo OAuth), mas sem biblioteca nova |
+
+**Recomendação: OAuth 2.0 "Installed App" (fluxo de desktop) direto contra a API do Google Sheets — abandonando o Apps Script Web App.**
+
+Como funciona:
+1. Na primeira vez (ou ao desconectar), o SIC abre o navegador padrão numa tela de login do Google pedindo consentimento pra ler/escrever a planilha.
+2. A pessoa loga com a conta `natura.net` que já usa pra tudo.
+3. O Google redireciona para `http://localhost:{porta}` — um servidor HTTP que o próprio SIC sobe só por esse instante, captura o código de autorização e se desliga. É o **fluxo por loopback**, o único que o Google ainda suporta para apps instalados — o método antigo de copiar e colar um código ("OOB") foi descontinuado.
+4. O SIC troca o código por um **token de acesso** (curto) e um **token de renovação** (esse sim fica guardado, em `QSettings`, mesmo lugar do webhook hoje).
+5. Daí em diante, cada chamada usa o token de acesso, renovado sozinho quando expira — sem pedir login de novo.
+
+**Ganho colateral: dá pra abandonar o `LockService`/Apps Script inteiramente.** Sem um script intermediário, a escrita vira **só acréscimo** (`values.append`, operação atômica na própria API do Sheets): cada "upsert" é uma linha nova com todos os campos e um timestamp; quem lê considera **a última linha de cada `pricebook_id`** como o valor atual. Troca "impedir duas pessoas de escreverem ao mesmo tempo" por "nunca ter conflito porque ninguém sobrescreve nada" — mais simples, e D1 continua valendo do ponto de vista de quem usa (upsert por identidade); só a implementação interna vira "log com resolução na leitura" em vez de "sobrescrever a linha".
+
+**Pré-requisito novo (organizacional, não técnico):** alguém com acesso ao Google Cloud da Natura precisa criar um **projeto vinculado à organização `natura.net`** e cadastrar um **Client ID tipo "App para computador"**. Com o projeto pertencendo à organização, a tela de consentimento pode ser marcada como **"Interna"** — nesse modo o Google **pula toda a verificação** (sem aviso de "app não verificado", sem limite de usuários, mesmo usando o escopo sensível de Planilhas), porque só quem tem conta `natura.net` consegue completar o login de qualquer jeito. Cadastro único, feito uma vez.
+
+**Dependências novas:** nenhuma biblioteca nova — o fluxo inteiro dá pra fazer só com `requests` (já no projeto) mais `http.server` e `webbrowser` da biblioteca padrão do Python.
+
+**Impacto no que já foi desenhado:**
+
+| Peça | Antes (token anônimo) | Depois (OAuth) |
+|---|---|---|
+| `tools/apps_script/registry.gs` | Caminho principal | Descartado ou mantido só como Plano B |
+| `GoogleSheetRegistryStore` (P1, ainda não implementado) | Chama o Web App com token | Chama `sheets.googleapis.com` com token OAuth renovável — a interface `RegistryStore` (`load`/`upsert`/`mark_ended`) **não muda** |
+| `view_settings.py` (P5) | Campos de URL + token | Botão **"Conectar ao Google"**, indicação de quem está conectado, botão "Desconectar" |
+| V1 (pendência de TI) | "Posso publicar como Qualquer pessoa?" | **V10** (nova): "Pode existir um projeto Google Cloud vinculado a `natura.net`, com tela de consentimento OAuth interna?" — pergunta mais fácil de aprovar, porque não expõe nada pra fora da organização |
+
+Isso não muda nada da P0-P3, já construídas — o impacto é só na P5 (compartilhamento), que ainda não tinha código escrito.
+
+**Verificação feita em 22-09-2026:** no Console do Google Cloud, a lista de projetos (`console.cloud.google.com/cloud-resource-manager`) mostra **"Nenhuma organização"** como pasta-mãe do único projeto visível (`gemini-natura-prd`) — ou a Natura nunca ativou o recurso de Organização no Google Cloud, ou existe uma mas a conta testada não tem visibilidade dela. Nos dois casos, a decisão é a mesma: **formalizar o pedido à TI** (opção escolhida nesta análise, em vez de prototipar agora com um projeto sem organização — que funcionaria, mas exibiria aviso de "app não verificado" a cada pessoa no primeiro login).
+
+**Pedido pronto para encaminhar à TI (V10):**
+
+> **Assunto:** Projeto Google Cloud vinculado à organização natura.net — automação interna do SIC
+>
+> O SIC (aplicativo desktop usado pelo time Comercial para gerar pricebooks) precisa de um jeito de cada pessoa da equipe autenticar com a própria conta Google (`@natura.net`) para ler e escrever numa planilha Google compartilhada do time — sem senha nem token compartilhado entre as pessoas, e sem que o SIC precise ficar acessível para fora da Natura.
+>
+> O caminho padrão do Google para isso é OAuth 2.0 com um **Client ID do tipo "App para computador"**, numa tela de consentimento marcada como **"Interna"** — modo em que só contas `@natura.net` conseguem logar, o Google não exige processo de verificação, e não aparece nenhum aviso de "app não verificado" para a equipe.
+>
+> Para isso funcionar, precisamos de uma das duas coisas:
+> 1. Um **projeto no Google Cloud vinculado à organização `natura.net`** (Cloud Identity/Google Cloud Organization), com permissão para eu (ou outra pessoa indicada) criar esse Client ID e configurar a tela de consentimento como "Interna"; **ou**
+> 2. Confirmação de que a Natura **não tem** esse recurso de Organização ativado no Google Cloud — nesse caso, precisaríamos saber se dá para ativá-lo, ou qual é o caminho alternativo que a TI prefere para esse tipo de automação interna.
+>
+> Não envolve custo (o nível gratuito do Google Cloud cobre esse uso) nem exposição de dados para fora da Natura — pelo contrário, substitui um modelo mais arriscado (token único compartilhado por chamadas anônimas) por login individual de cada pessoa, com a identidade de quem fez cada operação registrada automaticamente.
+
+**Decisão desta análise: não esperar a resposta da V10 para começar a construir.** Avaliadas três formas de destravar sem depender de aprovação: (A) trocar a planilha por um arquivo numa pasta de rede já compartilhada — descartada, risco de escrita concorrente sem nenhum árbitro central e sem a autoria automática que é o ganho principal da D2; (B) OAuth **Externo**, usando um projeto Google Cloud que já existe e é acessível (`gemini-natura-prd`), com a tela de consentimento em modo "Teste" e as poucas pessoas da equipe cadastradas por e-mail como testadoras; (C) igual à B, mas com escopo restrito a "arquivo selecionado" (`drive.file`), mais elegante mas com mais código.
+
+**Escolhida a opção B**, pelo ganho de autoria automática (a identidade Google de quem operou fica registrada, resolvendo D2) sem depender de ninguém aprovar nada agora. Único efeito colateral: cada pessoa vê uma tela "o Google não verificou este app" no primeiro login — inofensiva, só exige um clique em "Avançado → Acessar [app] (não seguro)".
+
+A V10 (pedido à TI) **continua em pé, em paralelo, sem bloquear nada** — se um dia existir organização vinculada, a troca de "Externo com testadores" para "Interno" é só reconfiguração no Google Cloud, sem tocar no código do SIC.
+
+**Pausa (22-09-2026):** ao concretizar os passos (criar o Client ID, decidir projeto, etc.), o usuário preferiu parar e reavaliar — inclusive cogitou estender o login para o SIC inteiro (10 pessoas) como base para um futuro registro de uso geral do aplicativo. Essa ideia **não é escopo deste BRD**: envolve monitorar o uso de todas as pessoas, o que precisa de proposta própria e transparente ao gestor (e possivelmente RH/compliance, dado LGPD sobre dado de funcionário), não algo decidido de lado dentro do ajuste do Segmentadas. Ficou registrado como possível BRD futuro, ainda não escrito.
+
+### Terceira revisão da Etapa 1 — pasta do Google Drive, sem API nem OAuth *(22-09-2026, escolhida)*
+
+No mesmo dia, ainda avaliando alternativas que não dependessem de aprovação de ninguém (nem TI, nem Google Cloud), surgiu uma terceira opção — e foi a **escolhida**: em vez de planilha + Apps Script/OAuth, o compartilhamento vira uma **pasta do Google Drive sincronizada localmente** (Google Drive para computador). Do ponto de vista do SIC, isso é só um caminho de pasta — sem API, sem OAuth, sem Google Cloud.
+
+**Desenho:**
+- `SyncedFolderRegistryStore`: um arquivo `<pricebook_id>.json` por registro dentro da pasta — duas pessoas mexendo em campanhas diferentes nunca disputam o mesmo arquivo, evitando a maior parte das "cópias conflitantes" que o Drive cria quando o mesmo arquivo é editado por duas máquinas quase ao mesmo tempo.
+- `write_xlsx_snapshot`: gera, na mesma pasta, um `.xlsx` só de leitura a cada gravação — abre direto pelo Google Drive como planilha (Drive edita `.xlsx` nativamente no navegador), sem o SIC falar com a API do Sheets. Resolve o pedido de "ter uma sheet lá" sem reabrir a questão do OAuth.
+- `merge_by_pricebook_id`: junta os registros locais com os da pasta compartilhada para o reconhecimento (seção 8) enxergar o que a equipe inteira já sabe, não só o que a própria máquina gravou.
+- Em Configurações: checkbox "Compartilhar com a equipe" + seletor de pasta — desligado por padrão, mesmo espírito do resto do BRD.
+
+**Por que essa e não as opções A/B/C anteriores:** a opção A (pasta de rede genérica) foi descartada por risco de concorrência sem nenhuma defesa; as opções B/C (OAuth) foram pausadas pelo próprio usuário por causa do peso de configurar Google Cloud. A pasta do Drive tem o ganho de concorrência da SyncedFolderRegistryStore (arquivo por registro) **sem precisar de nenhuma das duas coisas que geraram hesitação** — nem organização no Google Cloud, nem tela de login.
+
+**Construído e testado manualmente** (sem `pytest-qt`, mesmo padrão das etapas anteriores): geração+salvamento grava no registro local **e** na pasta compartilhada; o `.xlsx` é regerado; uma segunda "máquina" (sem nada no registro local) reconhece um vínculo que só existe na pasta compartilhada. Ver seção 7 (Etapa 1 e P5) para o estado exato de cada critério de aceite.
+
+**O que ainda falta, fora de código:** criar/compartilhar a pasta de verdade no Drive da equipe, instalar o Google Drive para computador nas 3 máquinas (recomendado modo "Mirror files", para funcionar offline — ver CA-16/CA-18), e configurar o caminho da pasta em Configurações. A V10 (pedido à TI sobre Google Cloud) **deixa de bloquear qualquer coisa** — continua em pé só como caminho alternativo de "polimento" (login individual, autoria automática do D2 via Google) para o futuro, não mais necessário para o compartilhamento funcionar.
+
+**Proteção contra excesso de chamadas (requisito, não otimização — decidido nesta análise; ajustado após a revisão para OAuth acima).** A API do Google Sheets tem cota por projeto e por usuário (padrão de mercado, não específica da Natura), e multiplicar chamadas por engano continua sendo o jeito mais fácil de estourar isso silenciosamente. Por isso:
+
+1. **A leitura é cacheada localmente** (`CachedRegistry`) e só é reconsultada sob ação explícita — abrir a tela de Segmentadas, um botão "Sincronizar" em Configurações, ou expiração do cache por tempo. **Nunca a cada seleção de lista na tabela.**
+2. **A P4 (lote) usa uma única chamada `values.append` com todas as linhas do lote**, não uma chamada por lista. Processar 10 ou 20 listas não pode virar 10 ou 20 requisições HTTP sequenciais.
+3. Falha de rede em qualquer chamada cai na **fila de pendências** (P5) e no cache local — nunca trava a geração ou o salvamento do XML, mesma regra da seção 8.
 
 **Formato do registro:**
 
@@ -249,7 +343,7 @@ O SIC passa a gravar um registro a cada segmentada salva, **sem alterar o fluxo 
 
 - Novo `src/core/app_paths.py` — caminho de dados válido dentro do executável (`QStandardPaths.AppDataLocation`, com fallback em `%APPDATA%\SIC`). **Não** reutilizar o padrão de `history_engine.py:6,12` (`Path(__file__).parent.parent.parent`): dentro do executável (modo *onedir*, `sic.spec`) ele grava dentro da própria pasta de instalação, e dado do usuário guardado ali fica sujeito a reinstalação, limpeza da pasta e à falta de permissão de escrita em instalações legadas em `Program Files`.
 - Novo `src/core/segmentada_registry.py` — `SegmentadaRecord`; `RegistryStore` **orientado a registro** (`load`, `upsert`, `mark_ended`); `GoogleSheetRegistryStore(url, token, timeout=5)` via `requests` (já em `pyproject.toml:15`); `JsonFileRegistryStore` como armazenamento local com escrita atômica; `CachedRegistry`.
-- `view_settings.py` (já usa `QSettings` e `QFormLayout`, linhas 13 e 40-48): bloco "Registry de Segmentadas" com URL, token, botão **Testar** (modelo `_test_webhook`, `:129`), chave liga/desliga do compartilhamento e **acesso à pasta do registro**.
+- `view_settings.py` (já usa `QSettings` e `QFormLayout`, linhas 13 e 40-48): bloco "Registry de Segmentadas". ✅ Construído na P2 **só com o que fazia sentido sem compartilhamento**: lista os registros locais, apaga um selecionado, abre a pasta do registro. **URL, token, botão Testar (modelo `_test_webhook`, `:129`) e a chave liga/desliga do compartilhamento entram só na P5**, quando a planilha (Etapa 1) estiver publicada — antes disso não há o que testar nem o que ligar/desligar.
 
 **Quando gravar — o registro é confirmado no salvamento, não na geração.**
 
@@ -294,7 +388,7 @@ O registro local é da mesma natureza do `history.db`, que o SIC já grava hoje 
 4. **Uma confirmação** para o conjunto.
 5. **Uma pasta de destino**, escolhida uma vez. O SIC grava os N arquivos usando a mesma convenção de nome que já existe em `_save_seg_pricebook` (`:714-717`).
 6. **Um resumo ao final:** quantos foram gerados, quantos falharam e por quê.
-7. **Um registro por lista**, gravado sob a mesma regra da Etapa 2: só depois de o arquivo correspondente ter sido escrito.
+7. **Um registro por lista**, gravado sob a mesma regra da Etapa 2: só depois de o arquivo correspondente ter sido escrito. Localmente (P2-P4) isso é uma escrita em JSON por lista, sem rede. Quando a P5 existir, essas N gravações somam-se num **único** `values.append` ao final do lote, não N chamadas HTTP — ver "Proteção contra excesso de chamadas" na Etapa 1.
 
 **Por que isso não enfraquece a trava.** A conferência mostra as cinco listas **lado a lado**, o que é melhor para revisão do que cinco caixas de diálogo isoladas: dá para comparar, notar a que destoa e desmarcá-la. A confirmação continua existindo — passa a ser uma, sobre o conjunto, em vez de uma por lista. É assim que o item A1 devolve o "é só clicar em Exportar" sem abrir mão da segurança.
 
@@ -366,12 +460,12 @@ Ver NR3 para as duas hipóteses de mecanismo e a decisão de negócio pendente.
 
 | Arquivo | Etapa | Mudança | Risco |
 |---|---|---|---|
-| `tools/apps_script/registry.gs` *(novo)* | 1 | Automação da planilha | Baixo — fora do executável |
+| `tools/apps_script/registry.gs` *(local, não versionado)* | 1 *(abandonada)* | Automação da planilha — Plano B, não é mais o caminho principal | — |
 | `src/core/app_paths.py` *(novo)* | 2 | Caminho de dados no executável | Baixo |
-| `src/core/segmentada_registry.py` *(novo)* | 2, 3, 4 | Registro, cache, resolução de vínculo | Baixo — código novo e isolado |
-| `src/workers/worker_segmentada_registry.py` *(novo)* | 2 | Grava o registro em segundo plano, fora da UI thread | Baixo |
-| `src/core/runrun_client.py` *(novo)* | 5 | Cliente somente leitura | Baixo |
-| `src/ui/pages/view_settings.py` | 2, 5 | Blocos de configuração do registro e do Runrun.it | Baixo |
+| `src/core/segmentada_registry.py` *(novo)* | 2, 3, 4, 5 | Registro, resolução de vínculo, `SyncedFolderRegistryStore`, `merge_by_pricebook_id`, `write_xlsx_snapshot` | Baixo — código novo e isolado |
+| `src/workers/worker_segmentada_registry.py` *(novo)* | 2, 5 | Grava o registro (local e/ou pasta compartilhada) e regera o `.xlsx`, em segundo plano | Baixo |
+| `src/core/runrun_client.py` *(novo)* | 5 (Runrun.it) | Cliente somente leitura | Baixo |
+| `src/ui/pages/view_settings.py` | 2, 5 | Bloco "Registry de Segmentadas": registro local (listar/apagar/abrir pasta) + compartilhamento (checkbox + seletor de pasta) | Baixo |
 | `src/ui/pages/view_exportador_segmentadas.py` | 2, 3, 4, 5 | Gravação, campo do Runrun.it, banner, seleção múltipla, tela de conferência. Validações 601-620 **intactas** | **Médio-alto** — a Etapa 4 é a maior mudança estrutural da tela |
 | `README.md` e `docs/seguranca/` | 2, 5 | Ver seção 11 | Nulo em runtime |
 | `segmentado_engine.py` e demais engines | — | **Nenhuma alteração** | — |
@@ -420,15 +514,15 @@ Ver NR3 para as duas hipóteses de mecanismo e a decisão de negócio pendente.
 | CA-13 | Falha em uma lista não impede as demais; o resumo final diz o que falhou e por quê |
 | CA-14 | Um registro é gravado por lista, apenas para as que tiveram arquivo escrito |
 
-**Compartilhamento (P5)**
+**Compartilhamento (P5)** — desenho revisado em 22-09-2026 (pasta do Google Drive, não planilha/API); detalhe e situação de cada critério na seção 7, "P5 — Compartilhar entre a equipe". CA-29 e CA-30 (proteção contra excesso de chamadas de API) **não se aplicam mais** nesse desenho.
 
-| # | Critério |
-|---|---|
-| CA-15 | Compartilhamento desligado, sem URL, token inválido ou rede indisponível → o XML é gerado e salvo normalmente, com aviso discreto |
-| CA-16 | Sem rede, o reconhecimento usa o armazenamento local, indicando o horário da última sincronização |
-| CA-17 | Duas máquinas registrando quase ao mesmo tempo → nenhum registro perdido |
-| CA-18 | Registro gravado offline **sobe sozinho** na primeira oportunidade seguinte |
-| CA-19 | O envio inicial para a planilha só ocorre após confirmação explícita do que será enviado |
+| # | Critério | Situação |
+|---|---|---|
+| CA-15 | Compartilhamento desligado ou pasta inacessível → XML gerado e salvo normalmente | ✅ |
+| CA-16 | Sem rede, o reconhecimento usa o que está disponível localmente | 🔵 Coberto pelo Google Drive para computador |
+| CA-17 | Duas pessoas registrando quase ao mesmo tempo → nenhum registro perdido | ✅ para `pricebook_id` diferentes; mesmo `pricebook_id` fica a cargo do Drive |
+| CA-18 | Registro gravado offline **sobe sozinho** depois | 🔵 Coberto pelo Google Drive para computador |
+| CA-19 | Migração dos registros locais pré-existentes só após confirmação | ⚠️ Não construído — registros antigos não migram sozinhos |
 
 **Transversal**
 
@@ -468,7 +562,8 @@ Ver NR3 para as duas hipóteses de mecanismo e a decisão de negócio pendente.
 
 | # | O quê | Bloqueia | Situação |
 |---|---|---|---|
-| V1 | **TI:** confirmar que a automação da planilha pode ser publicada com acesso "Qualquer pessoa" e liberar `script.google.com` e `script.googleusercontent.com` no firewall | P5 | ✅ **Confirmada** |
+| V1 | ~~**TI:** confirmar que a automação da planilha pode ser publicada com acesso "Qualquer pessoa"~~ e liberar `script.google.com` e `script.googleusercontent.com` no firewall | P5 | 🟡 **Parcial** — o firewall segue liberado; o teste real de 22-09-2026 mostrou que "Qualquer pessoa" (anônimo) provavelmente não é possível no Workspace da Natura. **Substituída pela V10.** |
+| V10 | **TI/Google Cloud:** pode existir um projeto Google Cloud vinculado à organização `natura.net`, com um Client ID OAuth tipo "App para computador" e tela de consentimento marcada como "Interna"? | Nenhuma — P5 não depende mais disso | 🟡 Enviada ao TI, sem resposta ainda — mas **não bloqueia nada**: a P5 foi construída via pasta do Google Drive (terceira revisão da Etapa 1), sem precisar de OAuth. V10 vira só um "polimento" futuro opcional |
 | V2 | **Conta de equipe** (não pessoal) dona da planilha e da automação | P5 | ✅ **Confirmada** — conta do gestor, com acesso de equipe à planilha |
 | V3 | **Salesforce:** reimportar o mesmo `pricebook-id` substitui ou mescla? | P3, P4 | ✅ **Respondida: substitui** |
 | V4 | **Runrun.it:** `/tasks/:id` aceita o número visível da tarefa ou um identificador interno? | P6 | ✅ **Respondida: aceita o número visível** — ver seção 14 |
@@ -478,7 +573,7 @@ Ver NR3 para as duas hipóteses de mecanismo e a decisão de negócio pendente.
 | V8 | **Runrun.it:** como obter o nome da pessoa dona do token | Melhor fonte de `created_by` — **não bloqueia a P2** | ✅ **Respondida: `GET /users/me`** — ver seção 14 |
 | V9 | **Operação:** com que frequência chegam planilhas com várias abas **inéditas**? | Define se NR1 vira trabalho | ✅ **Respondida: algumas vezes ao dia** — ver NR1, escalado |
 
-**V1, V2, V4, V5, V6 e V8 confirmadas: a P5 e a P6 não têm mais nenhuma pendência bloqueante de negócio**, só a execução. As prioridades **P0 a P4 não dependem de nenhuma validação em aberto**. Resta aberta apenas a V7 (aguardando o gestor), que bloqueia só a P7. A V9 não bloqueia nenhuma prioridade em execução, mas **precisa ser resolvida antes de a Etapa 4 ser fechada para construção** — ver NR1.
+**V2, V4, V5, V6 e V8 confirmadas; V1 rebaixada a parcial.** A V10 nasceu do teste real da implantação anônima (22-09-2026), mas **deixou de bloquear a P5** depois da terceira revisão da Etapa 1 (pasta do Google Drive, sem API/OAuth) — fica só como caminho de polimento futuro, opcional. **Nenhuma prioridade de código (P0 a P3, P5) depende de validação em aberto.** Só a P4 segue pausada (V7 com o gestor, e a rodada de desenho da NR1, escalada pela V9).
 
 ---
 
