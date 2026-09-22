@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, QDate, QSettings
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDateEdit,
     QFileDialog,
@@ -30,6 +32,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -53,6 +56,8 @@ from src.core.segmentada_registry import (
     SyncedFolderRegistryStore,
     build_pricebook_id,
     merge_by_pricebook_id,
+    painel_rows,
+    parse_runrun_id,
     resolve as resolve_seg_registry,
     write_xlsx_snapshot,
 )
@@ -151,6 +156,10 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_runrun_worker: Optional[RunrunTaskFetchWorker] = None
         self._seg_runrun_task: Optional[RunrunTask] = None
         self._seg_runrun_last_query_at: Optional[datetime] = None
+        # BRD-012, Etapa 6 (Painel): as linhas exibidas, para mapear a
+        # seleção da tabela de volta ao registro correspondente.
+        self._painel_rows_cache: list[tuple[SegmentadaRecord, str]] = []
+        self._painel_runrun_record: Optional[SegmentadaRecord] = None
         self._setup_ui()
 
     # ── UI Construction ───────────────────────────────────────────────────
@@ -167,10 +176,17 @@ class ExportadorSegmentadasView(QWidget):
         ))
         outer.addWidget(Divider())
 
+        # BRD-012, Etapa 6: a tela ganha abas — "Gerar" é exatamente o que
+        # existia antes (nada mudou dentro dela) e "Painel" é a visão do que
+        # já foi registrado, com a vigência calculada localmente.
+        self._seg_tabs = QTabWidget()
+        self._seg_tabs.currentChanged.connect(self._on_seg_tab_changed)
+        outer.addWidget(self._seg_tabs)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        outer.addWidget(scroll)
+        self._seg_tabs.addTab(scroll, "Gerar")
 
         container = QWidget()
         scroll.setWidget(container)
@@ -475,6 +491,177 @@ class ExportadorSegmentadasView(QWidget):
         layout.addWidget(self._seg_result_widget)
 
         layout.addStretch()
+
+        self._setup_painel_tab()
+
+    # ── BRD-012, Etapa 6: aba "Painel" ───────────────────────────────────
+    def _setup_painel_tab(self) -> None:
+        painel = QWidget()
+        painel_layout = QVBoxLayout(painel)
+        painel_layout.setContentsMargins(28, 24, 28, 24)
+        painel_layout.setSpacing(12)
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(12)
+        btn_reload = QPushButton("↻  Atualizar")
+        btn_reload.setObjectName("btn_secondary")
+        btn_reload.setFixedWidth(140)
+        btn_reload.clicked.connect(self._reload_painel)
+        top_row.addWidget(btn_reload)
+
+        self._painel_show_expired = QCheckBox("Mostrar encerradas e expiradas")
+        self._painel_show_expired.toggled.connect(self._reload_painel)
+        top_row.addWidget(self._painel_show_expired)
+        top_row.addStretch()
+
+        self._painel_count_lbl = QLabel("")
+        self._painel_count_lbl.setObjectName("label_muted")
+        top_row.addWidget(self._painel_count_lbl)
+        painel_layout.addLayout(top_row)
+
+        self._painel_table = QTableWidget(0, 7)
+        self._painel_table.setHorizontalHeaderLabels([
+            "STATUS", "LISTA (ABA)", "ID DO PRICEBOOK", "CAMPANHA",
+            "PERÍODO", "SKUs", "REGISTRADO POR",
+        ])
+        header = self._painel_table.horizontalHeader()
+        for col in range(self._painel_table.columnCount()):
+            header.setSectionResizeMode(col, QHeaderView.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        self._painel_table.verticalHeader().hide()
+        self._painel_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._painel_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._painel_table.setSelectionMode(QTableWidget.SingleSelection)
+        self._painel_table.itemSelectionChanged.connect(self._on_painel_row_selected)
+        painel_layout.addWidget(self._painel_table)
+
+        action_row = QHBoxLayout()
+        action_row.setSpacing(12)
+        self._painel_btn_check = QPushButton("Conferir tarefa no Runrun.it")
+        self._painel_btn_check.setObjectName("btn_secondary")
+        self._painel_btn_check.setEnabled(False)
+        self._painel_btn_check.clicked.connect(self._on_painel_check_runrun)
+        action_row.addWidget(self._painel_btn_check)
+        action_row.addStretch()
+        painel_layout.addLayout(action_row)
+
+        self._painel_check_lbl = QLabel("")
+        self._painel_check_lbl.setWordWrap(True)
+        self._painel_check_lbl.setStyleSheet("font-size:11px; background:transparent; color:#9e9e9e;")
+        self._painel_check_lbl.hide()
+        painel_layout.addWidget(self._painel_check_lbl)
+
+        self._seg_tabs.addTab(painel, "Painel")
+
+    _PAINEL_STATUS_COLORS = {
+        "ativa": "#66bb6a",
+        "agendada": "#42a5f5",
+        "expirada": "#9e9e9e",
+        "encerrada": "#9e9e9e",
+    }
+
+    def _on_seg_tab_changed(self, index: int) -> None:
+        # Recarregar ao abrir o Painel é barato: leitura de arquivo local,
+        # sem nenhuma chamada de rede (Etapa 6).
+        if self._seg_tabs.tabText(index) == "Painel":
+            self._reload_painel()
+
+    def _reload_painel(self) -> None:
+        rows = painel_rows(
+            self._seg_all_records(),
+            include_expired=self._painel_show_expired.isChecked(),
+        )
+        self._painel_rows_cache = rows
+        self._painel_table.setRowCount(len(rows))
+
+        for i, (record, status) in enumerate(rows):
+            status_item = QTableWidgetItem(status.capitalize())
+            color = self._PAINEL_STATUS_COLORS.get(status)
+            if color:
+                status_item.setForeground(QColor(color))
+            self._painel_table.setItem(i, 0, status_item)
+            self._painel_table.setItem(i, 1, QTableWidgetItem(record.sheet_name))
+            self._painel_table.setItem(i, 2, QTableWidgetItem(record.pricebook_id))
+            self._painel_table.setItem(i, 3, QTableWidgetItem(record.campaign_name or "—"))
+            periodo = f"{self._fmt_iso_date(record.online_from)} – {self._fmt_iso_date(record.online_to)}"
+            self._painel_table.setItem(i, 4, QTableWidgetItem(periodo))
+            sku = str(record.sku_count) if record.sku_count is not None else "—"
+            self._painel_table.setItem(i, 5, QTableWidgetItem(sku))
+            self._painel_table.setItem(i, 6, QTableWidgetItem(record.created_by or "—"))
+
+        total = len(rows)
+        self._painel_count_lbl.setText(
+            "Nenhuma segmentada registrada." if total == 0
+            else f"{total} segmentada(s) — o que vence primeiro no topo."
+        )
+        self._painel_check_lbl.hide()
+        self._painel_btn_check.setEnabled(False)
+
+    def _painel_selected_record(self) -> Optional[SegmentadaRecord]:
+        sel_model = self._painel_table.selectionModel()
+        rows = sel_model.selectedRows() if sel_model else []
+        if not rows:
+            return None
+        idx = rows[0].row()
+        if idx >= len(self._painel_rows_cache):
+            return None
+        return self._painel_rows_cache[idx][0]
+
+    def _on_painel_row_selected(self) -> None:
+        record = self._painel_selected_record()
+        # Só dá para conferir no Runrun.it o que tem nº de tarefa guardado.
+        runrun_id = (record.runrun_id or parse_runrun_id(record.pricebook_id)) if record else None
+        self._painel_btn_check.setEnabled(bool(runrun_id) and self._seg_runrun_client() is not None)
+        self._painel_check_lbl.hide()
+
+    def _on_painel_check_runrun(self) -> None:
+        record = self._painel_selected_record()
+        if not record:
+            return
+        runrun_id = record.runrun_id or parse_runrun_id(record.pricebook_id)
+        client = self._seg_runrun_client()
+        if not runrun_id or not client:
+            return
+
+        cached = self._seg_runrun_cache.get(runrun_id)
+        if cached:
+            self._show_painel_check_result(record, cached)
+            return
+
+        self._painel_check_lbl.setText("Consultando tarefa no Runrun.it…")
+        self._painel_check_lbl.setStyleSheet("font-size:11px; background:transparent; color:#9e9e9e;")
+        self._painel_check_lbl.show()
+
+        self._painel_runrun_record = record
+        self._seg_runrun_worker = RunrunTaskFetchWorker(client, runrun_id, self)
+        self._seg_runrun_worker.finished.connect(self._on_painel_runrun_fetched)
+        self._seg_runrun_worker.error.connect(self._on_painel_runrun_error)
+        self._seg_runrun_worker.start()
+
+    def _on_painel_runrun_fetched(self, task: RunrunTask) -> None:
+        self._seg_runrun_cache[task.number] = task
+        if self._painel_runrun_record:
+            self._show_painel_check_result(self._painel_runrun_record, task)
+
+    def _on_painel_runrun_error(self, message: str) -> None:
+        self._painel_check_lbl.setText("Não foi possível consultar a tarefa no Runrun.it.")
+        self._painel_check_lbl.setStyleSheet("font-size:11px; background:transparent; color:#9e9e9e;")
+        self._painel_check_lbl.show()
+
+    def _show_painel_check_result(self, record: SegmentadaRecord, task: RunrunTask) -> None:
+        parts = [f'Tarefa {task.number}: "{task.title}"' if task.title else f"Tarefa {task.number}"]
+        is_risky = False
+        if task.is_closed:
+            parts.append("⚠ encerrada no Runrun.it")
+            is_risky = True
+        if record.campaign_name and task.title:
+            if record.campaign_name.strip().upper() != task.title.strip().upper():
+                parts.append(f'⚠ diverge da campanha registrada ("{record.campaign_name}")')
+                is_risky = True
+        self._painel_check_lbl.setText("  ·  ".join(parts))
+        color = "#ff8a80" if is_risky else "#9e9e9e"
+        self._painel_check_lbl.setStyleSheet(f"font-size:11px; background:transparent; color:{color};")
+        self._painel_check_lbl.show()
 
     # ── Handlers ─────────────────────────────────────────────────────────
     @staticmethod
@@ -1058,6 +1245,10 @@ class ExportadorSegmentadasView(QWidget):
             brand=marca_key,
             loja=loja_key,
             lp_label=candidate.lp_label,
+            # Guardar o nº da tarefa permite conferir no Runrun.it depois
+            # (Painel, Etapa 6) sem a pessoa precisar redigitar. Quando o ID
+            # foi montado automaticamente, dá para extraí-lo do próprio ID.
+            runrun_id=self._seg_input_runrun_id.text().strip() or parse_runrun_id(pricebook_id),
             campaign_name=display_name or candidate.lp_label or candidate.sheet_name,
             online_from=online_from,
             online_to=online_to,

@@ -24,6 +24,7 @@ from src.core.segmentada_registry import (
     compute_status,
     merge_by_pricebook_id,
     normalize_sheet_name,
+    painel_rows,
     parse_runrun_id,
     resolve,
     write_xlsx_snapshot,
@@ -361,6 +362,57 @@ class TestMergeByPricebookId:
         a = _record(updated_at=None)
         merged = merge_by_pricebook_id([a])
         assert merged == [a]
+
+
+# ─── painel_rows (Etapa 6 — Painel) ───────────────────────────────────
+
+class TestPainelRows:
+    def _now(self):
+        return datetime(2026, 9, 10, tzinfo=timezone.utc)
+
+    def test_esconde_expiradas_por_padrao(self):
+        ativa = _record(pricebook_id="NAT-RR1", online_to="2026-09-20T00:00:00.000Z")
+        expirada = _record(pricebook_id="NAT-RR2", online_to="2026-09-01T00:00:00.000Z")
+        rows = painel_rows([ativa, expirada], now=self._now())
+        assert [r.pricebook_id for r, _ in rows] == ["NAT-RR1"]
+
+    def test_inclui_expiradas_quando_pedido(self):
+        ativa = _record(pricebook_id="NAT-RR1", online_to="2026-09-20T00:00:00.000Z")
+        expirada = _record(pricebook_id="NAT-RR2", online_to="2026-09-01T00:00:00.000Z")
+        rows = painel_rows([ativa, expirada], include_expired=True, now=self._now())
+        assert {r.pricebook_id for r, _ in rows} == {"NAT-RR1", "NAT-RR2"}
+
+    def test_esconde_encerradas_por_padrao(self):
+        encerrada = _record(
+            pricebook_id="NAT-RR3",
+            online_to="2026-09-20T00:00:00.000Z",
+            ended_at="2026-09-05T00:00:00.000Z",
+        )
+        assert painel_rows([encerrada], now=self._now()) == []
+
+    def test_o_que_vence_primeiro_vem_no_topo(self):
+        depois = _record(pricebook_id="NAT-RR-DEPOIS", online_to="2026-09-30T00:00:00.000Z")
+        antes = _record(pricebook_id="NAT-RR-ANTES", online_to="2026-09-12T00:00:00.000Z")
+        rows = painel_rows([depois, antes], now=self._now())
+        assert [r.pricebook_id for r, _ in rows] == ["NAT-RR-ANTES", "NAT-RR-DEPOIS"]
+
+    def test_registro_sem_data_de_fim_vai_para_o_fim(self):
+        com_data = _record(pricebook_id="NAT-RR-COM", online_to="2026-09-30T00:00:00.000Z")
+        sem_data = _record(pricebook_id="NAT-RR-SEM", online_to=None)
+        rows = painel_rows([sem_data, com_data], now=self._now())
+        assert [r.pricebook_id for r, _ in rows] == ["NAT-RR-COM", "NAT-RR-SEM"]
+
+    def test_devolve_o_status_junto_de_cada_registro(self):
+        agendada = _record(
+            pricebook_id="NAT-RR-AG",
+            online_from="2026-09-20T00:00:00.000Z",
+            online_to="2026-09-30T00:00:00.000Z",
+        )
+        rows = painel_rows([agendada], now=self._now())
+        assert rows[0][1] == "agendada"
+
+    def test_lista_vazia(self):
+        assert painel_rows([], now=self._now()) == []
 
 
 # ─── SyncedFolderRegistryStore (P5, pasta do Google Drive) ────────────────

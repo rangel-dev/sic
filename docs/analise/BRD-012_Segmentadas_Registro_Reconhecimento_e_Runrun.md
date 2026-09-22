@@ -192,11 +192,15 @@ A Etapa 4, como desenhada, cobre só o **lote de manutenção**: listas que o SI
 
 **Ainda não é uma decisão fechada — é uma decisão que falta tomar**, e que muda o desenho da Etapa 4, não só o cronograma. Um caminho possível: a tela de conferência (Etapa 4) já mostra cada lista com seu vínculo ou a falta dele; poderia aceitar, ali mesmo, o número da tarefa digitado para as linhas "novas", em vez de exigir sair do lote para cadastrá-las uma a uma. Isso precisa ser desenhado e não está neste documento — **retorna como pendência para a próxima rodada de análise antes de a Etapa 4 ser fechada para construção.**
 
-### NR2 — O Painel: o que significa "ativa"?
+### NR2 — O Painel: o que significa "ativa"? ✅ *respondida em 22-09-2026*
 
 A proposta pede uma tela com "todas as ações ativas". Mas o SIC só sabe o que **ele mesmo gerou e salvou** — e salvar não é importar: o operador ainda sobe o arquivo no Business Manager. Um pricebook gerado e nunca importado apareceria como "ativo" sem estar no ar; um pricebook criado por outro caminho não apareceria.
 
-Antes de desenhar o Painel é preciso decidir: ele mostra **o que foi registrado pelo SIC** (honesto, mas incompleto) ou existe alguma forma de confirmar o que está de fato publicado no Salesforce? A segunda opção implicaria ler o Salesforce, o que está fora de tudo que foi discutido até aqui.
+A pergunta era: o Painel mostra **o que foi registrado pelo SIC** (honesto, mas incompleto) ou existe forma de confirmar o que está publicado no Salesforce (fora de alcance)?
+
+**Resposta do usuário: a primeira.** Um terceiro caminho chegou a ser desenhado — usar o Runrun.it como fonte, varrendo tarefas com "Possui segmentação? Sim" — mas foi **descartado** depois de a investigação da API mostrar que enumerar tarefas é caro e sem ordenação confiável (detalhe na Etapa 6 redesenhada). O usuário descartou explicitamente o cenário "descobrir segmentadas que o SIC nunca tocou".
+
+Fica assumido, de forma consciente: **o Painel mostra o que o SIC registrou, e isso é incompleto por construção.** A vigência vem do próprio registro (`online_from`/`online_to`), calculada por `compute_status` — não de consulta externa. Ver "Etapa 6 (redesenhada)".
 
 ### NR3 — O "Encerrar": qual mecanismo, e qual comportamento se deseja?
 
@@ -437,9 +441,38 @@ Volume esperado: unidades de chamadas por sessão, contra um teto de 100 por min
 
 Novo `src/core/runrun_client.py` — `RunrunClient(app_key, user_token, timeout=5)` e `get_task(numero)`; falhas viram `RunrunUnavailable`. Sem Qt, apenas `requests`.
 
-### Etapa 6 — Painel de Gestão *(P7 — depende de NR2)*
+### Etapa 6 — Painel de Gestão *(desenho original — substituído pela versão redesenhada abaixo)*
 
 Tela com o status de cada lista (ativa, agendada, expirada), no padrão de `view_history.py`. Exige acrescentar uma página em `main_window.py` (`:179`, `:244-246`, `:305-309`, `:327`, `:332-345`) e estilos de aviso em `qss_light.py`/`qss_dark.py`.
+
+### Etapa 6 (redesenhada) — Painel das Segmentadas do SIC *(desenho fechado em 22-09-2026; nenhuma linha de código ainda)*
+
+**Ideia, do usuário:** uma aba dentro de Exportador → Segmentadas mostrando as segmentadas e seu status de vigência ("dentro da data").
+
+**Caminho descartado (e por quê).** A primeira versão deste desenho propunha usar o **Runrun.it como fonte da lista** — varrer as tarefas com `custom_38 = "Possui segmentação? Sim"` e filtrar pela janela de datas da própria tarefa. Investigação em 22-09-2026 mostrou que isso é caro e mal resolvido pela API: `GET /tasks` não filtra por campo customizado nem por texto, e com `limit=100` devolve uma amostra que cobre IDs de 42 a 2737 (quatro meses) — ou seja, **não é uma lista "as N mais recentes"**, e montar o universo exigiria paginar a base inteira sem garantia de ordenação. Além disso, essa varredura contraria a proteção contra excesso de chamadas da própria Etapa 5.
+
+**Decisão do usuário:** descartar o cenário "descobrir segmentadas que o SIC nunca tocou". O Painel mostra **o que o SIC registrou** — o que, na prática, **responde a NR2**: entre as duas saídas que ela colocava (o que o SIC registrou × o que está publicado no Salesforce), ficou a primeira, assumindo conscientemente que é honesta porém incompleta.
+
+**Além disso, a data nunca precisou vir da API.** Ela já existe em dois lugares locais: o período da aba na grade (`periodo_sugerido`, extraído pelo `segmentado_engine`) e o `online_from`/`online_to` do próprio registro. O cálculo de vigência **já está construído e testado**: `compute_status` (P1) devolve `ativa` / `agendada` / `expirada` / `encerrada`.
+
+**Desenho resultante — quase tudo já existe:**
+
+| Peça | Situação |
+|---|---|
+| Fonte dos dados | `merge_by_pricebook_id(local, compartilhado)` — **pronto** (P5) |
+| Cálculo de vigência | `compute_status(record, now)` — **pronto e testado** (P1) |
+| Tela | **Único trabalho novo de verdade** — tabela no padrão de `view_history.py` |
+| Enriquecimento com o Runrun.it | `RunrunClient.get_task` — **pronto** (P6), mas é consulta por tarefa: entra só sob ação explícita, nunca em varredura |
+
+Colunas propostas: aba, `pricebook_id`, campanha, período, **status**, SKUs, quem registrou, última atualização. Ordenação sugerida: o que vence primeiro no topo.
+
+**Decisões que faltam (pequenas, de produto):**
+
+1. **Expiradas aparecem por padrão?** Proposta: não — mostrar ativas e agendadas, com uma opção para incluir o histórico.
+2. **Conferir no Runrun.it entra na v1?** Um botão por linha ("conferir tarefa") reaproveitando a P6, sempre sob clique — nunca automático para a lista inteira, pela proteção da App-Key.
+3. **Onde a aba vive.** Dentro da tela de Segmentadas (`QTabWidget`) ou como página própria no menu? ⚠️ Se for dentro da tela, **disputa o mesmo arquivo que o BRD-015** (unificação Grade Completa × Segmentadas) e que a Etapa 4 — mesma advertência da seção 9.
+
+**Ainda sem prioridade (P) atribuída** — mas, diferente do desenho anterior, não depende de nenhuma investigação externa: as três decisões acima são de produto, e o resto já está construído.
 
 ### Etapa 7 — Encerrar promoção *(P7 — bloqueada por NR3 e V7)*
 

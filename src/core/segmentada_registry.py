@@ -130,6 +130,26 @@ def compute_status(record: SegmentadaRecord, now: Optional[datetime] = None) -> 
     return "ativa"
 
 
+_PAINEL_HIDDEN_STATUSES = frozenset({"expirada", "encerrada"})
+
+
+def painel_rows(
+    records: list[SegmentadaRecord],
+    include_expired: bool = False,
+    now: Optional[datetime] = None,
+) -> list[tuple[SegmentadaRecord, str]]:
+    """Linhas do Painel (Etapa 6): cada registro com seu status calculado,
+    escondendo por padrão o que já passou, e com o que vence primeiro no
+    topo — quem olha o painel quer ver o que exige ação agora. Registro sem
+    `online_to` vai para o fim: não dá para dizer quando vence."""
+    now = now or datetime.now(timezone.utc)
+    rows = [(r, compute_status(r, now)) for r in records]
+    if not include_expired:
+        rows = [(r, status) for r, status in rows if status not in _PAINEL_HIDDEN_STATUSES]
+    rows.sort(key=lambda pair: (pair[0].online_to is None, pair[0].online_to or ""))
+    return rows
+
+
 def resolve(
     sheet_name: str,
     lp_label: Optional[str],
