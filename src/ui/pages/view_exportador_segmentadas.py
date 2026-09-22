@@ -527,7 +527,13 @@ class ExportadorSegmentadasView(QWidget):
         header = self._painel_table.horizontalHeader()
         for col in range(self._painel_table.columnCount()):
             header.setSectionResizeMode(col, QHeaderView.Interactive)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        # A coluna elástica precisa ser a ÚLTIMA (mesmo padrão de
+        # view_history.py). Com ela no meio, arrastar um divisor faz o
+        # espaço ser compensado do outro lado e a coluna parece andar para
+        # o lado oposto do arrasto.
+        header.setStretchLastSection(True)
+        for col, width in enumerate((90, 190, 150, 260, 150, 70)):
+            self._painel_table.setColumnWidth(col, width)
         self._painel_table.verticalHeader().hide()
         self._painel_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._painel_table.setSelectionBehavior(QTableWidget.SelectRows)
