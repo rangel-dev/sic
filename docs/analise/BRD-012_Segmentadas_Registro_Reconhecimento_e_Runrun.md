@@ -3,7 +3,7 @@
 **Documento:** BRD-012
 **Autor:** Marcos (Analista de Negócios Jr)
 **Data:** 21-09-2026
-**Status:** Rascunho para análise — **nenhuma linha de código autorizada**
+**Status:** Em construção — **P0 e P1 concluídos** (`src/core/app_paths.py`, `src/core/segmentada_registry.py`, com testes); nenhuma tela ainda foi tocada
 **Solicitação:** "Manutenção das Ações Segmentadas" (formulário Solicitação de Evolução Integrada)
 **Branch:** A definir (este documento sobe em `docs/brd-012-registry-segmentadas`)
 **Pré-requisitos:** nenhum. Independente do BRD-014.
@@ -34,7 +34,7 @@ Este BRD propõe dar **memória compartilhada** ao SIC, em cinco etapas de escop
 | Runrun.it | **Somente leitura**; o operador digita o número e confere. A equipe tem acesso à API e vai implementá-la em breve |
 | Reimportar o mesmo `pricebook_id` no Salesforce | **Substitui** a lista inteira (V3, respondida pelo gestor) |
 | Identidade do registro | Um `pricebook_id`, um registro, atualizado no lugar (D1) |
-| Quem registrou (`created_by`) | Nome do **Runrun.it** quando disponível; usuário do Windows enquanto não estiver (D2) |
+| Autoria | **Dois campos** (D2): `created_by` (quem operou no SIC) e `task_creator` (quem abriu a tarefa no Runrun.it, vindo da Etapa 5) |
 | Painel de Gestão e botão "Encerrar" | **P7**, fora do escopo de hoje; o "Encerrar" segue bloqueado pela V7 |
 
 ---
@@ -54,24 +54,25 @@ As etapas da seção 6 estão numeradas por **dependência de conceito**. Esta s
 | **P6** | Conferência no Runrun.it | P5, V4-V6 | — |
 | **P7** | Painel e Encerrar | P6, V7 | — |
 
-### P0 — Fechar o modelo de dados *(bloqueia tudo; nenhuma linha de código antes)*
+### P0 — Fechar o modelo de dados ✅ *concluído*
 
 Registros gravados com o modelo errado viram migração em máquina de gente de verdade. Estas quatro decisões precisam estar fechadas **antes da primeira gravação**:
 
 **D1 — A identidade do registro é o `pricebook_id`.** Um pricebook, um registro, atualizado no lugar. Sem isso há uma contradição: a proposta original manda o servidor recusar dois registros ativos com o mesmo `pricebook_id`, mas a atualização existe justamente para **reescrever** um pricebook existente — se cada salvamento criasse um registro novo, a regra de proteção mataria a funcionalidade principal. A decisão também espelha o Salesforce, onde reimportar o mesmo ID **substitui** (V3, respondida).
 
-**D2 — `created_by` é resolvido uma vez e gravado dentro do registro.** A fonte obedece a esta ordem: nome vindo do **Runrun.it** (quando o token estiver configurado) → nome digitado em Configurações → usuário do Windows. Como o nome é gravado **no momento da escrita**, e não consultado na leitura, a P2 sai com o usuário do Windows e os registros novos passam a nascer com o nome do Runrun.it quando a P6 chegar — **sem migrar nada**. Isso evita que a primeira entrega dependa da última.
+**D2 — o registro guarda dois campos de autoria, respondendo a duas perguntas diferentes** *(decidido nesta análise)*:
 
-> ⚠️ **Em aberto:** *quem criou a tarefa no Runrun.it* (provavelmente o planejamento, que pediu a campanha) **não é** necessariamente *quem registrou o vínculo no SIC* (quem operou). Os dois são úteis e respondem a perguntas diferentes: "de quem foi essa campanha?" e "quem fez esse vínculo?". Decidir se o registro guarda um campo ou dois.
+- **`created_by`** — quem registrou o vínculo no SIC (quem operou). Resolvido uma vez, no momento da escrita, nesta ordem: nome vindo do **Runrun.it** (quando o token estiver configurado, via `GET /users/me` — V8 confirmada) → nome digitado em Configurações → usuário do Windows. Como é gravado **no momento da escrita** e não consultado na leitura, a P2 sai com o usuário do Windows e os registros novos passam a nascer com o nome do Runrun.it quando a P6 chegar — **sem migrar nada**.
+- **`task_creator`** — quem abriu a tarefa no Runrun.it (tipicamente o planejamento, que pediu a campanha). Vem **da própria tarefa consultada na Etapa 5**, não do token de quem opera o SIC. No teste da seção 14 (tarefa 2388), o campo mais provável para isso é `user_name`/`user_id` — a resposta já distingue esse par de `responsible_name`/`responsible_id` (o responsável atual pela tarefa), então "quem criou" e "quem está com a tarefa agora" já vêm separados. **Confirmar em um teste futuro** se `user_name` de fato corresponde ao criador e não a outro papel, antes de fechar a Etapa 5. Como depende da consulta da Etapa 5, `task_creator` só é preenchido quando a P6 estiver ativa — antes disso, o campo fica vazio, nunca bloqueando o registro.
 
 **D3 — `campaign_name` precisa de alternativa.** A fonte prevista é o campo "Nome de Exibição do Pricebook", mas ele é **opcional** ("deixe em branco para omitir do XML"). Vazio, o banner da P3 mostra campanha em branco e a conferência cruzada da P6 não tem contra o que comparar. Ordem proposta: nome de exibição → rótulo LP da aba → nome da aba.
 
 **D4 — A `loja` participa do reconhecimento.** A mesma aba pode virar pricebook na loja da marca **e** na Minha Loja (CB), que aceita SKUs de qualquer marca. São dois pricebooks distintos; sem a loja no casamento, o caso cai em "ambíguo" sem explicar o motivo real.
 
-### P1 — Núcleo testável *(nenhum arquivo existente é tocado)*
+### P1 — Núcleo testável ✅ *concluído*
 
 `app_paths.py` e `segmentada_registry.py`: modelo, montagem do ID, cálculo de status, regra de reconhecimento e armazenamento local, tudo com teste puro.
-**Pronto quando:** testes verdes e `git diff` mostrando apenas arquivos novos.
+**Pronto quando:** testes verdes e `git diff` mostrando apenas arquivos novos. ✅ 159 testes verdes (47 novos), `git status` só com arquivos novos (`app_paths.py`, `segmentada_registry.py`, `test_app_paths.py`, `test_segmentada_registry.py`).
 
 ### P2 — Gravar de verdade, com escape
 
@@ -234,7 +235,8 @@ A separação do repositório em código privado e instaladores públicos, neces
 | `online_from`, `online_to` | datas de vigência (UTC) | parâmetros da geração |
 | `sku_count` | quantidade de SKUs | contagem da aba |
 | `created_at`, `updated_at` | datas | automático |
-| `created_by` | nome da pessoa | Runrun.it → Configurações → usuário do Windows (D2) |
+| `created_by` | nome de quem registrou o vínculo no SIC | Runrun.it (`/users/me`) → Configurações → usuário do Windows (D2) |
+| `task_creator` | nome de quem abriu a tarefa no Runrun.it | resposta de `GET /tasks/{numero}` na Etapa 5 — vazio até a P6 estar ativa (D2) |
 | `ended_at`, `source_file` | reservados à P7 | — |
 
 O envelope carrega `schema_version` para permitir migração. **Só metadados saem do computador — nenhum preço e nenhuma lista de SKUs.**
