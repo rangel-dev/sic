@@ -3,7 +3,7 @@
 **Documento:** BRD-012
 **Autor:** Marcos (Analista de Negócios Jr)
 **Data:** 21-09-2026
-**Status:** Em construção — **P0, P1 e P2 concluídos**; a primeira tela já grava, sem mudança visual no fluxo de gerar/salvar
+**Status:** Em construção — **P0, P1, P2 e P3 concluídos**; a tela já reconhece abas conhecidas e pede confirmação antes de atualizar
 **Solicitação:** "Manutenção das Ações Segmentadas" (formulário Solicitação de Evolução Integrada)
 **Branch:** A definir (este documento sobe em `docs/brd-012-registry-segmentadas`)
 **Pré-requisitos:** nenhum. Independente do BRD-014.
@@ -79,10 +79,10 @@ Registros gravados com o modelo errado viram migração em máquina de gente de 
 A gravação no salvamento (ver Etapa 2) **mais um caminho de correção**: sem ele, o primeiro engano vira um registro errado sem saída — nas P2 e P3 a planilha ainda não existe, então a única alternativa seria editar um JSON na mão. O mínimo é apagar um registro e abrir a pasta do registro a partir de Configurações.
 **Pronto quando:** CA-01 a CA-04 e CA-20. ✅ Verificado manualmente (sem tela automatizada — o projeto não tem `pytest-qt`): gerar e cancelar não grava nada (CA-02); salvar grava o registro completo, com `campaign_name` vindo do nome de exibição sem digitação extra (CA-01, CA-03); salvar o mesmo `pricebook_id` de novo atualiza no lugar, sem duplicar e sem resetar `created_at` (CA-04, D1). Escape hatch em Configurações → "Registry de Segmentadas (local)": lista os registros, apaga um selecionado, abre a pasta do registro.
 
-### P3 — Reconhecimento na importação (uma lista)
+### P3 — Reconhecimento na importação (uma lista) ✅ *concluído*
 
 Campo do número da tarefa, montagem do ID e banner com confirmação obrigatória.
-**Pronto quando:** CA-05 a CA-08.
+**Pronto quando:** CA-05 a CA-08. ✅ Verificado manualmente: sem vínculo salvo, o campo continua livre e o banner some (CA-05); vínculo para outra marca/loja aparece em vermelho, junto com registro expirado quando aplicável (CA-06); digitar o nº da tarefa monta `NAT-RR{id}`/`AVN-RR{id}`, editar o ID à mão trava o auto-preenchimento, e a loja CB nunca monta sozinha (CA-07); quando a contagem de SKUs cai, o banner e a confirmação de "ATUALIZAÇÃO" avisam quantos produtos vão perder o preço segmentado (CA-08). A pergunta de confirmação só aparece em modo ATUALIZAÇÃO (clique em "Usar"); "Ignorar" ou edição manual do ID mantêm o fluxo de hoje, sem pergunta extra.
 
 ### P4 — Manutenção em lote
 

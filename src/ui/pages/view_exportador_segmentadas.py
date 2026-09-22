@@ -9,7 +9,7 @@ completo gerado pela tela Exportador → Grade Completa.
 from __future__ import annotations
 
 import getpass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
     QFileDialog,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -43,7 +44,14 @@ from src.core.segmentado_engine import (
     SegmentadoEngine,
     SegmentScanResult,
 )
-from src.core.segmentada_registry import JsonFileRegistryStore, SegmentadaRecord
+from src.core.segmentada_registry import (
+    JsonFileRegistryStore,
+    MatchConfidence,
+    ResolveResult,
+    SegmentadaRecord,
+    build_pricebook_id,
+    resolve as resolve_seg_registry,
+)
 from src.ui.components.base_widgets import Divider, DropZone, SectionHeader, StatPill, show_rejection_dialog
 from src.workers.worker_segmentado import SegmentadoScanWorker
 from src.workers.worker_segmentada_registry import SegmentadaRegistryWriteWorker
@@ -112,6 +120,13 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_pending_record: Optional[SegmentadaRecord] = None
         self._seg_registry_store = JsonFileRegistryStore(data_file("segmentadas_registry.json"))
         self._seg_registry_worker: Optional[SegmentadaRegistryWriteWorker] = None
+        # BRD-012, P3: reconhecimento na importação — a flag impede que o
+        # ID montado automaticamente sobrescreva o que o operador já digitou
+        # à mão (nem na direção contrária: digitar o nº da tarefa não some
+        # o que a pessoa já tiver escrito manualmente no ID).
+        self._seg_pbid_touched: bool = False
+        self._seg_resolve_result: Optional[ResolveResult] = None
+        self._seg_is_update_mode: bool = False
         self._setup_ui()
 
     # ── UI Construction ───────────────────────────────────────────────────
@@ -145,11 +160,20 @@ class ExportadorSegmentadasView(QWidget):
         params_layout.setContentsMargins(16, 18, 16, 14)
         params_layout.setSpacing(12)
 
+        lbl_runrun_id = QLabel("Nº da tarefa Runrun.it (opcional)")
+        lbl_runrun_id.setObjectName("label_section")
+        params_layout.addWidget(lbl_runrun_id)
+        self._seg_input_runrun_id = QLineEdit()
+        self._seg_input_runrun_id.setPlaceholderText("Ex: 1111 — monta o ID abaixo automaticamente")
+        self._seg_input_runrun_id.textEdited.connect(self._on_seg_runrun_id_edited)
+        params_layout.addWidget(self._seg_input_runrun_id)
+
         lbl_pbid = QLabel("ID do Pricebook (Salesforce)")
         lbl_pbid.setObjectName("label_section")
         params_layout.addWidget(lbl_pbid)
         self._seg_input_pbid = QLineEdit()
         self._seg_input_pbid.setPlaceholderText("Ex: NAT-RR1881")
+        self._seg_input_pbid.textEdited.connect(self._on_seg_pbid_edited)
         params_layout.addWidget(self._seg_input_pbid)
 
         lbl_display_name = QLabel("Nome de Exibição do Pricebook (opcional)")
@@ -171,6 +195,7 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_combo_loja.addItem("Natura", "natura")
         self._seg_combo_loja.addItem("Avon", "avon")
         self._seg_combo_loja.addItem("Minha Loja (CB)", "ml")
+        self._seg_combo_loja.currentIndexChanged.connect(self._on_seg_loja_changed)
         loja_col.addWidget(self._seg_combo_loja)
 
         combo_row = QHBoxLayout()
@@ -342,6 +367,29 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_warn_lbl.hide()
         lista_layout.addWidget(self._seg_warn_lbl)
 
+        # BRD-012, P3: banner de reconhecimento — nunca preenche o ID
+        # sozinho (o nome da aba é reaproveitado entre ciclos); só mostra o
+        # vínculo lembrado e espera um clique explícito.
+        self._seg_banner = QFrame()
+        self._seg_banner.setFrameShape(QFrame.NoFrame)
+        banner_layout = QHBoxLayout(self._seg_banner)
+        banner_layout.setContentsMargins(12, 10, 12, 10)
+        banner_layout.setSpacing(10)
+        self._seg_banner_lbl = QLabel("")
+        self._seg_banner_lbl.setWordWrap(True)
+        self._seg_banner_lbl.setStyleSheet("background:transparent; font-size:11px;")
+        banner_layout.addWidget(self._seg_banner_lbl, 1)
+        self._seg_banner_btn_use = QPushButton("Usar (ATUALIZAÇÃO)")
+        self._seg_banner_btn_use.setObjectName("btn_primary")
+        self._seg_banner_btn_use.clicked.connect(self._on_seg_banner_use)
+        banner_layout.addWidget(self._seg_banner_btn_use)
+        self._seg_banner_btn_ignore = QPushButton("Ignorar — é campanha nova")
+        self._seg_banner_btn_ignore.setObjectName("btn_ghost")
+        self._seg_banner_btn_ignore.clicked.connect(self._on_seg_banner_ignore)
+        banner_layout.addWidget(self._seg_banner_btn_ignore)
+        self._seg_banner.hide()
+        lista_layout.addWidget(self._seg_banner)
+
         seg_action_row = QHBoxLayout()
         seg_action_row.setSpacing(12)
         self._seg_btn_generate = QPushButton("⊗  Gerar Pricebook Segmentado")
@@ -428,6 +476,7 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_lista_box.hide()
         self._seg_result_widget.hide()
         self._seg_warn_lbl.hide()
+        self._seg_banner.hide()
         self._seg_table.setRowCount(0)
         self._seg_scan_result = None
         self._seg_selected_lista = None
@@ -435,6 +484,8 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_generated_campaign_start = None
         self._seg_generated_label = None
         self._seg_pending_record = None
+        self._seg_resolve_result = None
+        self._seg_is_update_mode = False
         self._seg_btn_generate.setEnabled(False)
 
     def _on_seg_file_selected(self, paths: list[str]) -> None:
@@ -586,6 +637,9 @@ class ExportadorSegmentadasView(QWidget):
             self._seg_selected_lista = None
             self._seg_btn_generate.setEnabled(False)
             self._seg_warn_lbl.hide()
+            self._seg_banner.hide()
+            self._seg_resolve_result = None
+            self._seg_is_update_mode = False
             return
 
         idx = rows[0].row()
@@ -608,6 +662,124 @@ class ExportadorSegmentadasView(QWidget):
             self._seg_warn_lbl.hide()
 
         self._seg_btn_generate.setEnabled(bool(candidate.rows))
+        self._seg_is_update_mode = False
+        self._update_seg_banner(candidate)
+
+    # ── BRD-012, P3: reconhecimento na importação ───────────────────────────
+    @staticmethod
+    def _fmt_iso_date(value: Optional[str]) -> str:
+        """Converte um `online_from`/`online_to`/`created_at` (UTC, formato
+        de `SegmentadoEngine.compute_online_window`) de volta para BRT antes
+        de exibir — sem isso, um horário perto da meia-noite mostraria o
+        dia seguinte ao real."""
+        if not value:
+            return "—"
+        try:
+            dt = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.000Z") - timedelta(hours=3)
+            return dt.strftime("%d/%m")
+        except ValueError:
+            return "—"
+
+    def _current_loja_and_brand(self) -> tuple[Optional[str], Optional[str]]:
+        loja_key = self._seg_combo_loja.currentData()
+        return loja_key, self._seg_detected_brand
+
+    def _update_seg_banner(self, candidate: ListaCandidate) -> None:
+        loja_key, marca_key = self._current_loja_and_brand()
+        if not marca_key:
+            self._seg_banner.hide()
+            self._seg_resolve_result = None
+            return
+
+        result = resolve_seg_registry(
+            candidate.sheet_name, candidate.lp_label, marca_key, loja_key or "",
+            self._seg_registry_store.load(),
+        )
+        self._seg_resolve_result = result
+
+        if result.confidence == MatchConfidence.NONE:
+            self._seg_banner.hide()
+            return
+
+        text = self._format_seg_banner(candidate, result)
+        self._seg_banner_lbl.setText(text)
+        if result.is_risky:
+            self._seg_banner.setStyleSheet(
+                "background:#3a1e1e; border:1px solid #c62828; border-radius:6px;"
+            )
+            self._seg_banner_lbl.setStyleSheet("color:#ffcdd2; background:transparent; font-size:11px;")
+        else:
+            self._seg_banner.setStyleSheet(
+                "background:#1e3a2f; border:1px solid #2e7d32; border-radius:6px;"
+            )
+            self._seg_banner_lbl.setStyleSheet("color:#c8e6c9; background:transparent; font-size:11px;")
+        self._seg_banner_btn_use.setEnabled(result.record is not None)
+        self._seg_banner.show()
+
+    def _format_seg_banner(self, candidate: ListaCandidate, result: ResolveResult) -> str:
+        record = result.record
+        if record is None:
+            return f"⚠  {candidate.sheet_name}: " + "; ".join(result.reasons or ["vínculo ambíguo"])
+
+        parts = [f"{candidate.sheet_name} → {record.pricebook_id}"]
+        if record.campaign_name:
+            parts.append(f'"{record.campaign_name}"')
+        if record.online_from and record.online_to:
+            parts.append(f"{self._fmt_iso_date(record.online_from)}–{self._fmt_iso_date(record.online_to)}")
+        if record.created_at:
+            who = f" por {record.created_by}" if record.created_by else ""
+            parts.append(f"registrada em {self._fmt_iso_date(record.created_at)}{who}")
+
+        text = "  ·  ".join(parts)
+
+        if record.sku_count is not None:
+            after = len(candidate.rows)
+            if after < record.sku_count:
+                diff = record.sku_count - after
+                text += (
+                    f"\n⚠  antes {record.sku_count} SKUs / agora {after} — "
+                    f"{diff} produto(s) vão perder o preço segmentado ao importar."
+                )
+            else:
+                text += f"\n antes {record.sku_count} SKUs / agora {after}"
+
+        if result.reasons:
+            text += "\n⚠  " + "; ".join(result.reasons)
+        return text
+
+    def _on_seg_banner_use(self) -> None:
+        result = self._seg_resolve_result
+        if not result or not result.record:
+            return
+        self._seg_input_pbid.setText(result.record.pricebook_id)
+        self._seg_pbid_touched = True
+        self._seg_is_update_mode = True
+        self._seg_banner.hide()
+
+    def _on_seg_banner_ignore(self) -> None:
+        self._seg_is_update_mode = False
+        self._seg_banner.hide()
+
+    def _apply_pbid_from_runrun_id(self) -> None:
+        if self._seg_pbid_touched:
+            return
+        loja_key, _ = self._current_loja_and_brand()
+        runrun_id = self._seg_input_runrun_id.text().strip()
+        pbid = build_pricebook_id(loja_key or "", runrun_id) if loja_key else None
+        if pbid:
+            self._seg_input_pbid.setText(pbid)
+
+    def _on_seg_runrun_id_edited(self, _text: str) -> None:
+        self._apply_pbid_from_runrun_id()
+
+    def _on_seg_pbid_edited(self, _text: str) -> None:
+        self._seg_pbid_touched = True
+        self._seg_is_update_mode = False
+
+    def _on_seg_loja_changed(self, _index: int) -> None:
+        self._apply_pbid_from_runrun_id()
+        if self._seg_selected_lista:
+            self._update_seg_banner(self._seg_selected_lista)
 
     def _run_seg_generate(self) -> None:
         pricebook_id = self._seg_input_pbid.text().strip()
@@ -677,6 +849,27 @@ class ExportadorSegmentadasView(QWidget):
                 "A <b>Data/Hora Fim</b> deve ser posterior à Data/Hora Início."
             )
             return
+
+        # BRD-012, P3 (CA-08): único acréscimo às validações — só pergunta
+        # quando o operador clicou em "Usar (ATUALIZAÇÃO)" no banner.
+        if self._seg_is_update_mode and self._seg_resolve_result and self._seg_resolve_result.record:
+            record = self._seg_resolve_result.record
+            confirm_msg = (
+                f"Isso vai <b>ATUALIZAR</b> o pricebook <b>{pricebook_id}</b>, "
+                "substituindo a lista de preços existente no Salesforce."
+            )
+            if record.sku_count is not None and len(candidate.rows) < record.sku_count:
+                diff = record.sku_count - len(candidate.rows)
+                confirm_msg += (
+                    f"\n\n⚠ {diff} produto(s) que estavam na lista anterior "
+                    "não estão nesta e vão <b>perder o preço segmentado</b> ao importar."
+                )
+            resp = QMessageBox.question(
+                self, "Confirmar atualização", confirm_msg,
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if resp != QMessageBox.Yes:
+                return
 
         parent_id = LOJA_PARENT_IDS[loja_key]
 
@@ -772,7 +965,12 @@ class ExportadorSegmentadasView(QWidget):
         self._seg_combo_marca_fallback.setCurrentIndex(0)
         self._seg_detected_brand = None
         self._seg_warn_lbl.hide()
+        self._seg_banner.hide()
+        self._seg_input_runrun_id.clear()
         self._seg_input_pbid.clear()
+        self._seg_pbid_touched = False
+        self._seg_resolve_result = None
+        self._seg_is_update_mode = False
         self._seg_input_display_name.clear()
         self._seg_combo_loja.setCurrentIndex(0)
         self._seg_date_start.setDate(QDate.currentDate())
