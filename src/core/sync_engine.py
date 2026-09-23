@@ -86,6 +86,23 @@ _PRESENTE_RULES_BY_BRAND: dict[str, tuple[tuple[str, ...], Callable[[float], Opt
     "avon": (PRESENTE_CATEGORY_IDS_AVON, _price_bucket_avon),
 }
 
+# Rituais (Lumina, Ekos, Chronos): marcação da coluna TIPO da Grade -> ID da
+# categoria SFCC. Uma marcação por célula. Só Natura — Avon não é impactada.
+RITUAL_TIPO_MAP = {
+    "RITUAL-LUMINA-LIMPEZA":           "ritual-lumina-limpeza",
+    "RITUAL-LUMINA-CONDICIONAMENTO":   "ritual-lumina-condicionamento",
+    "RITUAL-LUMINA-TRATAMENTO":        "ritual-lumina-tratamento",
+    "RITUAL-LUMINA-FINALIZACAO":       "ritual-lumina-finalizacao",
+    "RITUAL-EKOS-LIMPEZA":             "ritual-ekos-limpeza",
+    "RITUAL-EKOS-ESFOLIACAO":          "ritual-ekos-esfoliacao",
+    "RITUAL-EKOS-NUTRIR":              "ritual-ekos-nutrir",
+    "RITUAL-EKOS-HIDRATACAO":          "ritual-ekos-hidratacao",
+    "RITUAL-CHRONOS-LIMPEZA":          "ritual-chronos-derma-limpeza",
+    "RITUAL-CHRONOS-TRAT.ROSTO":       "ritual-chronos-derma-tratamento-rosto",
+    "RITUAL-CHRONOS-HIDRATACAO":       "ritual-chronos-derma-hidratacao",
+    "RITUAL-CHRONOS-PROT.SOLAR":       "ritual-chronos-derma-protecao-solar",
+}
+
 
 @dataclass
 class SyncResult:
@@ -148,13 +165,16 @@ class SyncEngine:
             # nas estatísticas (_execute_rules) e na geração do XML
             presente_targets = self._compute_presente_targets(catalog_state, grade_map, result.brand, presente_cols_ok)
 
+            # Rituais pela coluna TIPO — mesmo ciclo de vida do presente_targets
+            ritual_targets = self._compute_ritual_targets(catalog_state, grade_map, result.brand)
+
             # Execute Business Rules (V11.1 Motor)
             self._progress(60, "Aplicando Regras de Governança V11.1…")
-            delta, metrics, report = self._execute_rules(catalog_state, grade_map, excel_lists, result.brand, presente_targets)
+            delta, metrics, report = self._execute_rules(catalog_state, grade_map, excel_lists, result.brand, presente_targets, ritual_targets)
 
             # Generate XML
             self._progress(80, "Gerando XML Catálogo Delta…")
-            result.xml_content = self._generate_catalog_xml(delta, catalog_id, excel_lists, catalog_state, result.brand, presente_targets)
+            result.xml_content = self._generate_catalog_xml(delta, catalog_id, excel_lists, catalog_state, result.brand, presente_targets, ritual_targets)
 
             result.stats = metrics
             result.report = report
@@ -262,6 +282,48 @@ class SyncEngine:
 
         return targets
 
+    # ── Rituais (Lumina, Ekos, Chronos) ───────────────────────────────────
+    def _compute_ritual_targets(
+        self, catalog_state: dict, grade_map: dict, brand: str
+    ) -> Optional[dict[str, set[str]]]:
+        """SKUs variação (não-master) ativos na Grade cuja coluna TIPO traz
+        uma marcação de RITUAL_TIPO_MAP, agrupados pela categoria SFCC
+        correspondente. TIPO vazio ou não mapeado (ex. "VNP", "PROGRESSIVO")
+        é ignorado em silêncio. Sempre retorna as 12 chaves (mesmo vazias)
+        para que o diff add/remove detecte quando uma categoria esvazia — a
+        Grade é a fonte da verdade: produto sem marcação sai da categoria,
+        inclusive quando a Grade não traz nenhuma marcação de ritual.
+
+        Retorna None quando a regra não deve rodar — marca != Natura, ou a
+        Grade não tem a coluna TIPO (tipo None no grade_map). Mesma proteção
+        do presente_targets: sem ela, uma Grade com cabeçalho quebrado
+        apagaria em massa as categorias de ritual por erro de leitura.
+        """
+        if brand != "natura":
+            return None
+
+        if all(g.get("tipo") is None for g in grade_map.values()):
+            return None  # Grade sem a coluna TIPO (ou sem Grade): regra não roda
+
+        def _cat_of(g: dict) -> Optional[str]:
+            return RITUAL_TIPO_MAP.get(str(g.get("tipo") or "").strip().upper())
+
+        targets: dict[str, set[str]] = {cat_id: set() for cat_id in RITUAL_TIPO_MAP.values()}
+
+        for pid, prod in catalog_state["products"].items():
+            if prod["isMaster"]:
+                continue
+
+            g = grade_map.get(pid)
+            if not g:
+                continue
+
+            cat_id = _cat_of(g)
+            if cat_id:
+                targets[cat_id].add(pid)
+
+        return targets
+
     # ── Parse Excel Files ─────────────────────────────────────────────────
     def _parse_excel_files(self, paths: list[str]) -> tuple[dict[str, set[str]], dict[str, dict], str, bool]:
         excel_lists: dict[str, set[str]] = {}
@@ -309,7 +371,7 @@ class SyncEngine:
                 if not rows:
                     continue
 
-                sku_col = vis_col = selo_col = por_col = plan_col = None
+                sku_col = vis_col = selo_col = por_col = plan_col = tipo_col = None
 
                 if is_grade:
                     # Scan headers
@@ -325,6 +387,10 @@ class SyncEngine:
                                 por_col = j
                             if _titulo_bate(val, "CATEGORIA PLANEJAMENTO"):  # BRD-008 / BRD-014
                                 plan_col = j
+                            # Rituais: título exato — a Grade real também tem
+                            # "TIPO MATERIAL" e "CHECK COLUNA TIPO", que não contam
+                            if _titulo_bate(val, "TIPO"):
+                                tipo_col = j
                             if sku_col is None and SKU_PATTERN.match(str(cell.value).strip()):
                                 sku_col = j
                                 break
@@ -372,9 +438,18 @@ class SyncEngine:
                                     if pc is not None:
                                         planning_cat = str(pc).strip()
 
+                                # None = Grade sem a coluna TIPO (regra de ritual
+                                # não roda); "" = coluna existe, célula vazia
+                                tipo = None if tipo_col is None else ""
+                                if tipo_col is not None and tipo_col < len(row):
+                                    tc = row[tipo_col].value
+                                    if tc is not None:
+                                        tipo = str(tc).strip()
+
                                 grade_map[pid] = {
                                     "visible": vis, "seal": selo, "color": selo_color,
                                     "price": price, "planning_cat": planning_cat,
+                                    "tipo": tipo,
                                 }
                             
                             if is_list:
@@ -469,7 +544,7 @@ class SyncEngine:
         return state, catalog_id
 
     # ── Engine Business Rules V11.1 ───────────────────────────────────────
-    def _execute_rules(self, catalog_state: dict, grade_map: dict, excel_lists: dict, brand: str, presente_targets: Optional[dict[str, set[str]]]) -> tuple[dict, dict, list]:
+    def _execute_rules(self, catalog_state: dict, grade_map: dict, excel_lists: dict, brand: str, presente_targets: Optional[dict[str, set[str]]], ritual_targets: Optional[dict[str, set[str]]] = None) -> tuple[dict, dict, list]:
         deltas = []
         report = []
         active_masters = set()
@@ -648,6 +723,31 @@ class SyncEngine:
                     "status": status
                 })
 
+        # Rituais: mesmo formato do bloco de presente acima — cat_id já é o ID
+        # final. ritual_targets é None quando a regra não roda (marca != Natura
+        # ou Grade sem nenhuma marcação de ritual): nenhuma linha é gerada.
+        if ritual_targets is not None:
+            for cat_id, skus in ritual_targets.items():
+                old_set = catalog_state["assignments"].get(cat_id.upper(), set())
+
+                added = len(skus - old_set)
+                removed = len(old_set - skus)
+                list_add += added
+                list_rem += removed
+
+                status = "Sincronizado ✓"
+                if added > 0 or removed > 0:
+                    status = f"Delta: +{added} / -{removed}"
+                if len(skus) == 0:
+                    status = "Lista Vazia"
+
+                lists_details.append({
+                    "id": cat_id,
+                    "excel": len(skus),
+                    "xml": len(old_set),
+                    "status": status
+                })
+
         metrics = {
             "xml": len(catalog_state["products"]),
             "grade": len(grade_map),
@@ -662,13 +762,14 @@ class SyncEngine:
             "deltas": len(deltas),
             "lists": len(excel_lists),
             "presente_categories": len(presente_targets) if presente_targets is not None else 0,
+            "ritual_categories": len(ritual_targets) if ritual_targets is not None else 0,
             "lists_details": lists_details
         }
         
         return {"products": deltas}, metrics, report
 
     # ── XML Generation ────────────────────────────────────────────────────
-    def _generate_catalog_xml(self, delta: dict, catalog_id: str, excel_lists: dict, catalog_state: dict, brand: str, presente_targets: Optional[dict[str, set[str]]]) -> bytes:
+    def _generate_catalog_xml(self, delta: dict, catalog_id: str, excel_lists: dict, catalog_state: dict, brand: str, presente_targets: Optional[dict[str, set[str]]], ritual_targets: Optional[dict[str, set[str]]] = None) -> bytes:
         root = etree.Element("catalog", xmlns=CATALOG_NS)
         root.set("catalog-id", catalog_id or "storefront-catalog")
         
@@ -732,6 +833,29 @@ class SyncEngine:
         # delete, para não apagar categorização existente por engano.
         if presente_targets is not None:
             for cat_id, skus_in_target in presente_targets.items():
+                # Additions
+                for sku_id in skus_in_target:
+                    p = catalog_state["products"].get(sku_id)
+                    if p:
+                        cats = catalog_state["assignments"].get(cat_id.upper(), set())
+                        if sku_id not in cats:
+                            ca = etree.SubElement(root, "category-assignment")
+                            ca.set("category-id", cat_id)
+                            ca.set("product-id", sku_id)
+
+                # Removals
+                cats = catalog_state["assignments"].get(cat_id.upper(), set())
+                for pid_in_xml in cats:
+                    if pid_in_xml not in skus_in_target:
+                        ca = etree.SubElement(root, "category-assignment")
+                        ca.set("category-id", cat_id)
+                        ca.set("product-id", pid_in_xml)
+                        ca.set("mode", "delete")
+
+        # Rituais: category-assignment pela coluna TIPO, mesmo padrão do bloco
+        # de presente acima. ritual_targets None -> nenhum add nem delete.
+        if ritual_targets is not None:
+            for cat_id, skus_in_target in ritual_targets.items():
                 # Additions
                 for sku_id in skus_in_target:
                     p = catalog_state["products"].get(sku_id)
