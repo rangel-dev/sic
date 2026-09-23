@@ -10,3 +10,5 @@ screenshots/
 
 history.db
 src/core/_secret.py
+.env
+.env.*
