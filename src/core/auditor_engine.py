@@ -32,10 +32,26 @@ CATALOG_NS   = "http://www.demandware.com/xml/impex/catalog/2006-10-31"
 MAX_FILE_AGE_SECONDS = 900
 
 # ─── Categorias proibidas para promoção (Conflito de Margem) ─────────────────
+# Rituais (Lumina, Ekos, Chronos): blindados em Natura e ML; Avon não é impactada.
+RITUAL_CATEGORIES = {
+    "ritual-lumina-limpeza",
+    "ritual-lumina-condicionamento",
+    "ritual-lumina-tratamento",
+    "ritual-lumina-finalizacao",
+    "ritual-ekos-limpeza",
+    "ritual-ekos-esfoliacao",
+    "ritual-ekos-nutrir",
+    "ritual-ekos-hidratacao",
+    "ritual-chronos-derma-limpeza",
+    "ritual-chronos-derma-tratamento-rosto",
+    "ritual-chronos-derma-hidratacao",
+    "ritual-chronos-derma-protecao-solar",
+}
+
 PROHIBITED_CATEGORIES = {
-    "Natura": {"promocao-da-semana", "LISTA_01", "monte-seu-kit", "LISTA_02"},
+    "Natura": {"promocao-da-semana", "LISTA_01", "monte-seu-kit", "LISTA_02"} | RITUAL_CATEGORIES,
     "Avon":   {"promocoes-desconto-progressivo", "lista-01"},
-    "ML":     {"promocao-da-semana", "desconto-progressivo", "monte-seu-kit"},
+    "ML":     {"promocao-da-semana", "desconto-progressivo", "monte-seu-kit"} | RITUAL_CATEGORIES,
 }
 
 # ─── Metadados de erro para a UI ─────────────────────────────────────────────
