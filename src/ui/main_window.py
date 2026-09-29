@@ -160,6 +160,7 @@ class MainWindow(QMainWindow):
             # Menus CB (index 9) está oculto da barra — página preservada no
             # stack, apenas sem botão de acesso.
             ("✦",  "Cupons",      13),
+            ("📄", "Relatório Menu", 14),
             ("◔",  "Histórico",   7),
         ]
 
@@ -240,9 +241,10 @@ class MainWindow(QMainWindow):
         return top_bar
 
     def _build_pages(self):
-        # 14 pages: 0-10 original + 11 = Sobre + 12 = Conversor (Pontuação) + 13 = Cupons
-        self._pages = [None] * 14
-        for i in range(14):
+        # 15 pages: 0-10 original + 11 = Sobre + 12 = Conversor (Pontuação) + 13 = Cupons
+        # + 14 = Relatório Menu
+        self._pages = [None] * 15
+        for i in range(15):
             self._stack.addWidget(QWidget())  # Dummy placeholder
 
         # Pre-load only the Home view for immediate startup
@@ -305,6 +307,9 @@ class MainWindow(QMainWindow):
         elif index == 13:
             from src.ui.pages.view_cupom import CupomView
             page = CupomView(self)
+        elif index == 14:
+            from src.ui.pages.view_relatorio_menu import RelatorioMenuView
+            page = RelatorioMenuView(self)
         else:
             return
 
@@ -342,6 +347,7 @@ class MainWindow(QMainWindow):
             12: "Cadastro → Pontuação",
             13: "Cupons",
             10: "Exportador → Segmentadas",
+            14: "Relatório Menu",
         }
         name = PAGE_NAMES.get(index, "Módulo")
         self.statusBar().showMessage(f"Módulo ativo: {name}  |  v{VERSION}")
