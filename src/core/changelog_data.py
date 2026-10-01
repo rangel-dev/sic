@@ -62,6 +62,17 @@ CONTRIBUTORS = [
 # type: "feat" | "fix" | "chore"
 CHANGELOG = [
     {
+        "version": "1.6.0",
+        "date": "Outubro 2026",
+        "entries": [
+            ("feat", "Exportador: as 12 categorias de Rituais da Natura (Lumina, Ekos e Chronos) agora são sincronizadas sozinhas a partir da coluna TIPO da Grade — o produto entra ou sai da categoria no Salesforce conforme a marcação, e o relatório mostra quantos produtos ficaram em cada uma."),
+            ("feat", "Exportador: trava de segurança — se a Grade vier sem a coluna TIPO, nada é adicionado nem removido dos Rituais, evitando que um erro de leitura apague as categorias do Salesforce."),
+            ("feat", "Auditor: as categorias de Rituais passam a ser protegidas contra promoção em Natura e ML, com as mesmas regras do Progressivo — preço POR menor que o DE numa dessas categorias dispara o alerta de \"Margem de Segurança\"."),
+            ("fix", "Auditor e Exportador preparados para a reformulação da Grade que vai remover os espaços dos títulos de coluna (TIPO MATERIAL, CATEGORIA PLANEJAMENTO, POR SEGMENTADO, POR ORIGEM, TOTAL SKUS) — o SIC continua lendo a planilha nos dois formatos."),
+            ("chore", "Nova bateria de testes automáticos cobrindo o módulo Segmentadas, a sincronização dos Rituais e a proteção do Auditor."),
+        ],
+    },
+    {
         "version": "1.5.0",
         "date": "Setembro 2026",
         "entries": [
