@@ -32,10 +32,26 @@ CATALOG_NS   = "http://www.demandware.com/xml/impex/catalog/2006-10-31"
 MAX_FILE_AGE_SECONDS = 900
 
 # ─── Categorias proibidas para promoção (Conflito de Margem) ─────────────────
+# Rituais (Lumina, Ekos, Chronos): blindados em Natura e ML; Avon não é impactada.
+RITUAL_CATEGORIES = {
+    "ritual-lumina-limpeza",
+    "ritual-lumina-condicionamento",
+    "ritual-lumina-tratamento",
+    "ritual-lumina-finalizacao",
+    "ritual-ekos-limpeza",
+    "ritual-ekos-esfoliacao",
+    "ritual-ekos-nutrir",
+    "ritual-ekos-hidratacao",
+    "ritual-chronos-derma-limpeza",
+    "ritual-chronos-derma-tratamento-rosto",
+    "ritual-chronos-derma-hidratacao",
+    "ritual-chronos-derma-protecao-solar",
+}
+
 PROHIBITED_CATEGORIES = {
-    "Natura": {"promocao-da-semana", "LISTA_01", "monte-seu-kit", "LISTA_02"},
+    "Natura": {"promocao-da-semana", "LISTA_01", "monte-seu-kit", "LISTA_02"} | RITUAL_CATEGORIES,
     "Avon":   {"promocoes-desconto-progressivo", "lista-01"},
-    "ML":     {"promocao-da-semana", "desconto-progressivo", "monte-seu-kit"},
+    "ML":     {"promocao-da-semana", "desconto-progressivo", "monte-seu-kit"} | RITUAL_CATEGORIES,
 }
 
 # ─── Metadados de erro para a UI ─────────────────────────────────────────────
@@ -64,6 +80,15 @@ def _is_production_environment() -> bool:
     if getattr(sys, 'frozen', False):
          return True
     return False
+
+
+def _titulo_bate(v: str, alvo: str) -> bool:
+    """BRD-014: compara título de coluna tolerando futura remoção de
+    espaço/underscore na Grade. Aditivo — a igualdade exata (título de hoje)
+    é sempre checada primeiro e continua bastando sozinha."""
+    if v == alvo:
+        return True
+    return re.sub(r"[\s_]+", "", v) == re.sub(r"[\s_]+", "", alvo)
 
 
 # ─── Resultado ────────────────────────────────────────────────────────────────
@@ -377,7 +402,7 @@ class AuditorEngine:
                     por_col = j
                 elif vu == "CM":            # Código de Material (exato; não casa "CMV")
                     cm_col = j
-                elif vu == "TIPO MATERIAL":  # ZEST = kit; ZPAC/ZPRO = item simples
+                elif _titulo_bate(vu, "TIPO MATERIAL"):  # ZEST = kit; ZPAC/ZPRO = item simples (BRD-014)
                     tipo_col = j
                 elif "VISIBLE" in vu or "VISIBILIDADE" in vu:
                     vis_col = j
