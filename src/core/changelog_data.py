@@ -62,6 +62,14 @@ CONTRIBUTORS = [
 # type: "feat" | "fix" | "chore"
 CHANGELOG = [
     {
+        "version": "1.6.1",
+        "date": "Outubro 2026",
+        "entries": [
+            ("feat", "Novo checklist da ativação: o botão \"Ativação\" na barra do topo abre um painel lateral com os 11 passos da ativação da Grade — do download do catálogo até rodar o Auditor em PRD. Dá pra acompanhar enquanto trabalha no Exportador ou no Auditor: os passos concluídos ficam riscados, o próximo fica em destaque e o progresso aparece no próprio botão."),
+            ("feat", "O checklist lembra onde você parou, mesmo fechando o SIC, e pode ser reiniciado a cada nova ativação."),
+        ],
+    },
+    {
         "version": "1.6.0",
         "date": "Outubro 2026",
         "entries": [
