@@ -25,6 +25,11 @@ from PySide6.QtWidgets import (
 from src.ui.styles.qss_dark  import DARK_STYLESHEET
 from src.ui.styles.qss_light import LIGHT_STYLESHEET
 from src.ui.components.dropdown_nav_button import DropdownNavButton
+from src.ui.components.checklist_ativacao import (
+    ChecklistAtivacaoPanel,
+    is_panel_open,
+    set_panel_open,
+)
 
 # View modules will be imported lazily in _load_page to drastically improve application startup time.
 
@@ -113,7 +118,22 @@ class MainWindow(QMainWindow):
         self._stack_scroll.setFrameShape(QFrame.NoFrame)
         self._stack_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self._stack_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        layout.addWidget(self._stack_scroll)
+
+        # Corpo: telas + checklist da ativação (orelha à direita). O painel
+        # empurra o conteúdo em vez de ficar por cima, para não tapar botões.
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        body.addWidget(self._stack_scroll, 1)
+
+        self._checklist_panel = ChecklistAtivacaoPanel()
+        self._checklist_panel.progress_changed.connect(self._update_checklist_btn)
+        self._checklist_panel.close_requested.connect(lambda: self._set_checklist_open(False))
+        body.addWidget(self._checklist_panel)
+        layout.addLayout(body, 1)
+
+        self._update_checklist_btn(*self._checklist_panel.progress())
+        self._set_checklist_open(is_panel_open())
 
         # Status bar
         sb = self.statusBar()
@@ -199,6 +219,17 @@ class MainWindow(QMainWindow):
         settings_layout = QHBoxLayout(settings_container)
         settings_layout.setContentsMargins(12, 0, 12, 0)
         settings_layout.setSpacing(8)
+
+        # Checklist da ativação — abre/fecha a orelha lateral
+        self._btn_checklist = NavButton("☑", "Ativação")
+        self._btn_checklist.setFixedHeight(56)
+        self._btn_checklist.setObjectName("tab_button")
+        self._btn_checklist.setFixedWidth(150)
+        self._btn_checklist.setToolTip("Abrir/fechar o passo a passo da ativação")
+        self._btn_checklist.clicked.connect(
+            lambda: self._set_checklist_open(not self._checklist_panel.isVisible())
+        )
+        settings_layout.addWidget(self._btn_checklist)
 
         # Sobre button
         btn_sobre = NavButton("ℹ", "Sobre")
@@ -346,6 +377,15 @@ class MainWindow(QMainWindow):
         name = PAGE_NAMES.get(index, "Módulo")
         self.statusBar().showMessage(f"Módulo ativo: {name}  |  v{VERSION}")
 
+    # ── Checklist da ativação ─────────────────────────────────────────────
+    def _set_checklist_open(self, is_open: bool):
+        self._checklist_panel.setVisible(is_open)
+        self._btn_checklist.setChecked(is_open)
+        set_panel_open(is_open)
+
+    def _update_checklist_btn(self, done: int, total: int):
+        self._btn_checklist.setText(f"  ☑   Ativação {done}/{total}")
+
     def _switch_cadastro(self, index: int):
         """Handle Cadastro submenu clicks."""
         self._switch(index)
@@ -443,6 +483,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Tema: {mode} | Fonte: {base_size}px")
 
         # 5. Refresh all pages that support it
+        if hasattr(self, "_checklist_panel"):
+            self._checklist_panel.refresh_theme()
         if hasattr(self, "_stack"):
             for i in range(self._stack.count()):
                 page = self._stack.widget(i)
