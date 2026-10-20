@@ -3,7 +3,7 @@
 **Documento:** BRD-015
 **Autor:** Marcos (Analista de Negócios Jr)
 **Data:** 20-10-2026 (atualizado no mesmo dia com o teste nos exports reais — seção 5.5 e pendências T1, T2 e T5)
-**Status:** Rascunho para análise — **nenhuma linha de código autorizada**
+**Status:** Implementado na branch, já com as respostas do negócio às pendências N1–N6 (seção 13). **Uso em produção só depois dos testes em sandbox (T3, T4, CA-14)**; N4 aguarda entendimento
 **Branch:** `feature/cupons-limpeza-campanhas`
 **Origem:** Pacote do gestor gerado por IA (`sanitizador_sfcc.py`, `analisador_sfcc.py` e guia de integração), revisado e formalizado neste BRD
 **Pré-requisitos:** nenhum. Módulo novo; não altera nenhum motor existente.
@@ -21,8 +21,10 @@ O gestor trouxe um pacote pronto que automatiza essa limpeza a partir de 3 expor
 | Decisão | Escolha |
 |---|---|
 | Nome do módulo | **Limpeza de Campanhas**, dentro do menu Cupons |
-| Customer groups na primeira versão | Só entram na exclusão os **grupos de demanda** (padrão `NAT-RR####` / `AVN-RR####`). Todos os outros aparecem como **"Revisar"** e nunca são apagados |
-| Itens sem data (órfãos e campanhas sem data de fim desativadas) | **Carência por observação**: só ficam elegíveis depois de 30 dias nesse estado, contados a partir da primeira vez que o SIC os viu |
+| Customer groups | *(revisado em 20-10-2026, seção 13)* Seguem as mesmas regras das demais entidades, qualquer que seja o nome. Só ficam protegidos os grupos padrão do SFCC e os que têm DONT_REMOVE no nome |
+| Itens sem data (órfãos e campanhas sem data de fim desativadas) | **Carência por observação**: só ficam elegíveis depois da carência nesse estado, contada a partir da primeira vez que o SIC os viu |
+| Carência | **Régua ajustável** de 7 a 365 dias, padrão 30 (N3) |
+| Lojas | **Todas as lojas LATAM**: o operador escolhe ou digita a loja (N6) |
 | Cupons | **Desativar antes de apagar**: a primeira etapa só desativa (reversível); a exclusão vem depois de 30 dias desativado |
 | Execução no SFCC | O SIC **só gera arquivos**. Quem importa no Business Manager é o operador, como em todos os módulos |
 
@@ -105,14 +107,16 @@ Toda regra abaixo já incorpora as correções da seção 5.
 
 ### 4.4 Customer groups
 
+*(Revisado em 20-10-2026 com as respostas N1 e N2 — seção 13. O padrão do ID não importa.)*
+
 1. **Protegido:**
-   - grupo nativo do SFCC;
-   - grupo de infraestrutura (o ID ou a descrição contém `dont_remove`, `dontremove`, `system`, `notfound`, `donation`);
-   - grupo na lista protegida;
-   - grupo ligado a qualquer campanha protegida.
-2. **Elegível:** ID no padrão de **grupo de demanda** (`NAT-RR` ou `AVN-RR` seguido do número da tarefa) **e** ligado só a campanhas elegíveis.
-3. **Aguardando carência:** grupo de demanda sem nenhuma campanha, com menos de 30 dias de observação (4.6).
-4. **Revisar:** qualquer outro grupo sem vínculo com campanha protegida. Aparece no relatório com o motivo e **nunca** é apagado pelo SIC.
+   - grupo padrão do SFCC (`Everyone`, `Registered`, `Unregistered`);
+   - grupo cujo ID ou descrição contém `dont_remove` ou `dontremove`;
+   - grupo na lista protegida, se o operador preencher algum termo;
+   - grupo ligado a qualquer campanha que fica.
+2. **Elegível:** ligado só a campanhas elegíveis; ou sem nenhuma campanha há pelo menos a carência (4.6).
+3. **Aguardando carência:** sem nenhuma campanha, ainda dentro da carência de observação.
+4. **Revisar:** ligado a uma campanha que não está no arquivo de promoções.
 
 ### 4.5 Cupons — duas etapas
 
@@ -132,8 +136,7 @@ O SFCC não exporta a data de criação nem de modificação de promoções, cup
 ### 4.7 Lista protegida
 
 - Itens cujo ID **contém** um dos termos da lista protegida nunca são apagados, seja campanha, promoção, cupom ou grupo. A comparação é por "contém", não por início do ID, e ignora maiúsculas e minúsculas.
-- Lista inicial, herdada do pacote: `origem`, `institucional`, `scprdig`, `crm` (pendência N2).
-- A lista fica **editável na tela** do módulo, sem precisar de nova versão do SIC.
+- **A lista começa vazia** (resposta N2: os termos herdados do pacote não precisam de proteção). Ela continua **editável na tela**, como recurso opcional para o operador.
 
 ---
 
@@ -143,11 +146,14 @@ O SFCC não exporta a data de criação nem de modificação de promoções, cup
 
 **Problema.** Na amostra recebida, **96 de 125** customer groups seriam apagados, incluindo segmentos de CRM de uso contínuo (churn, recompra, exclusividade do app, personalização de primeira compra). O pacote só enxerga o uso de um grupo *dentro de campanhas*. Se o grupo for usado em outro lugar do SFCC (frete, pagamento, testes A/B, integrações de CRM), ele é apagado do mesmo jeito.
 
-**Solução adotada.** Classificação em quatro status (seção 4.4):
-- só os **grupos de demanda** (`NAT-RR####` / `AVN-RR####`), criados para uma ação pontual, podem entrar na exclusão;
-- todo o resto que não está protegido vira **Revisar**.
+**Solução proposta na primeira versão deste BRD:** só os grupos de demanda (`NAT-RR####` / `AVN-RR####`) poderiam ser apagados; os outros iriam para Revisar.
 
-O problema que motivou o pacote, grupos de tarefas antigas esquecidos, continua resolvido, sem o risco de apagar segmentos de CRM.
+**Decisão do negócio (20-10-2026, N1/N2):** os grupos seguem as mesmas regras das demais entidades, qualquer que seja o nome, protegendo só os grupos padrão do SFCC (e os que têm DONT_REMOVE no nome). O que separa esta versão do pacote:
+- a **carência** (a primeira execução não apaga nenhum grupo sem campanha);
+- a **cascata** (grupo ligado a campanha que fica nunca sai);
+- o **rollback completo** (definição, regra dinâmica e membros estáticos).
+
+**Risco aceito pelo negócio:** se um grupo for usado fora das campanhas (frete, pagamento, teste A/B, integração de CRM), apagá-lo quebra esse uso, e o rollback recria o grupo mas **não** refaz esse vínculo.
 
 ### 5.2 Itens sem data apagados na hora
 
@@ -194,12 +200,12 @@ O motor do pacote foi rodado sobre os 3 exports reais da loja Natura, **só em s
 | Campanhas | 1 | 0 (1 aguardando carência) | 1 elegível |
 | Promoções | 2 | 0 (1 aguardando carência) | 1 elegível |
 | Cupons | **185** | 0 (184 aguardando carência) | 184 entram na **desativação**; exclusão só 30 dias depois |
-| Customer groups | **95** | 0 (7 aguardando carência, **88 Revisar**) | 7 elegíveis; 88 continuam em Revisar |
+| Customer groups | **95** | 0 (100 aguardando carência) | 103 elegíveis *(regras revisadas na seção 13; ver nota abaixo)* |
 
 **Leitura:**
 - O pacote apagaria 185 cupons e 95 grupos **na primeira execução**, sem carência e sem desativação, e com um rollback que perderia os códigos dos cupons (5.3).
 - Pelas regras deste BRD, a primeira execução não apaga nada. Depois da carência, só sai o que ficou 30 dias sem uso, e os cupons passam primeiro pela desativação.
-- Dos 126 grupos, só 18 seguem o padrão de demanda. Os 88 em "Revisar" são exatamente os que o pacote apagaria sem conseguir confirmar se estão em uso.
+- Customer groups, com as regras revisadas na seção 13: na primeira execução, os 100 grupos sem campanha ficam aguardando carência e nenhum é apagado. A coluna "após 30 dias" usa uma simulação 31 dias à frente, em que as 27 campanhas vencidas recentemente também já passaram da carência; por isso aparecem mais grupos do que os 95 do pacote. Na primeira versão deste BRD, 88 desses grupos iriam para "Revisar".
 - Desempenho do pacote no arquivo de cupons (88 MB): 10 segundos, com pico de 783 MB de memória (defeito em 5.4).
 
 ---
@@ -251,9 +257,11 @@ O motor do pacote foi rodado sobre os 3 exports reais da loja Natura, **só em s
 | CA-05 | Promoção, cupom ou grupo ligado a qualquer campanha protegida → Protegido |
 | CA-06 | Promoção ou cupom sem campanha → Aguardando carência na 1ª execução; Elegível só após 30 dias observado órfão |
 | CA-07 | Item que ganha campanha ou é reativado durante a carência → contagem zera |
-| CA-08 | Customer group nativo, de infraestrutura ou da lista protegida → Protegido |
-| CA-09 | Customer group de demanda (`NAT-RR####`/`AVN-RR####`) ligado só a campanhas elegíveis → Elegível |
-| CA-10 | Customer group que não é de demanda e não está protegido → Revisar; **nunca** aparece no XML de exclusão |
+| CA-08 | Customer group padrão do SFCC, com DONT_REMOVE no nome ou na lista protegida → Protegido *(revisado — seção 13)* |
+| CA-09 | Customer group ligado só a campanhas elegíveis → Elegível, qualquer que seja o nome *(revisado)* |
+| CA-10 | Customer group sem campanha → Aguardando carência; Elegível só depois da carência observada *(revisado)* |
+| CA-20 | A régua de carência (7–365 dias) vale para campanha vencida, item sem campanha e cupom desativado |
+| CA-21 | Qualquer loja pode ser informada; a carência é contada separadamente por loja |
 | CA-11 | Cupom elegível pela primeira vez → só entra no XML de **desativação**, nunca direto na exclusão |
 | CA-12 | Cupom desativado há 30 dias ou mais e sem vínculo protegido → entra no XML de exclusão |
 | CA-13 | Os 3 rollbacks são sempre gerados e contêm exatamente os IDs dos XMLs de exclusão, com o bloco `coupon-codes` de cada cupom e os `group-assignment` de cada grupo; divergência de IDs, de códigos ou de membros → nada é gerado |
@@ -270,14 +278,14 @@ O motor do pacote foi rodado sobre os 3 exports reais da loja Natura, **só em s
 
 ### 10.1 Para validar com o Ed (negócio)
 
-| # | Pendência |
-|---|---|
-| N1 | O padrão `NAT-RR####` / `AVN-RR####` cobre todos os grupos de demanda? Existe outro padrão de grupo pontual? |
-| N2 | O que cada termo da lista protegida inicial (`origem`, `institucional`, `scprdig`, `crm`) protege, e se falta algum |
-| N3 | Os 30 dias servem para tudo (campanha vencida, observação, cupom desativado) ou algum prazo deve ser diferente? |
-| N4 | Limites das travas: coerência (proposta 10%) e freio de volume (proposta 30%) |
-| N5 | Quem roda a limpeza, em qual computador e com que frequência. O registro de observação é local, então o ideal é uma pessoa responsável |
-| N6 | Lojas atendidas: Natura e Avon (uma execução por loja)? Minha Loja (CB) também? |
+| # | Pendência | Resposta (20-10-2026) |
+|---|---|---|
+| N1 | O padrão `NAT-RR####` / `AVN-RR####` cobre todos os grupos de demanda? | ✅ Podem existir padrões antigos, mas não faz diferença: valem os parâmetros (vínculo e vencimento), não o nome |
+| N2 | O que a lista protegida inicial (termos herdados do pacote) protege? | ✅ Nenhum desses termos precisa de proteção; só os grupos padrão do SFCC, como `Everyone` |
+| N3 | Os 30 dias servem para tudo? | ✅ Ter uma régua ajustável para configurar o prazo |
+| N4 | Limites das travas: coerência (10%) e freio de volume (30%) | ⏳ Pergunta não ficou clara; os valores propostos seguem até nova orientação (explicação na seção 13) |
+| N5 | Quem roda a limpeza e em qual computador? | ✅ Qualquer pessoa com acesso ao SIC, sem responsável fixo |
+| N6 | Lojas atendidas | ✅ Todas as lojas LATAM, com os mesmos parâmetros |
 
 ### 10.2 Técnicas
 
@@ -294,7 +302,44 @@ O motor do pacote foi rodado sobre os 3 exports reais da loja Natura, **só em s
 ## 11. Fora de Escopo (Nesta Fase)
 
 - Importar ou apagar direto no SFCC por API: o SIC só gera arquivos.
-- Apagar customer groups com status **Revisar**, nem mesmo com seleção manual.
-- Conferir o uso de customer groups fora das campanhas (frete, pagamento, testes A/B), o que exigiria outras exportações. Candidato a fase 2, junto com a liberação dos grupos "Revisar".
+- Conferir o uso de customer groups fora das campanhas (frete, pagamento, testes A/B), o que exigiria outras exportações. Candidato a fase 2 para reduzir o risco aceito na seção 5.1.
+- Registro de observação compartilhado entre computadores (ver seção 13, N5).
 - Os relatórios analíticos do `analisador_sfcc.py` (painel de vigência, promoções habilitadas em campanhas vencidas). O conceito de "cupom fantasma" é aproveitado só como trava de coerência (7.1).
 - Agendamento automático da limpeza.
+
+---
+
+## 12. Nota de Implementação (20-10-2026)
+
+Código em `src/core/limpeza_engine.py`, `src/workers/worker_limpeza.py` e `src/ui/pages/view_cupom_limpeza.py`, com o menu **Cupons → Gerador / Limpeza de Campanhas** em `src/ui/main_window.py`. Testes em `tests/test_limpeza_engine.py`: 29 testes, todos com XMLs inventados. Nenhum motor existente foi alterado.
+
+**Parâmetros**, todos em constantes no topo do motor: carência padrão de 30 dias (régua na tela, de 7 a 365); coerência 10%; freio de volume 30%; grupos protegidos (padrão do SFCC e DONT_REMOVE). Os valores provisórios da primeira versão foram substituídos pelas respostas da seção 13.
+
+**Decisões tomadas na implementação, além do texto acima:**
+- **Loja obrigatória.** O registro de observação é separado por loja. Assim, um mesmo ID em duas lojas não compartilha a contagem.
+- **Trava de coerência também para customer groups**, e só bloqueia quando falta **mais de 1** item além dos 10%. Isso evita bloquear bases pequenas por um único item.
+- **Campanha "Aguardando carência" também segura a cascata.** As promoções, cupons e grupos dela ficam Protegidos até ela sair.
+- **Vínculo com campanha que não está no arquivo → Revisar.** O pacote tratava esse caso como se a campanha fosse excluída.
+- **Registro de observação não é gravado** quando a trava de coerência bloqueia, para que arquivos errados não contem carência.
+- **Saída:** pasta `LIMPEZA_<LOJA>_<data>_<hora>`, com os arquivos numerados na ordem de importação (`1`, `2a`, `2b`, `3`; rollbacks `ROLLBACK_1` a `ROLLBACK_3`). Os arquivos são montados numa pasta temporária, conferidos e só então liberados; se a conferência falhar, nada aparece na pasta escolhida.
+- **Rollback de desativação:** o arquivo de rollback de cupons também traz a definição original dos cupons desativados (com `enabled-flag` original), para reativá-los se preciso.
+
+**Teste com os exports reais (só leitura, saídas fora do repositório):** na 1ª execução, nada é apagado (184 cupons aguardando carência; com as regras da seção 13, 100 grupos aguardando carência). Pico de memória de **79 MB** na simulação (CA-17 atendido; o pacote chegou a 783 MB), entre 12 e 20 segundos. Numa execução simulada 31 dias depois, a geração de 103 grupos, 208 cupons, 28 campanhas e 31 promoções passou na conferência, incluindo o rollback com os códigos de um cupom de múltiplos códigos e as definições dos grupos (pico de 167 MB, cerca de 26 segundos).
+
+---
+
+## 13. Respostas do Negócio e Ajustes (20-10-2026)
+
+As respostas do Ed às pendências N1–N6 (seção 10.1) foram aplicadas no código:
+
+| # | Ajuste |
+|---|---|
+| N1 + N2 | Customer groups seguem as mesmas regras das demais entidades (cascata + carência), **qualquer que seja o nome**. Ficam protegidos só os grupos padrão do SFCC (`Everyone`, `Registered`, `Unregistered`) e os que têm `DONT_REMOVE`/`DONTREMOVE` no ID ou na descrição. Os termos `system`, `notfound` e `donation` deixaram de proteger. O status **Revisar** ficou só para data ilegível e vínculo com campanha que não está no arquivo. Risco aceito: seção 5.1 |
+| N2 | A **lista protegida começa vazia**. Continua editável na tela, como recurso opcional |
+| N3 | **Régua de carência** na tela (controle deslizante + campo numérico), de **7 a 365 dias**, padrão 30. Vale para as três carências: campanha vencida, item sem campanha e cupom desativado. O mínimo de 7 dias evita que uma campanha encerrada ontem já entre na exclusão |
+| N5 | Qualquer pessoa pode rodar. **O registro de observação continua local** (decisão do usuário). Consequência: a carência dos itens sem data é contada por computador. Se a próxima limpeza for feita em outro computador, esses itens recomeçam a contagem, o que é seguro mas atrasa a limpeza deles. A tela avisa isso ao lado da loja. Registro compartilhado fica fora de escopo (seção 11) |
+| N6 | **Todas as lojas LATAM**: a loja é uma lista editável (sugestões Natura Brasil, Avon Brasil e Minha Loja (CB), mais as lojas já usadas), onde dá para digitar qualquer outra, como "Natura Chile". A loja só separa a contagem de carência; acentos, maiúsculas e espaços são ignorados ("Avon Colômbia" = "avon colombia") |
+
+**N4 — explicação para o Ed, ainda sem resposta.** São duas travas de segurança, e os valores atuais continuam até nova orientação:
+- **Coerência (10%):** confere se os 3 arquivos são da mesma loja e do mesmo momento. As campanhas citam cupons e grupos; se mais de 10% deles não existir nos outros arquivos, é sinal de que alguém misturou arquivos (por exemplo, os cupons de outra loja), e o SIC **bloqueia** a simulação. Sem essa trava, os cupons da loja certa pareceriam todos "sem campanha". Nos exports reais, só 1 de 118 cupons citados faltava (0,8%).
+- **Freio de volume (30%):** se uma rodada for desativar ou excluir mais de 30% de uma base (ex.: 120 de 300 cupons), o SIC pede que o operador **digite a quantidade** antes de gerar os arquivos, para ninguém confirmar uma limpeza grande sem perceber. Não impede nada, só exige atenção. Na primeira limpeza real ele vai disparar, porque é a limpeza do acúmulo antigo.

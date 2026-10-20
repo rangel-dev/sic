@@ -179,7 +179,7 @@ class MainWindow(QMainWindow):
             # Cadastro is now a dropdown with submenu items
             # Menus CB (index 9) está oculto da barra — página preservada no
             # stack, apenas sem botão de acesso.
-            ("✦",  "Cupons",      13),
+            # Cupons virou dropdown (Gerador e Limpeza de Campanhas) — abaixo.
             ("◔",  "Histórico",   7),
         ]
 
@@ -200,6 +200,16 @@ class MainWindow(QMainWindow):
         exportador_btn.submenu_clicked.connect(lambda idx: self._switch_exportador(idx))
         self._nav_buttons[2] = exportador_btn  # Store with index 2 for compatibility
         tabs_layout.insertWidget(1, exportador_btn)  # Posiciona Exportador logo após Início
+
+        # Cupons dropdown: Gerador (13) e Limpeza de Campanhas (14) — BRD-015
+        cupons_btn = DropdownNavButton("✦", "Cupons")
+        cupons_btn.setFixedHeight(56)
+        cupons_btn.setObjectName("tab_button")
+        cupons_btn.add_submenu_item("Gerador", 13, "▪")
+        cupons_btn.add_submenu_item("Limpeza de Campanhas", 14, "▪")
+        cupons_btn.submenu_clicked.connect(self._switch)
+        self._nav_buttons[13] = cupons_btn
+        tabs_layout.insertWidget(3, cupons_btn)  # Depois do Auditor, antes do Histórico
 
         # Cadastro dropdown: Gestor GCP (6) e Pontuação (12)
         cadastro_btn = DropdownNavButton("≡", "Cadastro")
@@ -271,9 +281,10 @@ class MainWindow(QMainWindow):
         return top_bar
 
     def _build_pages(self):
-        # 14 pages: 0-10 original + 11 = Sobre + 12 = Conversor (Pontuação) + 13 = Cupons
-        self._pages = [None] * 14
-        for i in range(14):
+        # 15 pages: 0-10 original + 11 = Sobre + 12 = Conversor (Pontuação)
+        # + 13 = Cupons → Gerador + 14 = Cupons → Limpeza de Campanhas
+        self._pages = [None] * 15
+        for i in range(15):
             self._stack.addWidget(QWidget())  # Dummy placeholder
 
         # Pre-load only the Home view for immediate startup
@@ -336,6 +347,9 @@ class MainWindow(QMainWindow):
         elif index == 13:
             from src.ui.pages.view_cupom import CupomView
             page = CupomView(self)
+        elif index == 14:
+            from src.ui.pages.view_cupom_limpeza import CupomLimpezaView
+            page = CupomLimpezaView(self)
         else:
             return
 
@@ -356,6 +370,8 @@ class MainWindow(QMainWindow):
                 btn.setChecked(index in (6, 12))
             elif i == 2:  # Exportador dropdown — mark as active for sub-pages
                 btn.setChecked(index in (1, 10))
+            elif i == 13:  # Cupons dropdown — Gerador e Limpeza de Campanhas
+                btn.setChecked(index in (13, 14))
             else:
                 btn.setChecked(i == index)
 
@@ -371,7 +387,8 @@ class MainWindow(QMainWindow):
             9: "Menus CB",
             11: "Sobre",
             12: "Cadastro → Pontuação",
-            13: "Cupons",
+            13: "Cupons → Gerador",
+            14: "Cupons → Limpeza de Campanhas",
             10: "Exportador → Segmentadas",
         }
         name = PAGE_NAMES.get(index, "Módulo")
