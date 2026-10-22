@@ -3,7 +3,7 @@
 **Documento:** BRD-015
 **Autor:** Marcos (Analista de Negócios Jr)
 **Data:** 20-10-2026 (atualizado no mesmo dia com o teste nos exports reais — seção 5.5 e pendências T1, T2 e T5)
-**Status:** Implementado na branch, já com as respostas do negócio às pendências N1–N6 (seção 13). **Uso em produção só depois dos testes em sandbox (T3, T4, CA-14)**; N4 aguarda entendimento
+**Status:** Implementado na branch, com as respostas N1–N6 (seção 13) e a revisão após o teste do Ed (seção 14 — **itens sem vínculo saem já na 1ª rodada; sem desativação de cupons; sem registro local**). **Uso em produção só depois dos testes em sandbox (T4, CA-14)**; N4 aguarda entendimento
 **Branch:** `feature/cupons-limpeza-campanhas`
 **Origem:** Pacote do gestor gerado por IA (`sanitizador_sfcc.py`, `analisador_sfcc.py` e guia de integração), revisado e formalizado neste BRD
 **Pré-requisitos:** nenhum. Módulo novo; não altera nenhum motor existente.
@@ -22,8 +22,9 @@ O gestor trouxe um pacote pronto que automatiza essa limpeza a partir de 3 expor
 |---|---|
 | Nome do módulo | **Limpeza de Campanhas**, dentro do menu Cupons |
 | Customer groups | *(revisado em 20-10-2026, seção 13)* Seguem as mesmas regras das demais entidades, qualquer que seja o nome. Só ficam protegidos os grupos padrão do SFCC e os que têm DONT_REMOVE no nome |
-| Itens sem data (órfãos e campanhas sem data de fim desativadas) | **Carência por observação**: só ficam elegíveis depois da carência nesse estado, contada a partir da primeira vez que o SIC os viu |
-| Carência | **Régua ajustável** de 7 a 365 dias, padrão 30 (N3) |
+| Itens sem data (órfãos e campanhas sem data de fim desativadas) | *(revisado em 22-10-2026, seção 14)* **Elegíveis já na 1ª rodada.** A carência por observação foi removida |
+| Cupons | *(revisado em 22-10-2026, seção 14)* **Excluídos direto**, sem a etapa de desativação; o rollback traz a definição e os códigos |
+| Carência | **Régua ajustável** de 7 a 365 dias, padrão 30 (N3) — vale só para campanhas vencidas |
 | Lojas | **Todas as lojas LATAM**: o operador escolhe ou digita a loja (N6) |
 | Cupons | **Desativar antes de apagar**: a primeira etapa só desativa (reversível); a exclusão vem depois de 30 dias desativado |
 | Execução no SFCC | O SIC **só gera arquivos**. Quem importa no Business Manager é o operador, como em todos os módulos |
@@ -120,11 +121,15 @@ Toda regra abaixo já incorpora as correções da seção 5.
 
 ### 4.5 Cupons — duas etapas
 
+> **Substituída pela seção 14 (22-10-2026):** os cupons agora são excluídos direto, sem a etapa de desativação.
+
 1. **Desativação:** um cupom que ficaria elegível (por cascata ou por carência de órfão) primeiro entra no XML de **desativação**: a definição do cupom copiada do export, só com o `enabled-flag` trocado para `false` e sem o bloco de códigos. É reversível, e códigos e resgates continuam no SFCC (a confirmar em sandbox, pendência T3).
 2. **Exclusão:** um cupom só entra no XML de exclusão depois de estar **desativado há 30 dias ou mais**, contados pela observação do SIC (4.6), e se continuar sem vínculo com campanha protegida.
 3. Se um cupom desativado voltar a ser usado por uma campanha protegida, ele volta a Protegido e sai da contagem. A reativação é manual no Business Manager, e o relatório avisa.
 
 ### 4.6 Carência por observação
+
+> **Substituída pela seção 14 (22-10-2026):** o registro de observação foi removido; itens sem vínculo são elegíveis na primeira rodada.
 
 O SFCC não exporta a data de criação nem de modificação de promoções, cupons e customer groups. **Confirmado nos exports reais** (pendência T1): nenhum dos 3 arquivos tem esse tipo de data. Sem uma data, a carência de 30 dias não tem de onde partir. Por isso:
 
@@ -343,3 +348,28 @@ As respostas do Ed às pendências N1–N6 (seção 10.1) foram aplicadas no có
 **N4 — explicação para o Ed, ainda sem resposta.** São duas travas de segurança, e os valores atuais continuam até nova orientação:
 - **Coerência (10%):** confere se os 3 arquivos são da mesma loja e do mesmo momento. As campanhas citam cupons e grupos; se mais de 10% deles não existir nos outros arquivos, é sinal de que alguém misturou arquivos (por exemplo, os cupons de outra loja), e o SIC **bloqueia** a simulação. Sem essa trava, os cupons da loja certa pareceriam todos "sem campanha". Nos exports reais, só 1 de 118 cupons citados faltava (0,8%).
 - **Freio de volume (30%):** se uma rodada for desativar ou excluir mais de 30% de uma base (ex.: 120 de 300 cupons), o SIC pede que o operador **digite a quantidade** antes de gerar os arquivos, para ninguém confirmar uma limpeza grande sem perceber. Não impede nada, só exige atenção. Na primeira limpeza real ele vai disparar, porque é a limpeza do acúmulo antigo.
+
+---
+
+## 14. Revisão Após o Teste do Ed (22-10-2026)
+
+**O que aconteceu.** No teste da versão 1.7.0-alpha, a primeira simulação não trouxe nenhum cupom para excluir: os cupons sem campanha apareceram como "Sem campanha — observado há 0 de 14 dias". Era o comportamento previsto (carência por observação, seção 4.6), mas o Ed entendeu como erro e definiu a regra de negócio: **"se um cupom não tem vínculo com uma campanha, ele deve ser excluído"**.
+
+**Decisões (usuário, 22-10-2026):**
+
+| Tema | Antes | Agora |
+|---|---|---|
+| Cupom sem campanha | Aguardava a carência observada | **Elegível já na 1ª rodada** |
+| Cupom de campanha que sai | Desativado primeiro; excluído depois da carência | **Excluído direto** — arquivo `2_EXCLUIR_CUPONS.xml`; a etapa e o arquivo de desativação deixaram de existir |
+| Promoção / customer group sem campanha | Aguardavam a carência observada | **Elegíveis já na 1ª rodada** |
+| Campanha sem data de fim desativada | Aguardava a carência observada | **Elegível já na 1ª rodada** |
+| Registro de observação local | Arquivo `limpeza_observacoes.db` no computador | **Removido** — o resultado depende só dos 3 arquivos, da data e da régua, e é igual em qualquer computador (resolve a limitação da N5) |
+| Régua de carência | Valia para as três carências | Vale **só para campanhas vencidas** |
+
+**Por que excluir direto é aceitável.** Um cupom sem campanha não tem efeito na loja; e o rollback traz a definição completa e os códigos (bloco `coupon-codes`, conferido antes de liberar os arquivos). O que não volta é o histórico de resgates (seção 5.3).
+
+**Risco aceito pelo negócio.** Um cupom, promoção ou grupo criado para uma campanha que ainda vai ser montada é excluído se a limpeza rodar antes de a campanha existir no export. Mitigação: a simulação lista cada item com o motivo "Sem campanha", e o freio de volume pede confirmação reforçada em limpezas grandes.
+
+**Pendência T3 encerrada:** como não há mais XML de desativação, o teste de desativação em sandbox deixou de ser necessário. Continuam T4 (ordem de importação) e CA-14 (restauração pelo rollback).
+
+**Resultado com os exports reais (só leitura):** com carência de 30 dias, a 1ª rodada traz 1 campanha, 2 promoções, **185 cupons** (184 sem campanha + 1 de campanha que sai) e **100 customer groups** para excluir; o freio de volume dispara para cupons (61%) e grupos (79%). A geração passou na conferência, com pico de 167 MB e cerca de 22 segundos. Testes automatizados: 30 no módulo, todos com XMLs inventados.

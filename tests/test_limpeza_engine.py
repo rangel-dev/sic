@@ -12,10 +12,10 @@ import pytest
 
 from src.core import limpeza_engine as le
 from src.core.limpeza_engine import (
-    AGUARDANDO, DESATIVAR, ELEGIVEL, PROTEGIDO, REVISAR,
+    ELEGIVEL, PROTEGIDO, REVISAR,
     ENT_CAMPAIGNS, ENT_COUPONS, ENT_GROUPS, ENT_PROMOTIONS,
     KIND_COUPONS, KIND_CUSTOMER_GROUPS, KIND_PROMOTIONS,
-    LimpezaEngine, LimpezaError, ObservationStore,
+    LimpezaEngine, LimpezaError,
 )
 
 NOW = datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc)
@@ -104,14 +104,15 @@ def _write(tmp_path: Path, promotions="", coupons="", groups="", names=("p.xml",
 
 
 SYSTEM = [{"id": "Everyone"}, {"id": "Registered"}]
+OLD = _iso(NOW - timedelta(days=60))
 
 
-def _run(tmp_path, campaigns=(), promotions=(), assignments=(), coupons=(), groups=SYSTEM,
-         store=None, now=NOW, loja="natura", record=True, **kw):
+def _run(tmp_path, campaigns=({"id": "QUALQUER"},), promotions=(), assignments=(), coupons=(),
+         groups=SYSTEM, now=NOW, loja="Natura Brasil", **kw):
     files = _write(tmp_path, _promotions_xml(campaigns, promotions, assignments),
                    _coupons_xml(coupons), _groups_xml(groups))
-    eng = LimpezaEngine(files, loja, store=store or ObservationStore(":memory:"), now=now, **kw)
-    return eng, eng.simulate(record=record)
+    eng = LimpezaEngine(files, loja, now=now, **kw)
+    return eng, eng.simulate()
 
 
 def _status(res, entity, item_id):
@@ -143,19 +144,19 @@ def test_motor_recusa_arquivo_no_tipo_errado(tmp_path):
     files = _write(tmp_path, _promotions_xml(), _coupons_xml(), _groups_xml())
     files[KIND_COUPONS], files[KIND_PROMOTIONS] = files[KIND_PROMOTIONS], files[KIND_COUPONS]
     with pytest.raises(LimpezaError):
-        LimpezaEngine(files, "natura", store=ObservationStore(":memory:"), now=NOW)
+        LimpezaEngine(files, "Natura Brasil", now=NOW)
 
 
 # ── Datas ────────────────────────────────────────────────────────────────────
 def test_data_sem_fuso_e_tratada_como_utc_e_ilegivel_sinalizada():
     dt, bad = le.parse_sfcc_date("2026-10-01T10:00:00")
-    assert dt.tzinfo is not None and not bad
+    assert dt is not None and dt.tzinfo is not None and not bad
     assert le.parse_sfcc_date("31/02/2026") == (None, True)
     assert le.parse_sfcc_date("") == (None, False)
 
 
 # ── Campanhas ────────────────────────────────────────────────────────────────
-def test_ca01_vencida_ha_30_dias_ou_mais_e_elegivel_e_menos_e_protegida(tmp_path):
+def test_ca01_vencida_ha_mais_que_a_carencia_e_elegivel(tmp_path):
     _, res = _run(tmp_path, campaigns=[
         {"id": "VELHA", "end": _iso(NOW - timedelta(days=30))},
         {"id": "RECENTE", "end": _iso(NOW - timedelta(days=29))},
@@ -171,15 +172,9 @@ def test_ca02_perene_habilitada_e_protegida(tmp_path):
     assert _status(res, ENT_CAMPAIGNS, "PERENE") == PROTEGIDO
 
 
-def test_ca03_perene_desativada_aguarda_carencia_por_observacao(tmp_path):
-    store = ObservationStore(":memory:")
-    camp = [{"id": "PAUSADA", "enabled": False}]
-    _, r1 = _run(tmp_path, campaigns=camp, store=store)
-    assert _status(r1, ENT_CAMPAIGNS, "PAUSADA") == AGUARDANDO
-    _, r2 = _run(tmp_path, campaigns=camp, store=store, now=NOW + timedelta(days=29))
-    assert _status(r2, ENT_CAMPAIGNS, "PAUSADA") == AGUARDANDO
-    _, r3 = _run(tmp_path, campaigns=camp, store=store, now=NOW + timedelta(days=30))
-    assert _status(r3, ENT_CAMPAIGNS, "PAUSADA") == ELEGIVEL
+def test_ca03_perene_desativada_e_elegivel_ja_na_primeira_rodada(tmp_path):
+    _, res = _run(tmp_path, campaigns=[{"id": "PAUSADA", "enabled": False}])
+    assert _status(res, ENT_CAMPAIGNS, "PAUSADA") == ELEGIVEL
 
 
 def test_ca04_data_ilegivel_vai_para_revisar_mesmo_desativada(tmp_path):
@@ -187,13 +182,49 @@ def test_ca04_data_ilegivel_vai_para_revisar_mesmo_desativada(tmp_path):
     assert _status(res, ENT_CAMPAIGNS, "QUEBRADA") == REVISAR
 
 
+def test_regua_de_carencia_vale_para_campanhas_vencidas(tmp_path):
+    camp = [{"id": "VENCIDA-10D", "end": _iso(NOW - timedelta(days=10))}]
+    _, r30 = _run(tmp_path, campaigns=camp)
+    assert _status(r30, ENT_CAMPAIGNS, "VENCIDA-10D") == PROTEGIDO
+    _, r7 = _run(tmp_path, campaigns=camp, grace_days=7)
+    assert _status(r7, ENT_CAMPAIGNS, "VENCIDA-10D") == ELEGIVEL
+
+
+def test_regua_fora_dos_limites_e_recusada(tmp_path):
+    files = _write(tmp_path, _promotions_xml(), _coupons_xml(), _groups_xml())
+    for bad in (le.GRACE_MIN_DAYS - 1, le.GRACE_MAX_DAYS + 1):
+        with pytest.raises(LimpezaError):
+            LimpezaEngine(files, "Natura Brasil", grace_days=bad, now=NOW)
+
+
+# ── Itens sem campanha: saem já na primeira rodada (regra do negócio) ────────
+def test_ca06_itens_sem_campanha_sao_elegiveis_na_primeira_rodada(tmp_path):
+    _, res = _run(tmp_path, promotions=["PROMO-ORFA"], coupons=[{"id": "CUP-ORFAO"}],
+                  groups=SYSTEM + [{"id": "Grupo Sem Campanha"}])
+    assert _status(res, ENT_PROMOTIONS, "PROMO-ORFA") == ELEGIVEL
+    assert _status(res, ENT_COUPONS, "CUP-ORFAO") == ELEGIVEL
+    assert _status(res, ENT_GROUPS, "Grupo Sem Campanha") == ELEGIVEL
+    assert res.items[ENT_COUPONS]["CUP-ORFAO"].reason == "Sem campanha"
+
+
+def test_cupom_desativado_sem_campanha_tambem_sai(tmp_path):
+    _, res = _run(tmp_path, coupons=[{"id": "CUP-OFF", "enabled": False}])
+    assert _status(res, ENT_COUPONS, "CUP-OFF") == ELEGIVEL
+
+
+def test_resultado_nao_depende_de_execucoes_anteriores(tmp_path):
+    kw = dict(promotions=["P"], coupons=[{"id": "C"}])
+    _, r1 = _run(tmp_path, **kw)
+    _, r2 = _run(tmp_path, **kw)
+    assert {e: dict(r1.counts(e)) for e in le.ENTITIES} == {e: dict(r2.counts(e)) for e in le.ENTITIES}
+
+
 # ── Cascata ──────────────────────────────────────────────────────────────────
-def test_ca05_item_ligado_a_campanha_protegida_fica(tmp_path):
-    velha = _iso(NOW - timedelta(days=60))
+def test_ca05_item_ligado_a_campanha_que_fica_e_protegido(tmp_path):
     _, res = _run(
         tmp_path,
         campaigns=[
-            {"id": "VELHA", "end": velha, "coupons": ["CUP-COMP"], "groups": ["NAT-RR100"]},
+            {"id": "VELHA", "end": OLD, "coupons": ["CUP-COMP"], "groups": ["NAT-RR100"]},
             {"id": "ATIVA", "end": _iso(NOW + timedelta(days=10)), "coupons": ["CUP-COMP"],
              "groups": ["NAT-RR100"]},
         ],
@@ -208,167 +239,30 @@ def test_ca05_item_ligado_a_campanha_protegida_fica(tmp_path):
     assert _status(res, ENT_GROUPS, "NAT-RR100") == PROTEGIDO
 
 
-def test_aguardando_carencia_tambem_segura_a_cascata(tmp_path):
-    _, res = _run(tmp_path, campaigns=[{"id": "PAUSADA", "enabled": False, "coupons": ["CUP-P"]}],
-                  coupons=[{"id": "CUP-P"}])
-    assert _status(res, ENT_CAMPAIGNS, "PAUSADA") == AGUARDANDO
-    assert _status(res, ENT_COUPONS, "CUP-P") == PROTEGIDO
+def test_item_de_campanha_na_carencia_fica(tmp_path):
+    _, res = _run(tmp_path, campaigns=[{"id": "RECENTE", "end": _iso(NOW - timedelta(days=3)),
+                                        "coupons": ["CUP-R"], "groups": ["Grupo R"]}],
+                  coupons=[{"id": "CUP-R"}], groups=SYSTEM + [{"id": "Grupo R"}])
+    assert _status(res, ENT_COUPONS, "CUP-R") == PROTEGIDO
+    assert _status(res, ENT_GROUPS, "Grupo R") == PROTEGIDO
+
+
+def test_itens_de_campanha_excluida_saem_juntos(tmp_path):
+    _, res = _run(tmp_path, campaigns=[{"id": "VELHA", "end": OLD, "coupons": ["CUP-V"],
+                                        "groups": ["Segunda Compra"]}],
+                  promotions=["PROMO-V"], assignments=[{"camp": "VELHA", "promo": "PROMO-V"}],
+                  coupons=[{"id": "CUP-V"}], groups=SYSTEM + [{"id": "Segunda Compra"}])
+    assert _status(res, ENT_PROMOTIONS, "PROMO-V") == ELEGIVEL
+    assert _status(res, ENT_COUPONS, "CUP-V") == ELEGIVEL
+    assert _status(res, ENT_GROUPS, "Segunda Compra") == ELEGIVEL
 
 
 def test_vinculo_com_campanha_fora_do_arquivo_vai_para_revisar(tmp_path):
     _, res = _run(tmp_path, promotions=["PROMO-X"],
                   assignments=[{"camp": "NAO-EXISTE", "promo": "PROMO-X", "coupons": ["CUP-X"]}],
-                  campaigns=[{"id": "QUALQUER"}], coupons=[{"id": "CUP-X"}])
+                  coupons=[{"id": "CUP-X"}])
     assert _status(res, ENT_PROMOTIONS, "PROMO-X") == REVISAR
     assert _status(res, ENT_COUPONS, "CUP-X") == REVISAR
-
-
-# ── Órfãos e carência por observação ────────────────────────────────────────
-def test_ca06_orfaos_aguardam_e_depois_ficam_elegiveis(tmp_path):
-    store = ObservationStore(":memory:")
-    kw = dict(campaigns=[{"id": "QUALQUER"}], promotions=["PROMO-ORFA"],
-              coupons=[{"id": "CUP-ORFAO"}], store=store)
-    _, r1 = _run(tmp_path, **kw)
-    assert _status(r1, ENT_PROMOTIONS, "PROMO-ORFA") == AGUARDANDO
-    assert _status(r1, ENT_COUPONS, "CUP-ORFAO") == AGUARDANDO
-    _, r2 = _run(tmp_path, now=NOW + timedelta(days=31), **kw)
-    assert _status(r2, ENT_PROMOTIONS, "PROMO-ORFA") == ELEGIVEL
-    assert _status(r2, ENT_COUPONS, "CUP-ORFAO") == DESATIVAR   # cupom: 1ª etapa
-
-
-def test_ca07_contagem_zera_quando_o_item_ganha_campanha(tmp_path):
-    store = ObservationStore(":memory:")
-    orfa = dict(campaigns=[{"id": "QUALQUER"}], promotions=["PROMO-V"], store=store)
-    _run(tmp_path, **orfa)
-    _run(tmp_path, assignments=[{"camp": "QUALQUER", "promo": "PROMO-V"}], now=NOW + timedelta(days=10), **orfa)
-    _, r = _run(tmp_path, now=NOW + timedelta(days=35), **orfa)
-    assert _status(r, ENT_PROMOTIONS, "PROMO-V") == AGUARDANDO   # contou de novo a partir do dia 35
-
-
-def test_primeira_execucao_nunca_apaga_item_sem_data(tmp_path):
-    _, res = _run(tmp_path, campaigns=[{"id": "PAUSADA", "enabled": False}], promotions=["P"],
-                  coupons=[{"id": "C"}], groups=SYSTEM + [{"id": "NAT-RR1"}])
-    assert res.affected_total == 0
-
-
-def test_observacao_separada_por_loja(tmp_path):
-    store = ObservationStore(":memory:")
-    kw = dict(campaigns=[{"id": "QUALQUER"}], promotions=["PROMO-L"], store=store)
-    _run(tmp_path, loja="natura", **kw)
-    _, avon = _run(tmp_path, loja="avon", now=NOW + timedelta(days=31), **kw)
-    assert _status(avon, ENT_PROMOTIONS, "PROMO-L") == AGUARDANDO
-
-
-def test_sem_gravar_observacao_nada_sem_data_fica_elegivel(tmp_path):
-    store = ObservationStore(":memory:")
-    kw = dict(campaigns=[{"id": "QUALQUER"}], promotions=["PROMO-S"], store=store)
-    _run(tmp_path, record=False, **kw)
-    _, r = _run(tmp_path, now=NOW + timedelta(days=31), **kw)
-    assert _status(r, ENT_PROMOTIONS, "PROMO-S") == AGUARDANDO
-
-
-# ── Customer groups (N1/N2: só os grupos padrão e DONT_REMOVE são protegidos) ─
-def test_ca08_grupos_padrao_e_dont_remove_ficam(tmp_path):
-    _, res = _run(tmp_path, campaigns=[{"id": "QUALQUER"}], groups=[
-        {"id": "Everyone"}, {"id": "Registered"}, {"id": "Unregistered"},
-        {"id": "DONATION_ORDER_DONT_REMOVE"}, {"id": "Grupo X", "desc": "dontremove — usado pelo checkout"},
-    ])
-    assert all(_status(res, ENT_GROUPS, g) == PROTEGIDO for g in res.items[ENT_GROUPS])
-
-
-def test_termos_antigos_de_infraestrutura_nao_protegem_mais(tmp_path):
-    _, res = _run(tmp_path, campaigns=[{"id": "QUALQUER"}],
-                  groups=SYSTEM + [{"id": "System_Team"}, {"id": "productNotFoundLogged"}, {"id": "crm-vip"}])
-    for gid in ("System_Team", "productNotFoundLogged", "crm-vip"):
-        assert _status(res, ENT_GROUPS, gid) == AGUARDANDO   # seguem as regras normais
-
-
-def test_lista_protegida_vazia_por_padrao_e_opcional(tmp_path):
-    assert le.DEFAULT_PROTECTED_TERMS == ()
-    _, res = _run(tmp_path, campaigns=[{"id": "QUALQUER"}], groups=SYSTEM + [{"id": "crm-vip"}],
-                  protected_terms=["crm"])
-    assert _status(res, ENT_GROUPS, "crm-vip") == PROTEGIDO
-
-
-def test_ca09_grupo_de_campanha_excluida_e_elegivel_qualquer_que_seja_o_nome(tmp_path):
-    _, res = _run(tmp_path, campaigns=[{"id": "VELHA", "end": _iso(NOW - timedelta(days=40)),
-                                        "groups": ["NAT-RR555", "Segunda Compra", "GRUPO_ANTIGO_2019"]}],
-                  groups=SYSTEM + [{"id": "NAT-RR555"}, {"id": "Segunda Compra"}, {"id": "GRUPO_ANTIGO_2019"}])
-    for gid in ("NAT-RR555", "Segunda Compra", "GRUPO_ANTIGO_2019"):
-        assert _status(res, ENT_GROUPS, gid) == ELEGIVEL
-
-
-def test_ca10_grupo_sem_campanha_aguarda_carencia_e_depois_sai(tmp_path):
-    store = ObservationStore(":memory:")
-    kw = dict(campaigns=[{"id": "QUALQUER"}], groups=SYSTEM + [{"id": "Churn geral"}], store=store)
-    _, r1 = _run(tmp_path, **kw)
-    assert _status(r1, ENT_GROUPS, "Churn geral") == AGUARDANDO
-    eng, r2 = _run(tmp_path, now=NOW + timedelta(days=30), **kw)
-    assert _status(r2, ENT_GROUPS, "Churn geral") == ELEGIVEL
-    out = eng.export(r2, str(tmp_path))
-    assert 'group-id="Churn geral"' in Path(out.folder, le.FILE_GROUP_DELETE).read_text(encoding="utf-8")
-
-
-def test_grupo_ligado_a_campanha_ativa_fica(tmp_path):
-    _, res = _run(tmp_path, campaigns=[{"id": "ATIVA", "groups": ["Segunda Compra"]}],
-                  groups=SYSTEM + [{"id": "Segunda Compra"}])
-    assert _status(res, ENT_GROUPS, "Segunda Compra") == PROTEGIDO
-
-
-# ── Régua de carência (N3) e lojas LATAM (N6) ────────────────────────────────
-def test_regua_de_carencia_ajusta_todas_as_regras(tmp_path):
-    camp = [{"id": "VENCIDA-10D", "end": _iso(NOW - timedelta(days=10))}]
-    _, r30 = _run(tmp_path, campaigns=camp)
-    assert _status(r30, ENT_CAMPAIGNS, "VENCIDA-10D") == PROTEGIDO
-    _, r7 = _run(tmp_path, campaigns=camp, grace_days=7)
-    assert _status(r7, ENT_CAMPAIGNS, "VENCIDA-10D") == ELEGIVEL
-    store = ObservationStore(":memory:")
-    kw = dict(campaigns=[{"id": "QUALQUER"}], promotions=["P-ORFA"], store=store, grace_days=7)
-    _run(tmp_path, **kw)
-    _, r = _run(tmp_path, now=NOW + timedelta(days=7), **kw)
-    assert _status(r, ENT_PROMOTIONS, "P-ORFA") == ELEGIVEL
-
-
-def test_regua_fora_dos_limites_e_recusada(tmp_path):
-    files = _write(tmp_path, _promotions_xml(), _coupons_xml(), _groups_xml())
-    for bad in (le.GRACE_MIN_DAYS - 1, le.GRACE_MAX_DAYS + 1):
-        with pytest.raises(LimpezaError):
-            LimpezaEngine(files, "natura", grace_days=bad, now=NOW)
-
-
-def test_loja_livre_para_latam(tmp_path):
-    assert le.loja_key("Natura Chile") == "natura-chile"
-    assert le.loja_key("  Avon   Colômbia ") == le.loja_key("avon colombia") == "avon-colombia"
-    eng, res = _run(tmp_path, campaigns=[{"id": "VELHA", "end": _iso(NOW - timedelta(days=60))}],
-                    loja="Natura Chile")
-    assert res.loja == "Natura Chile" and res.loja_key == "natura-chile"
-    assert Path(eng.export(res, str(tmp_path)).folder).name.startswith("LIMPEZA_NATURA-CHILE_")
-    with pytest.raises(LimpezaError):
-        _run(tmp_path, loja="   ")
-
-
-# ── Cupons em duas etapas ────────────────────────────────────────────────────
-def test_ca11_cupom_elegivel_primeiro_so_e_desativado(tmp_path):
-    eng, res = _run(tmp_path, campaigns=[{"id": "VELHA", "end": _iso(NOW - timedelta(days=40)),
-                                          "coupons": ["CUP-V"]}],
-                    coupons=[{"id": "CUP-V", "codes": 3}])
-    assert _status(res, ENT_COUPONS, "CUP-V") == DESATIVAR
-    out = eng.export(res, str(tmp_path))
-    off = ET.parse(Path(out.folder, le.FILE_COUPON_DISABLE)).getroot()
-    (coupon,) = list(off)
-    assert coupon.findtext("{*}enabled-flag") == "false"
-    assert off.find("{*}coupon-codes") is None
-    assert "CUP-V" not in Path(out.folder, le.FILE_COUPON_DELETE).read_text(encoding="utf-8")
-
-
-def test_ca12_cupom_desativado_ha_30_dias_vai_para_exclusao(tmp_path):
-    store = ObservationStore(":memory:")
-    kw = dict(campaigns=[{"id": "VELHA", "end": _iso(NOW - timedelta(days=40)), "coupons": ["CUP-D"]}],
-              coupons=[{"id": "CUP-D", "enabled": False}], store=store)
-    _, r1 = _run(tmp_path, **kw)
-    assert _status(r1, ENT_COUPONS, "CUP-D") == AGUARDANDO
-    _, r2 = _run(tmp_path, now=NOW + timedelta(days=30), **kw)
-    assert _status(r2, ENT_COUPONS, "CUP-D") == ELEGIVEL
 
 
 def test_cupom_desativado_mas_em_uso_fica_e_avisa(tmp_path):
@@ -378,42 +272,76 @@ def test_cupom_desativado_mas_em_uso_fica_e_avisa(tmp_path):
     assert item.status == PROTEGIDO and "reative" in item.reason
 
 
+# ── Customer groups: só os padrão do SFCC e DONT_REMOVE são protegidos ──────
+def test_ca08_grupos_padrao_e_dont_remove_ficam(tmp_path):
+    _, res = _run(tmp_path, groups=[
+        {"id": "Everyone"}, {"id": "Registered"}, {"id": "Unregistered"},
+        {"id": "DONATION_ORDER_DONT_REMOVE"}, {"id": "Grupo X", "desc": "dontremove — usado pelo checkout"},
+    ])
+    assert all(_status(res, ENT_GROUPS, g) == PROTEGIDO for g in res.items[ENT_GROUPS])
+
+
+def test_termos_antigos_de_infraestrutura_nao_protegem(tmp_path):
+    _, res = _run(tmp_path, groups=SYSTEM + [{"id": "System_Team"}, {"id": "productNotFoundLogged"}])
+    assert _status(res, ENT_GROUPS, "System_Team") == ELEGIVEL
+    assert _status(res, ENT_GROUPS, "productNotFoundLogged") == ELEGIVEL
+
+
+def test_lista_protegida_vazia_por_padrao_e_opcional(tmp_path):
+    assert le.DEFAULT_PROTECTED_TERMS == ()
+    _, res = _run(tmp_path, groups=SYSTEM + [{"id": "crm-vip"}], coupons=[{"id": "crm-boas-vindas"}],
+                  protected_terms=["crm"])
+    assert _status(res, ENT_GROUPS, "crm-vip") == PROTEGIDO
+    assert _status(res, ENT_COUPONS, "crm-boas-vindas") == PROTEGIDO
+
+
+# ── Lojas LATAM ──────────────────────────────────────────────────────────────
+def test_loja_livre_para_latam(tmp_path):
+    assert le.loja_key("Natura Chile") == "natura-chile"
+    assert le.loja_key("  Avon   Colômbia ") == le.loja_key("avon colombia") == "avon-colombia"
+    eng, res = _run(tmp_path, campaigns=[{"id": "VELHA", "end": OLD}], loja="Natura Chile")
+    assert res.loja == "Natura Chile" and res.loja_key == "natura-chile"
+    assert Path(eng.export(res, str(tmp_path)).folder).name.startswith("LIMPEZA_NATURA-CHILE_")
+    with pytest.raises(LimpezaError):
+        _run(tmp_path, loja="   ")
+
+
 # ── Exportação e conferência do rollback ─────────────────────────────────────
 def _cenario_completo(tmp_path):
-    store = ObservationStore(":memory:")
-    velha = _iso(NOW - timedelta(days=60))
-    kw = dict(
-        campaigns=[{"id": "VELHA", "end": velha, "coupons": ["CUP-MULTI"], "groups": ["NAT-RR42"]},
+    return _run(
+        tmp_path,
+        campaigns=[{"id": "VELHA", "end": OLD, "coupons": ["CUP-MULTI"], "groups": ["NAT-RR42"]},
                    {"id": "ATIVA", "coupons": ["CUP-OK"]}],
         promotions=["PROMO-VELHA"],
         assignments=[{"camp": "VELHA", "promo": "PROMO-VELHA"}],
-        coupons=[{"id": "CUP-MULTI", "codes": 25, "enabled": False}, {"id": "CUP-OK", "codes": 4}],
+        coupons=[{"id": "CUP-MULTI", "codes": 25}, {"id": "CUP-OK", "codes": 4}, {"id": "CUP-ORFAO"}],
         groups=SYSTEM + [{"id": "NAT-RR42", "dynamic": False, "members": 3}],
-        store=store,
     )
-    _run(tmp_path, **kw)
-    return _run(tmp_path, now=NOW + timedelta(days=31), **kw)
 
 
 def test_ca13_rollback_completo_com_codigos_e_membros(tmp_path):
     eng, res = _cenario_completo(tmp_path)
-    assert _status(res, ENT_COUPONS, "CUP-MULTI") == ELEGIVEL
-    assert _status(res, ENT_GROUPS, "NAT-RR42") == ELEGIVEL
+    assert res.ids(ENT_COUPONS, ELEGIVEL) == {"CUP-MULTI", "CUP-ORFAO"}
     out = eng.export(res, str(tmp_path))
+    delete = ET.parse(Path(out.folder, le.FILE_COUPON_DELETE)).getroot()
+    assert {c.attrib["coupon-id"] for c in delete} == {"CUP-MULTI", "CUP-ORFAO"}
+    assert all(c.attrib["mode"] == "delete" for c in delete)
     rb = ET.parse(Path(out.folder, le.FILE_COUPON_ROLLBACK)).getroot()
     blocks = rb.findall("{*}coupon-codes")
     assert [b.attrib["coupon-id"] for b in blocks] == ["CUP-MULTI"]
     assert len(blocks[0]) == 25
     tags = [le._local(e.tag) for e in rb]
-    assert tags.index("coupon-codes") > tags.index("coupon")   # cupons antes dos códigos
+    assert tags.index("coupon-codes") > max(i for i, t in enumerate(tags) if t == "coupon")
     grb = ET.parse(Path(out.folder, le.FILE_GROUP_ROLLBACK)).getroot()
     assert len(grb.findall("{*}group-assignment")) == 3
     prb = ET.parse(Path(out.folder, le.FILE_PROMO_ROLLBACK)).getroot()
     assert [le._local(e.tag) for e in prb] == ["campaign", "promotion", "promotion-campaign-assignment"]
-    assert prb.find("{*}promotion/{*}name").attrib  # xml:lang preservado
+    name = prb.find("{*}promotion/{*}name")
+    assert name is not None and name.attrib   # xml:lang preservado
     names = {Path(f).name for f in out.files}
-    assert {le.FILE_GROUP_ROLLBACK, le.FILE_COUPON_ROLLBACK, le.FILE_PROMO_ROLLBACK,
-            "SIMULACAO_LIMPEZA.xlsx"} <= names
+    assert names == {le.FILE_PROMO_DELETE, le.FILE_COUPON_DELETE, le.FILE_GROUP_DELETE,
+                     le.FILE_GROUP_ROLLBACK, le.FILE_COUPON_ROLLBACK, le.FILE_PROMO_ROLLBACK,
+                     "SIMULACAO_LIMPEZA.xlsx"}
 
 
 def test_ca13_divergencia_na_conferencia_nao_gera_nada(tmp_path):
@@ -427,7 +355,7 @@ def test_ca13_divergencia_na_conferencia_nao_gera_nada(tmp_path):
 
 
 def test_os_3_rollbacks_sao_gerados_mesmo_vazios(tmp_path):
-    eng, res = _run(tmp_path, campaigns=[{"id": "VELHA", "end": _iso(NOW - timedelta(days=60))}])
+    eng, res = _run(tmp_path, campaigns=[{"id": "VELHA", "end": OLD}])
     out = eng.export(res, str(tmp_path))
     for name in (le.FILE_GROUP_ROLLBACK, le.FILE_COUPON_ROLLBACK, le.FILE_PROMO_ROLLBACK):
         assert Path(out.folder, name).exists()
@@ -435,20 +363,17 @@ def test_os_3_rollbacks_sao_gerados_mesmo_vazios(tmp_path):
 
 
 # ── Travas ───────────────────────────────────────────────────────────────────
-def test_ca15_arquivos_incoerentes_bloqueiam_e_nao_gravam_observacao(tmp_path):
-    store = ObservationStore(":memory:")
+def test_ca15_arquivos_incoerentes_bloqueiam(tmp_path):
     campaigns = [{"id": f"C{i}", "coupons": [f"CUP{i}"]} for i in range(10)]
-    eng, res = _run(tmp_path, campaigns=campaigns, promotions=["PROMO-O"],
-                    coupons=[{"id": "OUTRA-LOJA-1"}, {"id": "OUTRA-LOJA-2"}], store=store)
-    assert not res.coherence_ok and not res.observations_recorded
+    eng, res = _run(tmp_path, campaigns=campaigns,
+                    coupons=[{"id": "OUTRA-LOJA-1"}, {"id": "OUTRA-LOJA-2"}])
+    assert not res.coherence_ok
     with pytest.raises(LimpezaError):
         eng.export(res, str(tmp_path))
-    assert store.sync("natura", ENT_PROMOTIONS, le.OBS_ORPHAN, set(), NOW, record=False) == {}
 
 
 def test_ca16_freio_de_volume(tmp_path):
-    velha = _iso(NOW - timedelta(days=60))
-    _, res = _run(tmp_path, campaigns=[{"id": "A", "end": velha}, {"id": "B", "end": velha}, {"id": "C"}])
+    _, res = _run(tmp_path, campaigns=[{"id": "A", "end": OLD}, {"id": "B", "end": OLD}, {"id": "C"}])
     assert res.volume_alerts and "Campanhas" in res.volume_alerts[0]
 
 

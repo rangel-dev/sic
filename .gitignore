@@ -9,7 +9,6 @@ screenshots/
 
 
 history.db
-limpeza_observacoes.db
 src/core/_secret.py
 .env
 .env.*

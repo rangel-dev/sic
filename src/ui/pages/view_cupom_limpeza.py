@@ -2,7 +2,7 @@
 Cupons → Limpeza de Campanhas (BRD-015).
 
 Fluxo: loja + 3 exports (reconhecidos pelo namespace) → simulação → revisão
-→ confirmação explícita → XMLs de desativação, exclusão e rollback. O SIC só
+→ confirmação explícita → XMLs de exclusão e rollback. O SIC só
 gera os arquivos; quem importa no Business Manager é o operador.
 """
 from __future__ import annotations
@@ -48,8 +48,6 @@ _KEY_GRACE = "limpeza/carencia_dias"
 _STATUS_COLORS = {
     le.PROTEGIDO: "#28a745",
     le.ELEGIVEL: "#d93025",
-    le.DESATIVAR: "#f2994a",
-    le.AGUARDANDO: "#c9a227",
     le.REVISAR: "#2b8fd6",
 }
 
@@ -144,7 +142,7 @@ class CupomLimpezaView(QWidget):
         self._cmb_loja.setFixedWidth(260)
         self._cmb_loja.editTextChanged.connect(self._invalidate)
         loja_row.addWidget(self._cmb_loja)
-        hint = QLabel("A carência dos itens sem data é contada por loja e neste computador.")
+        hint = QLabel("Use os 3 exports da mesma loja, baixados no mesmo momento.")
         hint.setObjectName("label_muted")
         loja_row.addWidget(hint, 1)
         bl.addLayout(loja_row)
@@ -176,8 +174,10 @@ class CupomLimpezaView(QWidget):
         pl.setContentsMargins(16, 18, 16, 14)
         pl.setSpacing(8)
 
-        lbl_grace = QLabel("Carência  <span style='color:#888;font-weight:400'>(vale para campanhas "
-                           "vencidas, itens sem campanha e cupons desativados)</span>")
+        lbl_grace = QLabel("Carência de campanhas vencidas  <span style='color:#888;font-weight:400'>"
+                           "(campanha vencida há menos dias que isso continua protegida, com tudo o que "
+                           "está ligado a ela; itens sem campanha não têm carência)</span>")
+        lbl_grace.setWordWrap(True)
         lbl_grace.setObjectName("label_section")
         pl.addWidget(lbl_grace)
         grace_row = QHBoxLayout()
@@ -411,16 +411,11 @@ class CupomLimpezaView(QWidget):
 
     def _show_result(self, res: le.SimulationResult):
         if not res.coherence_ok:
-            banner = (f"<span style='color:#d93025'><b>⛔ Bloqueado:</b> {res.coherence_msg}</span>"
-                      "<br><span style='color:#888'>O registro de carência não foi atualizado.</span>")
+            banner = f"<span style='color:#d93025'><b>⛔ Bloqueado:</b> {res.coherence_msg}</span>"
         else:
             parts = []
-            waiting = sum(res.counts(e)[le.AGUARDANDO] for e in le.ENTITIES)
             if res.affected_total == 0:
                 parts.append("<b>Nada para limpar nesta rodada.</b>")
-            if waiting:
-                parts.append(f"{waiting} item(ns) sem data estão na carência de observação "
-                             f"({res.grace_days} dias a partir da primeira vez que este computador os viu).")
             if res.volume_alerts:
                 parts.append("<span style='color:#f2994a'><b>Freio de volume:</b> "
                              + "; ".join(res.volume_alerts) + ". A geração vai pedir confirmação reforçada.</span>")
@@ -484,8 +479,6 @@ class CupomLimpezaView(QWidget):
         lines = []
         for e in le.ENTITIES:
             c = res.counts(e)
-            if c[le.DESATIVAR]:
-                lines.append(f"• Desativar {c[le.DESATIVAR]} {le.ENTITY_LABELS[e].lower()}")
             if c[le.ELEGIVEL]:
                 lines.append(f"• Excluir {c[le.ELEGIVEL]} {le.ENTITY_LABELS[e].lower()}")
         order = "<br>".join(f"&nbsp;&nbsp;{i}. {n}" for i, n in enumerate(le.IMPORT_ORDER[0][1], 1))
@@ -494,10 +487,12 @@ class CupomLimpezaView(QWidget):
         box.setIcon(QMessageBox.Warning)
         box.setTextFormat(Qt.RichText)
         box.setText(
-            f"<b>Loja: {res.loja}</b>  ·  carência de {res.grace_days} dias<br><br>" + "<br>".join(lines)
+            f"<b>Loja: {res.loja}</b>  ·  carência de {res.grace_days} dias para campanhas vencidas<br><br>"
+            + "<br>".join(lines)
             + f"<br><br><b>Ordem de importação no Business Manager:</b><br>{order}"
-            "<br><br>Os rollbacks são gerados junto. Eles <b>não</b> restauram o histórico de "
-            "resgates dos cupons.<br><br>Nada é importado pelo SIC: os arquivos só são gerados.")
+            "<br><br>Os rollbacks são gerados junto e devolvem os itens com os códigos dos cupons. "
+            "Eles <b>não</b> restauram o histórico de resgates.<br><br>"
+            "Nada é importado pelo SIC: os arquivos só são gerados.")
         btn_ok = box.addButton("Gerar arquivos", QMessageBox.AcceptRole)
         btn_ok.setObjectName("btn_primary")
         btn_cancel = box.addButton("Cancelar", QMessageBox.RejectRole)
@@ -510,7 +505,7 @@ class CupomLimpezaView(QWidget):
             typed, ok = QInputDialog.getText(
                 self, "Confirmação reforçada",
                 "Volume acima do normal:\n" + "\n".join(res.volume_alerts)
-                + f"\n\nDigite o total de itens que serão desativados ou excluídos ({res.affected_total}):")
+                + f"\n\nDigite o total de itens que serão excluídos ({res.affected_total}):")
             if not ok:
                 return
             if typed.strip() != str(res.affected_total):
@@ -539,7 +534,7 @@ class CupomLimpezaView(QWidget):
         box.setWindowTitle("Arquivos gerados")
         box.setIcon(QMessageBox.Information)
         box.setText(f"Arquivos gerados e conferidos em:\n{out.folder}\n\n"
-                    "Importe no Business Manager na ordem dos números (1, 2a, 2b, 3). "
+                    "Importe no Business Manager na ordem dos números (1, 2, 3). "
                     "Guarde os arquivos ROLLBACK: eles desfazem a limpeza.")
         btn_open = box.addButton("Abrir pasta", QMessageBox.ActionRole)
         box.addButton(QMessageBox.Ok)

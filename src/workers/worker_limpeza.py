@@ -5,11 +5,9 @@ cupons pode ter centenas de MB.
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6.QtCore import QThread, Signal
 
-from src.core.limpeza_engine import LimpezaEngine, ObservationStore, SimulationResult
+from src.core.limpeza_engine import LimpezaEngine, SimulationResult
 
 
 class LimpezaSimulationWorker(QThread):
@@ -26,22 +24,14 @@ class LimpezaSimulationWorker(QThread):
         self._grace_days = grace_days
 
     def run(self) -> None:
-        store: Optional[ObservationStore] = None
         try:
-            # A conexão SQLite é criada e usada só nesta thread
-            store = ObservationStore()
             engine = LimpezaEngine(self._files, self._loja, protected_terms=self._terms,
-                                   grace_days=self._grace_days, store=store,
-                                   progress_callback=self.progress.emit)
-            result = engine.simulate(record=True)
-            self.finished.emit(engine, result)
+                                   grace_days=self._grace_days, progress_callback=self.progress.emit)
+            self.finished.emit(engine, engine.simulate())
         except Exception as exc:
             import traceback
             traceback.print_exc()
             self.error_msg.emit(str(exc))
-        finally:
-            if store is not None:
-                store.close()
 
 
 class LimpezaExportWorker(QThread):

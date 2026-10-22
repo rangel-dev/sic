@@ -2,15 +2,17 @@
 Limpeza de Campanhas — motor (BRD-015).
 
 Lê as 3 exportações do Business Manager (promoções/campanhas, cupons e
-customer groups), classifica cada item em Protegido / Elegível / Desativar /
-Aguardando carência / Revisar e, só depois de confirmação explícita na tela,
-gera os XMLs de desativação, exclusão e rollback.
+customer groups), classifica cada item em Protegido / Elegível / Revisar e,
+só depois de confirmação explícita na tela, gera os XMLs de exclusão e de
+rollback.
 
-Origem: pacote do gestor (`sanitizador_sfcc.py`), revisado no BRD-015. As
-diferenças em relação ao pacote estão documentadas nas seções 5 e 13 do BRD:
-carência ajustável e por observação para itens sem data, cupons desativados
-antes de apagar, rollback completo (coupon-codes e group-assignment) e
-travas de coerência e de volume.
+Regra central (decisão do negócio, BRD-015 seção 14): campanha vencida há
+mais que a carência, ou sem data de fim e desativada, sai; promoção, cupom
+ou customer group sem vínculo com uma campanha que fica também sai — já na
+primeira rodada. O que protege contra erro é a cascata (item ligado a
+campanha que fica nunca sai), o rollback completo (coupon-codes e
+group-assignment, conferidos antes de liberar) e as travas de coerência e
+de volume.
 
 O SIC nunca importa nada no SFCC: só gera arquivos para o operador importar.
 """
@@ -20,7 +22,6 @@ import copy
 import os
 import re
 import shutil
-import sqlite3
 import tempfile
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -68,16 +69,14 @@ ENTITY_LABELS = {
 
 PROTEGIDO = "Protegido"
 ELEGIVEL = "Elegível"            # entra no XML de exclusão
-DESATIVAR = "Desativar"          # cupons: 1ª etapa (enabled-flag=false)
-AGUARDANDO = "Aguardando carência"
 REVISAR = "Revisar"              # nunca entra em XML; decisão humana
-STATUSES = (PROTEGIDO, ELEGIVEL, DESATIVAR, AGUARDANDO, REVISAR)
+STATUSES = (PROTEGIDO, ELEGIVEL, REVISAR)
 
 # Sugestões iniciais; o operador pode digitar qualquer loja LATAM (N6)
 DEFAULT_LOJAS = ("Natura Brasil", "Avon Brasil", "Minha Loja (CB)")
 
 # ── Parâmetros (BRD-015 — respostas do negócio às pendências N1 a N6) ───────
-GRACE_DAYS = 30                # padrão da régua (N3)
+GRACE_DAYS = 30                # padrão da régua (N3) — só para campanhas vencidas
 GRACE_MIN_DAYS, GRACE_MAX_DAYS = 7, 365
 DEFAULT_PROTECTED_TERMS: tuple[str, ...] = ()   # N2: nenhum termo por padrão
 SYSTEM_GROUPS = {"everyone", "registered", "unregistered"}   # grupos padrão do SFCC
@@ -87,16 +86,12 @@ VOLUME_BRAKE = 0.30            # trava 7.2
 
 
 def loja_key(name: str) -> str:
-    """Chave estável da loja para o registro de observação e nome de pasta:
-    sem acento, minúscula, só letras/números/hífen. "Natura Chile" → "natura-chile"."""
+    """Chave estável da loja para o nome da pasta de saída: sem acento,
+    minúscula, só letras/números/hífen. "Natura Chile" → "natura-chile"."""
     import unicodedata
     plain = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
     return re.sub(r"[^a-z0-9]+", "-", plain.lower()).strip("-")
 
-# Estados acompanhados pela carência por observação (BRD-015, 4.6)
-OBS_CAMPAIGN_DISABLED = "perene_desativada"
-OBS_ORPHAN = "orfao"
-OBS_COUPON_DISABLED = "desativado"
 
 ProgressFn = Callable[[int, str], None]
 
@@ -167,52 +162,6 @@ def classify_files(paths: list[str], current: Optional[dict[str, str]] = None) -
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Registro de observação (carência para itens sem data) — local, fora do git
-# ─────────────────────────────────────────────────────────────────────────────
-class ObservationStore:
-    """Guarda a 1ª data em que o SIC viu cada item num estado sem data
-    (órfão, desativado). Fica ao lado do history.db, no computador de quem
-    roda a limpeza. `path=":memory:"` para testes."""
-
-    DEFAULT_NAME = "limpeza_observacoes.db"
-
-    def __init__(self, path: Optional[str] = None):
-        if path is None:
-            path = str(Path(__file__).parent.parent.parent / self.DEFAULT_NAME)
-        self._conn = sqlite3.connect(path)
-        self._conn.execute(
-            """CREATE TABLE IF NOT EXISTS observacoes (
-                   loja TEXT NOT NULL, entidade TEXT NOT NULL, estado TEXT NOT NULL,
-                   item_id TEXT NOT NULL, primeira_vez TEXT NOT NULL,
-                   PRIMARY KEY (loja, entidade, estado, item_id))"""
-        )
-        self._conn.commit()
-
-    def sync(self, loja: str, entity: str, state: str, ids: set[str],
-             now: datetime, record: bool) -> dict[str, datetime]:
-        """Data da 1ª observação de cada id no estado. Com `record`, inclui os
-        novos e apaga quem saiu do estado (a contagem zera — CA-07)."""
-        rows = self._conn.execute(
-            "SELECT item_id, primeira_vez FROM observacoes WHERE loja=? AND entidade=? AND estado=?",
-            (loja, entity, state),
-        ).fetchall()
-        known = {r[0]: datetime.fromisoformat(r[1]) for r in rows}
-        if record:
-            gone = [(loja, entity, state, i) for i in known if i not in ids]
-            new = [(loja, entity, state, i, now.isoformat()) for i in ids if i not in known]
-            self._conn.executemany(
-                "DELETE FROM observacoes WHERE loja=? AND entidade=? AND estado=? AND item_id=?", gone)
-            self._conn.executemany("INSERT INTO observacoes VALUES (?,?,?,?,?)", new)
-            self._conn.commit()
-            for i in ids:
-                known.setdefault(i, now)
-        return {i: known.get(i, now) for i in ids}
-
-    def close(self):
-        self._conn.close()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 #  Resultado
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
@@ -227,7 +176,7 @@ class Item:
 @dataclass
 class SimulationResult:
     loja: str            # nome exibido ("Natura Chile")
-    loja_key: str        # chave do registro de observação ("natura-chile")
+    loja_key: str        # usada no nome da pasta de saída ("natura-chile")
     now: datetime
     grace_days: int
     files: dict[str, str]
@@ -239,7 +188,6 @@ class SimulationResult:
     missing_groups: int = 0
     cited_groups: int = 0
     volume_alerts: list[str] = field(default_factory=list)
-    observations_recorded: bool = False
 
     def counts(self, entity: str) -> Counter:
         return Counter(it.status for it in self.items[entity].values())
@@ -249,8 +197,8 @@ class SimulationResult:
 
     @property
     def affected_total(self) -> int:
-        """Itens que entram em algum XML (exclusão ou desativação)."""
-        return sum(self.counts(e)[ELEGIVEL] + self.counts(e)[DESATIVAR] for e in ENTITIES)
+        """Itens que entram nos XMLs de exclusão."""
+        return sum(self.counts(e)[ELEGIVEL] for e in ENTITIES)
 
     @property
     def can_export(self) -> bool:
@@ -273,7 +221,6 @@ class LimpezaEngine:
         loja: str,
         protected_terms: Optional[list[str]] = None,
         grace_days: int = GRACE_DAYS,
-        store: Optional[ObservationStore] = None,
         now: Optional[datetime] = None,
         progress_callback: Optional[ProgressFn] = None,
     ):
@@ -294,7 +241,6 @@ class LimpezaEngine:
         self.protected_terms = [t.strip().lower() for t in terms if t and t.strip()]
         self.grace = timedelta(days=grace_days)
         self.grace_days = grace_days
-        self.store = store
         self.now = now or datetime.now(timezone.utc)
         self._progress = progress_callback or (lambda _p, _m: None)
 
@@ -436,9 +382,9 @@ class LimpezaEngine:
             info["campaigns"] = self._group_campaigns.get(gid, set())
 
     # ── Simulação ─────────────────────────────────────────────────────────
-    def simulate(self, record: bool = True) -> SimulationResult:
-        """Classifica tudo. Com `record`, grava o registro de observação —
-        só quando os arquivos passam na trava de coerência."""
+    def simulate(self) -> SimulationResult:
+        """Classifica tudo. Não grava nada: o resultado depende só dos 3
+        arquivos, da data e da carência — igual em qualquer computador."""
         self._load_promotions()
         self._load_coupons()
         self._load_groups()
@@ -449,15 +395,12 @@ class LimpezaEngine:
             files=dict(self.files), items={e: {} for e in ENTITIES},
         )
         self._check_coherence(res)
-        record = record and res.coherence_ok and self.store is not None
-        res.observations_recorded = record
 
-        self._progress(75, f"Classificando (carência de {self.grace_days} dias)…")
-        obs = self._observations(record)
-        blocking = self._classify_campaigns(res, obs)
-        self._classify_promotions(res, obs, blocking)
-        self._classify_coupons(res, obs, blocking)
-        self._classify_groups(res, obs, blocking)
+        self._progress(75, f"Classificando (carência de {self.grace_days} dias para campanhas vencidas)…")
+        blocking = self._classify_campaigns(res)
+        self._classify_promotions(res, blocking)
+        self._classify_coupons(res, blocking)
+        self._classify_groups(res, blocking)
         self._check_volume(res)
         self._progress(100, "Simulação concluída.")
         return res
@@ -483,33 +426,11 @@ class LimpezaEngine:
             res.coherence_msg = ("Os 3 arquivos não parecem ser da mesma loja e do mesmo momento: "
                                  + "; ".join(problems) + ". Exporte os 3 de novo, juntos, da mesma loja.")
 
-    def _observations(self, record: bool) -> dict[tuple[str, str], dict[str, datetime]]:
-        states = {
-            (ENT_CAMPAIGNS, OBS_CAMPAIGN_DISABLED): {
-                i for i, c in self.campaigns.items()
-                if c["end"] is None and not c["invalid_date"] and not c["enabled"]},
-            (ENT_PROMOTIONS, OBS_ORPHAN): {i for i, p in self.promotions.items() if not p["campaigns"]},
-            (ENT_COUPONS, OBS_ORPHAN): {i for i, c in self.coupons.items() if not c["campaigns"]},
-            (ENT_COUPONS, OBS_COUPON_DISABLED): {i for i, c in self.coupons.items() if not c["enabled"]},
-            (ENT_GROUPS, OBS_ORPHAN): {i for i, g in self.groups.items() if not g["campaigns"]},
-        }
-        out = {}
-        for (entity, state), ids in states.items():
-            if self.store is None:
-                out[(entity, state)] = {i: self.now for i in ids}
-            else:
-                out[(entity, state)] = self.store.sync(self.loja_key, entity, state, ids, self.now, record)
-        return out
-
     def _days(self, since: datetime) -> int:
         return max(0, (self.now - since).days)
 
-    def _waited(self, since: datetime) -> bool:
-        return self.now - since >= self.grace
-
-    def _classify_campaigns(self, res, obs) -> set[str]:
+    def _classify_campaigns(self, res) -> set[str]:
         """Retorna as campanhas que seguram a cascata (tudo que não é Elegível)."""
-        disabled_seen = obs[(ENT_CAMPAIGNS, OBS_CAMPAIGN_DISABLED)]
         for cid, c in self.campaigns.items():
             it = Item(ENT_CAMPAIGNS, cid, info={
                 "Habilitada": "Sim" if c["enabled"] else "Não",
@@ -535,14 +456,7 @@ class LimpezaEngine:
             elif c["enabled"]:
                 it.reason = "Sem data de fim e habilitada (perene)"
             else:
-                seen = disabled_seen[cid]
-                if self._waited(seen):
-                    it.status = ELEGIVEL
-                    it.reason = f"Sem data de fim e desativada há {self._days(seen)} dias (observado pelo SIC)"
-                else:
-                    it.status = AGUARDANDO
-                    it.reason = (f"Sem data de fim e desativada — observada há {self._days(seen)} "
-                                 f"de {self.grace_days} dias")
+                it.status, it.reason = ELEGIVEL, "Sem data de fim e desativada"
             res.items[ENT_CAMPAIGNS][cid] = it
         return {i for i, it in res.items[ENT_CAMPAIGNS].items() if it.status != ELEGIVEL}
 
@@ -551,17 +465,7 @@ class LimpezaEngine:
         unknown = sorted(camps - self.campaigns.keys())
         return held, unknown
 
-    def _orphan_or(self, it: Item, seen: Optional[datetime], what: str) -> bool:
-        """Aplica a carência de órfão. True = carência vencida. Sem registro
-        de observação, conta como observado agora (falha segura)."""
-        if seen is not None and self._waited(seen):
-            return True
-        it.status = AGUARDANDO
-        it.reason = f"{what} — observado há {self._days(seen or self.now)} de {self.grace_days} dias"
-        return False
-
-    def _classify_promotions(self, res, obs, blocking):
-        orphan_seen = obs[(ENT_PROMOTIONS, OBS_ORPHAN)]
+    def _classify_promotions(self, res, blocking):
         for pid, p in self.promotions.items():
             camps = p["campaigns"]
             it = Item(ENT_PROMOTIONS, pid, info={
@@ -573,9 +477,7 @@ class LimpezaEngine:
             if term:
                 it.reason = f'Lista protegida ("{term}")'
             elif not camps:
-                if self._orphan_or(it, orphan_seen.get(pid), "Sem campanha"):
-                    it.status = ELEGIVEL
-                    it.reason = f"Sem campanha há {self._days(orphan_seen[pid])} dias (observado pelo SIC)"
+                it.status, it.reason = ELEGIVEL, "Sem campanha"
             elif held:
                 it.reason = "Ligada a campanha que fica: " + ", ".join(held)
             elif unknown:
@@ -584,9 +486,7 @@ class LimpezaEngine:
                 it.status, it.reason = ELEGIVEL, "Todas as campanhas dela serão excluídas"
             res.items[ENT_PROMOTIONS][pid] = it
 
-    def _classify_coupons(self, res, obs, blocking):
-        orphan_seen = obs[(ENT_COUPONS, OBS_ORPHAN)]
-        disabled_seen = obs[(ENT_COUPONS, OBS_COUPON_DISABLED)]
+    def _classify_coupons(self, res, blocking):
         for cid, c in self.coupons.items():
             camps = c["campaigns"]
             it = Item(ENT_COUPONS, cid, info={
@@ -608,27 +508,11 @@ class LimpezaEngine:
             if unknown:
                 it.status, it.reason = REVISAR, "Ligado a campanha que não está no arquivo: " + ", ".join(unknown)
                 continue
-            if not camps:
-                if not self._orphan_or(it, orphan_seen.get(cid), "Sem campanha"):
-                    continue
-                why = f"Sem campanha há {self._days(orphan_seen[cid])} dias"
-            else:
-                why = "Todas as campanhas dele serão excluídas"
-            # Cupom candidato: 1ª etapa desativa; exclusão só 30 dias depois (BRD-015, 4.5)
-            if c["enabled"]:
-                it.status, it.reason = DESATIVAR, f"{why} → 1ª etapa: desativar (reversível)"
-            else:
-                seen = disabled_seen[cid]
-                if self._waited(seen):
-                    it.status = ELEGIVEL
-                    it.reason = f"{why}; desativado há {self._days(seen)} dias → pode ser excluído"
-                else:
-                    it.status = AGUARDANDO
-                    it.reason = (f"{why}; desativado — observado há {self._days(seen)} "
-                                 f"de {self.grace_days} dias antes da exclusão")
+            # Regra do negócio: cupom sem vínculo com campanha que fica é excluído
+            it.status = ELEGIVEL
+            it.reason = "Sem campanha" if not camps else "Todas as campanhas dele serão excluídas"
 
-    def _classify_groups(self, res, obs, blocking):
-        orphan_seen = obs[(ENT_GROUPS, OBS_ORPHAN)]
+    def _classify_groups(self, res, blocking):
         for gid, g in self.groups.items():
             camps = g["campaigns"]
             it = Item(ENT_GROUPS, gid, info={
@@ -653,9 +537,7 @@ class LimpezaEngine:
             elif unknown:
                 it.status, it.reason = REVISAR, "Ligado a campanha que não está no arquivo: " + ", ".join(unknown)
             elif not camps:
-                if self._orphan_or(it, orphan_seen.get(gid), "Sem campanha"):
-                    it.status = ELEGIVEL
-                    it.reason = f"Sem campanha há {self._days(orphan_seen[gid])} dias (observado pelo SIC)"
+                it.status, it.reason = ELEGIVEL, "Sem campanha"
             else:
                 it.status, it.reason = ELEGIVEL, "Todas as campanhas dele serão excluídas"
             res.items[ENT_GROUPS][gid] = it
@@ -664,7 +546,7 @@ class LimpezaEngine:
         """Trava 7.2: muito volume numa rodada exige confirmação reforçada."""
         for e in ENTITIES:
             total = len(res.items[e])
-            n = res.counts(e)[ELEGIVEL] + res.counts(e)[DESATIVAR]
+            n = res.counts(e)[ELEGIVEL]
             if total and n / total > VOLUME_BRAKE:
                 res.volume_alerts.append(
                     f"{ENTITY_LABELS[e]}: {n} de {total} ({n / total:.0%}, limite {VOLUME_BRAKE:.0%})")
@@ -744,12 +626,11 @@ class LimpezaEngine:
         return [FILE_PROMO_DELETE, FILE_PROMO_ROLLBACK]
 
     def _write_coupons(self, res, folder: Path) -> list[str]:
-        to_delete, to_disable = res.ids(ENT_COUPONS, ELEGIVEL), res.ids(ENT_COUPONS, DESATIVAR)
+        to_delete = res.ids(ENT_COUPONS, ELEGIVEL)
         with self._open_xml(folder / FILE_COUPON_DELETE, "coupons", COUPONS_NS) as f:
             for cid in sorted(to_delete):
                 f.write(f'    <coupon coupon-id="{_attr(cid)}" mode="delete"/>\n')
             f.write("</coupons>\n")
-        disable = self._open_xml(folder / FILE_COUPON_DISABLE, "coupons", COUPONS_NS)
         rollback = self._open_xml(folder / FILE_COUPON_ROLLBACK, "coupons", COUPONS_NS)
         codes_tmp = folder / ".codes.tmp"
         codes_out = open(codes_tmp, "w", encoding="utf-8", newline="\n")
@@ -772,31 +653,22 @@ class LimpezaEngine:
                     del block[-1]
                 elif depth == 1:
                     if name == "coupon":
-                        cid = el.attrib.get("coupon-id", "").strip()
-                        if cid in to_delete or cid in to_disable:
+                        if el.attrib.get("coupon-id", "").strip() in to_delete:
                             rollback.write(self._ser(_copy(el), COUPONS_NS))
-                        if cid in to_disable:
-                            off = _copy(el)
-                            flag = off.find("{*}enabled-flag")
-                            if flag is None:
-                                flag = ET.SubElement(off, f"{{{COUPONS_NS}}}enabled-flag")
-                            flag.text = "false"
-                            disable.write(self._ser(off, COUPONS_NS))
                     elif name == "coupon-codes" and keep_block:
                         codes_out.write(self._ser(el, COUPONS_NS))
                     block, keep_block = None, False
                     root.clear()
             codes_out.close()
+            # Schema: todas as definições de cupom antes dos blocos de códigos
             with open(codes_tmp, encoding="utf-8") as src:
                 shutil.copyfileobj(src, rollback)
-            disable.write("</coupons>\n")
             rollback.write("</coupons>\n")
         finally:
             codes_out.close()
-            disable.close()
             rollback.close()
             codes_tmp.unlink(missing_ok=True)
-        return [FILE_COUPON_DISABLE, FILE_COUPON_DELETE, FILE_COUPON_ROLLBACK]
+        return [FILE_COUPON_DELETE, FILE_COUPON_ROLLBACK]
 
     def _write_groups(self, res, folder: Path) -> list[str]:
         to_delete = res.ids(ENT_GROUPS, ELEGIVEL)
@@ -833,15 +705,14 @@ class LimpezaEngine:
 
 # Nomes na ordem de importação (exclusão 1→3; rollback 1→3 é a ordem inversa)
 FILE_PROMO_DELETE = "1_EXCLUIR_CAMPANHAS_PROMOCOES.xml"
-FILE_COUPON_DISABLE = "2a_DESATIVAR_CUPONS.xml"
-FILE_COUPON_DELETE = "2b_EXCLUIR_CUPONS.xml"
+FILE_COUPON_DELETE = "2_EXCLUIR_CUPONS.xml"
 FILE_GROUP_DELETE = "3_EXCLUIR_CUSTOMER_GROUPS.xml"
 FILE_GROUP_ROLLBACK = "ROLLBACK_1_CUSTOMER_GROUPS.xml"
 FILE_COUPON_ROLLBACK = "ROLLBACK_2_CUPONS.xml"
 FILE_PROMO_ROLLBACK = "ROLLBACK_3_CAMPANHAS_PROMOCOES.xml"
 
 IMPORT_ORDER = (
-    ("Limpeza", [FILE_PROMO_DELETE, FILE_COUPON_DISABLE, FILE_COUPON_DELETE, FILE_GROUP_DELETE]),
+    ("Limpeza", [FILE_PROMO_DELETE, FILE_COUPON_DELETE, FILE_GROUP_DELETE]),
     ("Rollback (só se precisar voltar atrás)", [FILE_GROUP_ROLLBACK, FILE_COUPON_ROLLBACK, FILE_PROMO_ROLLBACK]),
 )
 
@@ -863,7 +734,6 @@ def _scan(path: Path, id_attr_by_tag: dict[str, str]) -> dict[str, Counter]:
     filhos <code> por bloco coupon-codes."""
     found: dict[str, Counter] = {t: Counter() for t in id_attr_by_tag}
     found["code"] = Counter()
-    found["disabled"] = Counter()
     depth = 0
     root = None
     block_id = ""
@@ -881,8 +751,6 @@ def _scan(path: Path, id_attr_by_tag: dict[str, str]) -> dict[str, Counter]:
         elif depth == 1:
             if name in id_attr_by_tag:
                 found[name][el.attrib.get(id_attr_by_tag[name], "")] += 1
-            if name == "coupon" and (el.findtext("{*}enabled-flag") or "").strip().lower() == "false":
-                found["disabled"][el.attrib.get("coupon-id", "")] += 1
             root.clear()
     return found
 
@@ -897,7 +765,7 @@ def verify_export(res: SimulationResult, engine: LimpezaEngine, folder: Path) ->
             problems.append(f"{label}: {len(missing)} faltando, {len(extra)} a mais, {len(dup)} repetidos")
 
     camps, promos = res.ids(ENT_CAMPAIGNS, ELEGIVEL), res.ids(ENT_PROMOTIONS, ELEGIVEL)
-    c_del, c_off = res.ids(ENT_COUPONS, ELEGIVEL), res.ids(ENT_COUPONS, DESATIVAR)
+    c_del = res.ids(ENT_COUPONS, ELEGIVEL)
     g_del = res.ids(ENT_GROUPS, ELEGIVEL)
     p_tags = {"campaign": "campaign-id", "promotion": "promotion-id"}
 
@@ -910,12 +778,8 @@ def verify_export(res: SimulationResult, engine: LimpezaEngine, folder: Path) ->
 
     d = _scan(folder / FILE_COUPON_DELETE, {"coupon": "coupon-id"})
     same("Exclusão de cupons", d["coupon"], c_del)
-    off = _scan(folder / FILE_COUPON_DISABLE, {"coupon": "coupon-id"})
-    same("Desativação de cupons", off["coupon"], c_off)
-    if set(off["disabled"]) != c_off:
-        problems.append("Desativação de cupons: há cupom sem enabled-flag=false")
     r = _scan(folder / FILE_COUPON_ROLLBACK, {"coupon": "coupon-id", "coupon-codes": "coupon-id"})
-    same("Rollback de cupons", r["coupon"], c_del | c_off)
+    same("Rollback de cupons", r["coupon"], c_del)
     for cid in c_del:
         want = engine.coupons[cid]["codes"]
         if r["code"].get(cid, 0) != want:
@@ -940,10 +804,7 @@ def verify_export(res: SimulationResult, engine: LimpezaEngine, folder: Path) ->
 # ─────────────────────────────────────────────────────────────────────────────
 _HEADER_FILL = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
 _HEADER_FONT = Font(bold=True, color="FFFFFF")
-_STATUS_FILL = {
-    PROTEGIDO: "D9EAD3", ELEGIVEL: "F4CCCC", DESATIVAR: "FCE5CD",
-    AGUARDANDO: "FFF2CC", REVISAR: "D0E0E3",
-}
+_STATUS_FILL = {PROTEGIDO: "D9EAD3", ELEGIVEL: "F4CCCC", REVISAR: "D0E0E3"}
 
 
 def build_workbook(res: SimulationResult) -> Workbook:
