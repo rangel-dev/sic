@@ -15,17 +15,15 @@ class LimpezaSimulationWorker(QThread):
     finished = Signal(object, object)   # (LimpezaEngine, SimulationResult)
     error_msg = Signal(str)
 
-    def __init__(self, files: dict[str, str], loja: str, protected_terms: list[str],
-                 grace_days: int, parent=None):
+    def __init__(self, files: dict[str, str], protected_terms: list[str], grace_days: int, parent=None):
         super().__init__(parent)
         self._files = dict(files)
-        self._loja = loja
         self._terms = list(protected_terms)
         self._grace_days = grace_days
 
     def run(self) -> None:
         try:
-            engine = LimpezaEngine(self._files, self._loja, protected_terms=self._terms,
+            engine = LimpezaEngine(self._files, protected_terms=self._terms,
                                    grace_days=self._grace_days, progress_callback=self.progress.emit)
             self.finished.emit(engine, engine.simulate())
         except Exception as exc:

@@ -1,7 +1,7 @@
 """
 Cupons → Limpeza de Campanhas (BRD-015).
 
-Fluxo: loja + 3 exports (reconhecidos pelo namespace) → simulação → revisão
+Fluxo: 3 exports (tipo pelo namespace, loja pela impressão digital) → simulação → revisão
 → confirmação explícita → XMLs de exclusão e rollback. O SIC só
 gera os arquivos; quem importa no Business Manager é o operador.
 """
@@ -41,8 +41,6 @@ from src.ui.components.base_widgets import Divider, SectionHeader, StatPill
 from src.workers.worker_limpeza import LimpezaExportWorker, LimpezaSimulationWorker
 
 _KEY_TERMS = "limpeza/lista_protegida"
-_KEY_LOJA = "limpeza/loja"
-_KEY_LOJAS = "limpeza/lojas_usadas"
 _KEY_GRACE = "limpeza/carencia_dias"
 
 _STATUS_COLORS = {
@@ -99,6 +97,7 @@ class CupomLimpezaView(QWidget):
         self._exp_worker: Optional[LimpezaExportWorker] = None
         self._setup_ui()
         self._refresh_files()
+        self._show_store(None)
 
     # ── Construção da UI ──────────────────────────────────────────────────
     def _setup_ui(self):
@@ -128,23 +127,14 @@ class CupomLimpezaView(QWidget):
         bl.setContentsMargins(16, 18, 16, 14)
         bl.setSpacing(10)
 
+        # A loja nunca é escolhida: é deduzida dos arquivos (regra 3 — incidente do Chile)
         loja_row = QHBoxLayout()
         lbl_loja = QLabel("Loja")
         lbl_loja.setObjectName("label_section")
         loja_row.addWidget(lbl_loja)
-        # Lista editável (N6 — qualquer loja LATAM): sugestões + lojas já usadas
-        self._cmb_loja = QComboBox()
-        self._cmb_loja.setEditable(True)
-        self._cmb_loja.setInsertPolicy(QComboBox.NoInsert)
-        self._cmb_loja.addItems(self._known_lojas())
-        self._cmb_loja.lineEdit().setPlaceholderText("Escolha ou digite a loja (ex.: Natura Chile)")
-        self._cmb_loja.setEditText(str(self._settings.value(_KEY_LOJA, "")))
-        self._cmb_loja.setFixedWidth(260)
-        self._cmb_loja.editTextChanged.connect(self._invalidate)
-        loja_row.addWidget(self._cmb_loja)
-        hint = QLabel("Use os 3 exports da mesma loja, baixados no mesmo momento.")
-        hint.setObjectName("label_muted")
-        loja_row.addWidget(hint, 1)
+        self._lbl_store = QLabel()
+        self._lbl_store.setTextFormat(Qt.RichText)
+        loja_row.addWidget(self._lbl_store, 1)
         bl.addLayout(loja_row)
 
         bl.addWidget(_DropArea(self._add_files))
@@ -337,20 +327,6 @@ class CupomLimpezaView(QWidget):
             else:
                 row.setText(f"<span style='color:#888'>○&nbsp; {label} — faltando</span>")
 
-    # ── Lojas ─────────────────────────────────────────────────────────────
-    def _known_lojas(self) -> list[str]:
-        used = [s for s in str(self._settings.value(_KEY_LOJAS, "")).split("|") if s.strip()]
-        out: list[str] = []
-        for name in [*used, *le.DEFAULT_LOJAS]:
-            if le.loja_key(name) not in {le.loja_key(o) for o in out}:
-                out.append(name)
-        return out
-
-    def _remember_loja(self, name: str):
-        lojas = [name] + [o for o in self._known_lojas() if le.loja_key(o) != le.loja_key(name)]
-        self._settings.setValue(_KEY_LOJAS, "|".join(lojas))
-        self._settings.setValue(_KEY_LOJA, name)
-
     # ── Simulação ─────────────────────────────────────────────────────────
     def _terms(self) -> list[str]:
         return [t.strip() for t in self._txt_terms.text().split(",") if t.strip()]
@@ -360,23 +336,29 @@ class CupomLimpezaView(QWidget):
         self._result = None
         self._engine = None
         self._result_box.hide()
+        self._show_store(None)
+
+    def _show_store(self, res: Optional[le.SimulationResult]):
+        if res is None:
+            self._lbl_store.setText("<span style='color:#888'>identificada automaticamente pelos arquivos "
+                                    "ao simular — não dá para escolher</span>")
+        elif res.detection.ok:
+            self._lbl_store.setText(f"<span style='color:#28a745'>✓</span>&nbsp; <b>{res.store.name}</b> "
+                                    f"<span style='color:#888'>— identificada pelos arquivos</span>")
+        else:
+            self._lbl_store.setText("<span style='color:#d93025'><b>⛔ Loja não confirmada</b></span>")
 
     def _simulate(self):
-        loja = " ".join(self._cmb_loja.currentText().split())
-        if not le.loja_key(loja):
-            QMessageBox.warning(self, "Limpeza de Campanhas", "Escolha ou digite a <b>loja</b> da limpeza.")
-            return
         missing = [le.KIND_LABELS[k] for k in self._file_rows if k not in self._files]
         if missing:
             QMessageBox.warning(self, "Limpeza de Campanhas",
                                 "Faltam os arquivos: <b>" + ", ".join(missing) + "</b>.")
             return
-        self._remember_loja(loja)
         self._settings.setValue(_KEY_TERMS, ", ".join(self._terms()))
         self._settings.setValue(_KEY_GRACE, self._spn_grace.value())
         self._set_busy(True)
         self._sim_worker = LimpezaSimulationWorker(
-            self._files, loja, self._terms(), self._spn_grace.value(), self)
+            self._files, self._terms(), self._spn_grace.value(), self)
         self._sim_worker.progress.connect(self._on_progress)
         self._sim_worker.finished.connect(self._on_simulated)
         self._sim_worker.error_msg.connect(self._on_error)
@@ -404,14 +386,15 @@ class CupomLimpezaView(QWidget):
         self._set_busy(False)
         self._show_result(res)
         HistoryEngine.add_entry(
-            "Limpeza de Campanhas", res.loja,
+            "Limpeza de Campanhas", res.store_name,
             f"Simulação — {res.affected_total} itens para limpar.",
             self._counts_text(res),
         )
 
     def _show_result(self, res: le.SimulationResult):
-        if not res.coherence_ok:
-            banner = f"<span style='color:#d93025'><b>⛔ Bloqueado:</b> {res.coherence_msg}</span>"
+        self._show_store(res)
+        if res.blocked_msg:
+            banner = f"<span style='color:#d93025'><b>⛔ Bloqueado:</b> {res.blocked_msg}</span>"
         else:
             parts = []
             if res.affected_total == 0:
@@ -467,7 +450,7 @@ class CupomLimpezaView(QWidget):
         stamp = self._result.now.astimezone().strftime("%Y%m%d_%H%M")
         path, _ = QFileDialog.getSaveFileName(
             self, "Salvar planilha da simulação",
-            f"SIMULACAO_LIMPEZA_{self._result.loja_key.upper()}_{stamp}.xlsx", "Excel (*.xlsx)")
+            f"SIMULACAO_LIMPEZA_{self._result.store.code if self._result.store else 'LOJA-NAO-IDENTIFICADA'}_{stamp}.xlsx", "Excel (*.xlsx)")
         if path:
             le.build_workbook(self._result).save(path)
             QMessageBox.information(self, "Salvo", f"Planilha salva em:\n{path}")
@@ -481,13 +464,16 @@ class CupomLimpezaView(QWidget):
             c = res.counts(e)
             if c[le.ELEGIVEL]:
                 lines.append(f"• Excluir {c[le.ELEGIVEL]} {le.ENTITY_LABELS[e].lower()}")
-        order = "<br>".join(f"&nbsp;&nbsp;{i}. {n}" for i, n in enumerate(le.IMPORT_ORDER[0][1], 1))
+        order = "<br>".join(f"&nbsp;&nbsp;{i}. {le.file_name(n, res.store)}"
+                            for i, n in enumerate(le.IMPORT_ORDER[0][1], 1))
         box = QMessageBox(self)
         box.setWindowTitle("Confirmar geração dos arquivos")
         box.setIcon(QMessageBox.Warning)
         box.setTextFormat(Qt.RichText)
         box.setText(
-            f"<b>Loja: {res.loja}</b>  ·  carência de {res.grace_days} dias para campanhas vencidas<br><br>"
+            f"<span style='font-size:15px'><b>⚠ Importe SOMENTE no site {res.store.name}</b></span>"
+            f"<br>Loja identificada pelos arquivos ({res.store.code})  ·  carência de {res.grace_days} dias "
+            "para campanhas vencidas<br><br>"
             + "<br>".join(lines)
             + f"<br><br><b>Ordem de importação no Business Manager:</b><br>{order}"
             "<br><br>Os rollbacks são gerados junto e devolvem os itens com os códigos dos cupons. "
@@ -526,7 +512,7 @@ class CupomLimpezaView(QWidget):
         self._set_busy(False)
         res = self._result
         HistoryEngine.add_entry(
-            "Limpeza de Campanhas", res.loja,
+            "Limpeza de Campanhas", res.store_name,
             f"Arquivos de limpeza gerados — {res.affected_total} itens.",
             self._counts_text(res),
         )
@@ -534,7 +520,7 @@ class CupomLimpezaView(QWidget):
         box.setWindowTitle("Arquivos gerados")
         box.setIcon(QMessageBox.Information)
         box.setText(f"Arquivos gerados e conferidos em:\n{out.folder}\n\n"
-                    "Importe no Business Manager na ordem dos números (1, 2, 3). "
+                    f"Importe SOMENTE no site {res.store.name}, na ordem dos números (1, 2, 3). "
                     "Guarde os arquivos ROLLBACK: eles desfazem a limpeza.")
         btn_open = box.addButton("Abrir pasta", QMessageBox.ActionRole)
         box.addButton(QMessageBox.Ok)

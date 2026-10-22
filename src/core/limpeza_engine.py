@@ -72,8 +72,56 @@ ELEGIVEL = "Elegível"            # entra no XML de exclusão
 REVISAR = "Revisar"              # nunca entra em XML; decisão humana
 STATUSES = (PROTEGIDO, ELEGIVEL, REVISAR)
 
-# Sugestões iniciais; o operador pode digitar qualquer loja LATAM (N6)
-DEFAULT_LOJAS = ("Natura Brasil", "Avon Brasil", "Minha Loja (CB)")
+# ── Lojas atendidas (N6 — LATAM) e impressão digital de cada uma ────────────
+# O export do SFCC não diz de qual site veio. A loja é deduzida do conteúdo:
+# o catálogo citado nas promoções dá marca + país; o prefixo dos produtos
+# (NATBRA-, AVNMEX-…) confere o país. Loja não reconhecida = bloqueado
+# (regra 3 — incidente do Chile). Para atender uma loja nova, cadastre aqui.
+@dataclass(frozen=True)
+class Store:
+    key: str        # "natura-br"
+    name: str       # "Natura Brasil"
+    country: str    # "br"
+
+    @property
+    def code(self) -> str:
+        return self.key.upper()
+
+
+STORES = {s.key: s for s in (
+    Store("natura-br", "Natura Brasil", "br"),
+    Store("natura-ar", "Natura Argentina", "ar"),
+    Store("natura-cl", "Natura Chile", "cl"),
+    Store("natura-co", "Natura Colômbia", "co"),
+    Store("natura-pe", "Natura Peru", "pe"),
+    Store("natura-mx", "Natura México", "mx"),
+    Store("avon-br", "Avon Brasil", "br"),
+    Store("avon-ar", "Avon Argentina", "ar"),
+    Store("avon-mx", "Avon México", "mx"),
+    Store("cb-br", "Minha Loja (CB) Brasil", "br"),
+)}
+CATALOG_STORE = {
+    "natura-br-storefront-catalog": "natura-br",
+    "natura-ar-storefront-catalog": "natura-ar",
+    "ar-natura-argentina-sale-prices": "natura-ar",
+    "natura-cl-storefront-catalog": "natura-cl",
+    "nat-chl-master-catalog": "natura-cl",
+    "natura-co-storefront-catalog": "natura-co",
+    "natura-pe-storefront-catalog": "natura-pe",
+    "nat-mex-storefront-catalog": "natura-mx",
+    "nat-mex-b2b2c-catalog": "natura-mx",
+    "avon-br-storefront-catalog": "avon-br",
+    "avon-ar-storefront-catalog": "avon-ar",
+    "avon-mx-storefront-catalog": "avon-mx",
+    "avon-mx-storefront-ctlg-old": "avon-mx",
+    "cb-br-storefront-catalog": "cb-br",
+}
+# Catálogos compartilhados, sem loja: não contam para nenhum lado
+NEUTRAL_CATALOGS = {"nat-master-catalog", "storefront-catalog-en", "catalog-id", "apparel-catalog"}
+SKU_COUNTRY = {"BRA": "br", "ARG": "ar", "CHL": "cl", "COL": "co", "PER": "pe", "MEX": "mx"}
+COUNTRY_NAMES = {"br": "Brasil", "ar": "Argentina", "cl": "Chile", "co": "Colômbia", "pe": "Peru", "mx": "México"}
+_CATALOG_RE = re.compile(rb'catalog-id="([^"]+)"')
+_SKU_RE = re.compile(rb"(?<![A-Za-z0-9])(?:NAT|AVN)(BRA|ARG|CHL|COL|PER|MEX)-\d")
 
 # ── Parâmetros (BRD-015 — respostas do negócio às pendências N1 a N6) ───────
 GRACE_DAYS = 30                # padrão da régua (N3) — só para campanhas vencidas
@@ -83,14 +131,6 @@ SYSTEM_GROUPS = {"everyone", "registered", "unregistered"}   # grupos padrão do
 INFRA_GROUP_TERMS = ("dont_remove", "dontremove")            # o próprio nome pede para não apagar
 COHERENCE_MAX_MISSING = 0.10   # trava 7.1
 VOLUME_BRAKE = 0.30            # trava 7.2
-
-
-def loja_key(name: str) -> str:
-    """Chave estável da loja para o nome da pasta de saída: sem acento,
-    minúscula, só letras/números/hífen. "Natura Chile" → "natura-chile"."""
-    import unicodedata
-    plain = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]+", "-", plain.lower()).strip("-")
 
 
 ProgressFn = Callable[[int, str], None]
@@ -120,6 +160,79 @@ def parse_sfcc_date(text: Optional[str]) -> tuple[Optional[datetime], bool]:
 
 def _fmt_dt(dt: Optional[datetime]) -> str:
     return dt.strftime("%d/%m/%Y %H:%M") if dt else ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Exports com referência de caractere inválida
+# ─────────────────────────────────────────────────────────────────────────────
+# O SFCC exporta emoji como par de referências UTF-16 (ex.: "&#55357;&#56541;"
+# para 📝), o que o XML proíbe — o export real do Chile derrubava a leitura.
+# Antes de ler, o par vira a referência certa do emoji; referência que não
+# vira caractere válido (controle solto, surrogate sozinho) é descartada.
+_CHARREF_RE = re.compile(rb"&#(x[0-9a-fA-F]+|[0-9]+);(?:&#(x[0-9a-fA-F]+|[0-9]+);)?")
+
+
+def _ref_value(tok: bytes) -> int:
+    return int(tok[1:], 16) if tok[:1] in (b"x", b"X") else int(tok)
+
+
+def _valid_xml_char(cp: int) -> bool:
+    return (cp in (0x9, 0xA, 0xD) or 0x20 <= cp <= 0xD7FF or 0xE000 <= cp <= 0xFFFD
+            or 0x10000 <= cp <= 0x10FFFF)
+
+
+def _fix_charrefs(data: bytes) -> bytes:
+    def repl(m: re.Match) -> bytes:
+        a = _ref_value(m.group(1))
+        b = _ref_value(m.group(2)) if m.group(2) else None
+        if 0xD800 <= a <= 0xDBFF and b is not None and 0xDC00 <= b <= 0xDFFF:
+            return b"&#%d;" % (0x10000 + ((a - 0xD800) << 10) + (b - 0xDC00))
+        out = b"&#%d;" % a if _valid_xml_char(a) else b""
+        if b is not None and _valid_xml_char(b):
+            out += b"&#%d;" % b
+        return out
+    return _CHARREF_RE.sub(repl, data) if b"&#" in data else data
+
+
+class _CleanXmlReader:
+    """Lê o export em blocos já corrigindo as referências de caractere,
+    sem carregar o arquivo inteiro (exports de cupons chegam a 300 MB)."""
+
+    _TAIL = 64   # guarda o fim do bloco: um par de referências pode estar no meio
+
+    def __init__(self, path: str):
+        self._f = open(path, "rb")
+        self._pending = b""
+
+    def read(self, size: int = -1) -> bytes:
+        while True:
+            data = self._f.read(size if size and size > 0 else -1)
+            if not data:
+                out, self._pending = self._pending, b""
+                return _fix_charrefs(out)
+            buf = self._pending + data
+            cut = buf.find(b"&", max(0, len(buf) - self._TAIL))
+            if cut == -1:
+                self._pending = b""
+                return _fix_charrefs(buf)
+            self._pending = buf[cut:]
+            if cut:
+                return _fix_charrefs(buf[:cut])
+
+    def close(self) -> None:
+        self._f.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+
+def _iterparse(path: str, events=("start", "end")):
+    """iterparse sobre o export corrigido (ver _CleanXmlReader)."""
+    with _CleanXmlReader(path) as src:
+        yield from ET.iterparse(src, events=events)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -162,6 +275,91 @@ def classify_files(paths: list[str], current: Optional[dict[str, str]] = None) -
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Identificação da loja pela impressão digital dos arquivos
+# ─────────────────────────────────────────────────────────────────────────────
+@dataclass
+class StoreDetection:
+    store: Optional[Store] = None
+    ok: bool = False
+    message: str = ""
+    catalogs: dict[str, int] = field(default_factory=dict)            # catálogo -> ocorrências
+    countries: dict[str, dict[str, int]] = field(default_factory=dict)  # tipo de arquivo -> país -> produtos
+
+
+def _scan_signals(path: str) -> tuple[Counter, Counter]:
+    """Varre o arquivo bruto (em blocos, sem montar XML) atrás de catálogos
+    citados e de prefixos de produto. Rápido mesmo em exports de 300 MB."""
+    catalogs: Counter = Counter()
+    countries: Counter = Counter()
+    overlap = 512
+    buf = b""
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(4 << 20)
+            if chunk:
+                buf += chunk
+                limit = len(buf) - overlap
+            else:
+                limit = len(buf)
+            # Conta só o que começa antes do limite; o resto vai para a próxima volta
+            for m in _CATALOG_RE.finditer(buf):
+                if m.start() < limit:
+                    catalogs[m.group(1).decode("utf-8", "replace").strip()] += 1
+            for m in _SKU_RE.finditer(buf):
+                if m.start() < limit:
+                    countries[SKU_COUNTRY[m.group(1).decode()]] += 1
+            if not chunk:
+                break
+            if limit > 0:
+                buf = buf[limit:]
+    return catalogs, countries
+
+
+def detect_store(files: dict[str, str]) -> StoreDetection:
+    """Deduz a loja dos 3 exports. Bloqueia (ok=False) quando não há
+    catálogo de loja atendida, quando aparece catálogo desconhecido, quando
+    há sinais de mais de uma loja ou produtos de outro país."""
+    det = StoreDetection()
+    catalogs: Counter = Counter()
+    for kind, path in files.items():
+        cats, ctry = _scan_signals(path)
+        catalogs += cats
+        det.countries[kind] = dict(ctry)
+    det.catalogs = dict(catalogs)
+
+    unknown = sorted(c for c in catalogs if c not in CATALOG_STORE and c not in NEUTRAL_CATALOGS)
+    stores = sorted({CATALOG_STORE[c] for c in catalogs if c in CATALOG_STORE})
+    if len(stores) == 1:
+        det.store = STORES[stores[0]]
+
+    if unknown:
+        det.message = ("Os arquivos citam catálogo de loja que o SIC não atende: " + ", ".join(unknown)
+                       + ". Confira se exportou do site certo.")
+    elif not stores:
+        det.message = ("Não encontrei nos arquivos nenhum catálogo de loja atendida (ex.: "
+                       "natura-br-storefront-catalog). Sem saber de qual loja são os arquivos, a limpeza "
+                       "fica bloqueada.")
+    elif len(stores) > 1:
+        det.message = ("Os arquivos têm sinais de mais de uma loja: "
+                       + ", ".join(STORES[s].name for s in stores) + ". Exporte os 3 de novo, do mesmo site.")
+    else:
+        foreign = []
+        for kind, ctry in det.countries.items():
+            others = sorted(c for c in ctry if c != det.store.country)
+            if others:
+                foreign.append(f"o arquivo de {KIND_LABELS[kind].lower()} tem produtos de outro país ("
+                               + ", ".join(COUNTRY_NAMES[c] for c in others) + ")")
+        if foreign:
+            det.message = (f"Os arquivos parecem ser de {det.store.name}, mas " + "; ".join(foreign)
+                           + ". Exporte os 3 de novo, do mesmo site.")
+        else:
+            det.ok = True
+    if not det.ok:
+        det.message = "Loja não confirmada — a limpeza foi bloqueada. " + det.message
+    return det
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  Resultado
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
@@ -175,8 +373,7 @@ class Item:
 
 @dataclass
 class SimulationResult:
-    loja: str            # nome exibido ("Natura Chile")
-    loja_key: str        # usada no nome da pasta de saída ("natura-chile")
+    detection: StoreDetection   # loja deduzida dos arquivos (nunca escolhida)
     now: datetime
     grace_days: int
     files: dict[str, str]
@@ -201,8 +398,23 @@ class SimulationResult:
         return sum(self.counts(e)[ELEGIVEL] for e in ENTITIES)
 
     @property
+    def store(self) -> Optional[Store]:
+        return self.detection.store
+
+    @property
+    def store_name(self) -> str:
+        return self.store.name if self.store else "não identificada"
+
+    @property
+    def blocked_msg(self) -> str:
+        """Motivo do bloqueio (loja ou coerência), ou "" se pode seguir."""
+        if not self.detection.ok:
+            return self.detection.message
+        return "" if self.coherence_ok else self.coherence_msg
+
+    @property
     def can_export(self) -> bool:
-        return self.coherence_ok and self.affected_total > 0
+        return not self.blocked_msg and self.affected_total > 0
 
 
 @dataclass
@@ -218,7 +430,6 @@ class LimpezaEngine:
     def __init__(
         self,
         files: dict[str, str],
-        loja: str,
         protected_terms: Optional[list[str]] = None,
         grace_days: int = GRACE_DAYS,
         now: Optional[datetime] = None,
@@ -230,10 +441,6 @@ class LimpezaEngine:
         for kind, path in files.items():
             if detect_kind(path) != kind:
                 raise LimpezaError(f"O arquivo {Path(path).name} não é um export de {KIND_LABELS[kind].lower()}.")
-        self.loja = " ".join((loja or "").split())
-        self.loja_key = loja_key(self.loja)
-        if not self.loja_key:
-            raise LimpezaError("Informe a loja da limpeza.")
         if not GRACE_MIN_DAYS <= grace_days <= GRACE_MAX_DAYS:
             raise LimpezaError(f"A carência precisa ficar entre {GRACE_MIN_DAYS} e {GRACE_MAX_DAYS} dias.")
         self.files = dict(files)
@@ -262,7 +469,8 @@ class LimpezaEngine:
 
     def _load_promotions(self):
         self._progress(5, "Lendo promoções e campanhas…")
-        root = ET.parse(self.files[KIND_PROMOTIONS]).getroot()
+        with _CleanXmlReader(self.files[KIND_PROMOTIONS]) as src:
+            root = ET.parse(src).getroot()
         self._promo_root = root
         coupon_links: dict[str, set[str]] = {}
         group_links: dict[str, set[str]] = {}
@@ -323,7 +531,7 @@ class LimpezaEngine:
         root = block = None
         block_id = ""
         depth = 0
-        for ev, el in ET.iterparse(self.files[KIND_COUPONS], events=("start", "end")):
+        for ev, el in _iterparse(self.files[KIND_COUPONS]):
             if ev == "start":
                 depth += 1
                 if root is None:
@@ -358,7 +566,7 @@ class LimpezaEngine:
         members: Counter = Counter()
         root = None
         depth = 0
-        for ev, el in ET.iterparse(self.files[KIND_CUSTOMER_GROUPS], events=("start", "end")):
+        for ev, el in _iterparse(self.files[KIND_CUSTOMER_GROUPS]):
             if ev == "start":
                 depth += 1
                 root = root if root is not None else el
@@ -385,13 +593,15 @@ class LimpezaEngine:
     def simulate(self) -> SimulationResult:
         """Classifica tudo. Não grava nada: o resultado depende só dos 3
         arquivos, da data e da carência — igual em qualquer computador."""
+        self._progress(2, "Identificando a loja pelos arquivos…")
+        detection = detect_store(self.files)
         self._load_promotions()
         self._load_coupons()
         self._load_groups()
         self._progress(65, "Conferindo coerência entre os arquivos…")
 
         res = SimulationResult(
-            loja=self.loja, loja_key=self.loja_key, now=self.now, grace_days=self.grace_days,
+            detection=detection, now=self.now, grace_days=self.grace_days,
             files=dict(self.files), items={e: {} for e in ENTITIES},
         )
         self._check_coherence(res)
@@ -553,12 +763,12 @@ class LimpezaEngine:
 
     # ── Exportação (só após confirmação na tela) ─────────────────────────
     def export(self, res: SimulationResult, output_dir: str) -> ExportResult:
-        if not res.coherence_ok:
-            raise LimpezaError(res.coherence_msg)
-        if self._promo_root is None:
+        if res.blocked_msg:
+            raise LimpezaError(res.blocked_msg)
+        if self._promo_root is None or res.store is None:
             raise LimpezaError("Rode a simulação antes de gerar os arquivos.")
         stamp = res.now.astimezone().strftime("%Y%m%d_%H%M")
-        final = Path(output_dir) / f"LIMPEZA_{res.loja_key.upper()}_{stamp}"
+        final = Path(output_dir) / f"LIMPEZA_{res.store.code}_{stamp}"
         if final.exists():
             raise LimpezaError(f"A pasta {final.name} já existe. Escolha outra pasta ou aguarde um minuto.")
         tmp = Path(tempfile.mkdtemp(prefix=".limpeza_", dir=output_dir))
@@ -570,8 +780,9 @@ class LimpezaEngine:
             self._progress(65, "Gerando XMLs de customer groups…")
             names += self._write_groups(res, tmp)
             self._progress(80, "Gerando a planilha da simulação…")
-            build_workbook(res).save(tmp / "SIMULACAO_LIMPEZA.xlsx")
-            names.append("SIMULACAO_LIMPEZA.xlsx")
+            sheet = file_name(FILE_SHEET, res.store)
+            build_workbook(res).save(tmp / sheet)
+            names.append(sheet)
             self._progress(90, "Conferindo os rollbacks…")
             verify_export(res, self, tmp)
             os.replace(tmp, final)
@@ -582,9 +793,17 @@ class LimpezaEngine:
         return ExportResult(str(final), [str(final / n) for n in names])
 
     @staticmethod
-    def _open_xml(path: Path, root_tag: str, ns: str):
-        f = open(path, "w", encoding="utf-8", newline="\n")
-        f.write(f'<?xml version="1.0" encoding="UTF-8"?>\n<{root_tag} xmlns="{ns}">\n')
+    def _open_xml(res: SimulationResult, folder: Path, template: str, root_tag: str, ns: str):
+        """Abre o XML de saída já com o aviso da loja no topo: o formato de
+        importação do SFCC não tem campo de site, então o aviso fica num
+        comentário (ignorado na importação) e no nome do arquivo."""
+        store = res.store
+        f = open(folder / file_name(template, store), "w", encoding="utf-8", newline="\n")
+        f.write('<?xml version="1.0" encoding="UTF-8"?>\n'
+                f"<!-- Gerado pelo SIC (Limpeza de Campanhas) em "
+                f"{res.now.astimezone().strftime('%d/%m/%Y %H:%M')} para o site {store.name} "
+                f"({store.code}). Importe SOMENTE no site {store.name}. -->\n"
+                f'<{root_tag} xmlns="{ns}">\n')
         return f
 
     @staticmethod
@@ -601,7 +820,7 @@ class LimpezaEngine:
 
     def _write_promotions(self, res, folder: Path) -> list[str]:
         camps, promos = res.ids(ENT_CAMPAIGNS, ELEGIVEL), res.ids(ENT_PROMOTIONS, ELEGIVEL)
-        with self._open_xml(folder / FILE_PROMO_DELETE, "promotions", PROMOTIONS_NS) as f:
+        with self._open_xml(res, folder, FILE_PROMO_DELETE, "promotions", PROMOTIONS_NS) as f:
             for cid in sorted(camps):
                 f.write(f'    <campaign campaign-id="{_attr(cid)}" mode="delete"/>\n')
             for pid in sorted(promos):
@@ -617,28 +836,28 @@ class LimpezaEngine:
                 return promo in promos
             return camp in camps or promo in promos
 
-        with self._open_xml(folder / FILE_PROMO_ROLLBACK, "promotions", PROMOTIONS_NS) as f:
+        with self._open_xml(res, folder, FILE_PROMO_ROLLBACK, "promotions", PROMOTIONS_NS) as f:
             for kind in ("campaign", "promotion", "promotion-campaign-assignment"):
                 for el in self._promo_root:
                     if _local(el.tag) == kind and wanted(el, kind):
                         f.write(self._ser(_copy(el), PROMOTIONS_NS))
             f.write("</promotions>\n")
-        return [FILE_PROMO_DELETE, FILE_PROMO_ROLLBACK]
+        return [file_name(t, res.store) for t in (FILE_PROMO_DELETE, FILE_PROMO_ROLLBACK)]
 
     def _write_coupons(self, res, folder: Path) -> list[str]:
         to_delete = res.ids(ENT_COUPONS, ELEGIVEL)
-        with self._open_xml(folder / FILE_COUPON_DELETE, "coupons", COUPONS_NS) as f:
+        with self._open_xml(res, folder, FILE_COUPON_DELETE, "coupons", COUPONS_NS) as f:
             for cid in sorted(to_delete):
                 f.write(f'    <coupon coupon-id="{_attr(cid)}" mode="delete"/>\n')
             f.write("</coupons>\n")
-        rollback = self._open_xml(folder / FILE_COUPON_ROLLBACK, "coupons", COUPONS_NS)
+        rollback = self._open_xml(res, folder, FILE_COUPON_ROLLBACK, "coupons", COUPONS_NS)
         codes_tmp = folder / ".codes.tmp"
         codes_out = open(codes_tmp, "w", encoding="utf-8", newline="\n")
         try:
             root = block = None
             keep_block = False
             depth = 0
-            for ev, el in ET.iterparse(self.files[KIND_COUPONS], events=("start", "end")):
+            for ev, el in _iterparse(self.files[KIND_COUPONS]):
                 if ev == "start":
                     depth += 1
                     if root is None:
@@ -668,11 +887,11 @@ class LimpezaEngine:
             codes_out.close()
             rollback.close()
             codes_tmp.unlink(missing_ok=True)
-        return [FILE_COUPON_DELETE, FILE_COUPON_ROLLBACK]
+        return [file_name(t, res.store) for t in (FILE_COUPON_DELETE, FILE_COUPON_ROLLBACK)]
 
     def _write_groups(self, res, folder: Path) -> list[str]:
         to_delete = res.ids(ENT_GROUPS, ELEGIVEL)
-        with self._open_xml(folder / FILE_GROUP_DELETE, "customer-groups", CUSTOMER_GROUPS_NS) as f:
+        with self._open_xml(res, folder, FILE_GROUP_DELETE, "customer-groups", CUSTOMER_GROUPS_NS) as f:
             for gid in sorted(to_delete):
                 f.write(f'    <customer-group group-id="{_attr(gid)}" mode="delete"/>\n')
             f.write("</customer-groups>\n")
@@ -680,7 +899,7 @@ class LimpezaEngine:
         members_xml: list[str] = []
         root = None
         depth = 0
-        for ev, el in ET.iterparse(self.files[KIND_CUSTOMER_GROUPS], events=("start", "end")):
+        for ev, el in _iterparse(self.files[KIND_CUSTOMER_GROUPS]):
             if ev == "start":
                 depth += 1
                 root = root if root is not None else el
@@ -696,20 +915,26 @@ class LimpezaEngine:
                     members_xml.append(self._ser(_copy(el), CUSTOMER_GROUPS_NS))
             root.clear()
         # Sempre gerado, mesmo vazio (BRD-015, 5.4)
-        with self._open_xml(folder / FILE_GROUP_ROLLBACK, "customer-groups", CUSTOMER_GROUPS_NS) as f:
+        with self._open_xml(res, folder, FILE_GROUP_ROLLBACK, "customer-groups", CUSTOMER_GROUPS_NS) as f:
             f.writelines(groups_xml)
             f.writelines(members_xml)
             f.write("</customer-groups>\n")
-        return [FILE_GROUP_DELETE, FILE_GROUP_ROLLBACK]
+        return [file_name(t, res.store) for t in (FILE_GROUP_DELETE, FILE_GROUP_ROLLBACK)]
 
 
 # Nomes na ordem de importação (exclusão 1→3; rollback 1→3 é a ordem inversa)
-FILE_PROMO_DELETE = "1_EXCLUIR_CAMPANHAS_PROMOCOES.xml"
-FILE_COUPON_DELETE = "2_EXCLUIR_CUPONS.xml"
-FILE_GROUP_DELETE = "3_EXCLUIR_CUSTOMER_GROUPS.xml"
-FILE_GROUP_ROLLBACK = "ROLLBACK_1_CUSTOMER_GROUPS.xml"
-FILE_COUPON_ROLLBACK = "ROLLBACK_2_CUPONS.xml"
-FILE_PROMO_ROLLBACK = "ROLLBACK_3_CAMPANHAS_PROMOCOES.xml"
+# A loja vai no nome de cada arquivo: é o que o operador vê ao importar
+FILE_PROMO_DELETE = "1_EXCLUIR_CAMPANHAS_PROMOCOES_{loja}.xml"
+FILE_COUPON_DELETE = "2_EXCLUIR_CUPONS_{loja}.xml"
+FILE_GROUP_DELETE = "3_EXCLUIR_CUSTOMER_GROUPS_{loja}.xml"
+FILE_GROUP_ROLLBACK = "ROLLBACK_1_CUSTOMER_GROUPS_{loja}.xml"
+FILE_COUPON_ROLLBACK = "ROLLBACK_2_CUPONS_{loja}.xml"
+FILE_PROMO_ROLLBACK = "ROLLBACK_3_CAMPANHAS_PROMOCOES_{loja}.xml"
+FILE_SHEET = "SIMULACAO_LIMPEZA_{loja}.xlsx"
+
+
+def file_name(template: str, store: Store) -> str:
+    return template.format(loja=store.code)
 
 IMPORT_ORDER = (
     ("Limpeza", [FILE_PROMO_DELETE, FILE_COUPON_DELETE, FILE_GROUP_DELETE]),
@@ -769,16 +994,16 @@ def verify_export(res: SimulationResult, engine: LimpezaEngine, folder: Path) ->
     g_del = res.ids(ENT_GROUPS, ELEGIVEL)
     p_tags = {"campaign": "campaign-id", "promotion": "promotion-id"}
 
-    d = _scan(folder / FILE_PROMO_DELETE, p_tags)
+    d = _scan(folder / file_name(FILE_PROMO_DELETE, res.store), p_tags)
     same("Exclusão de campanhas", d["campaign"], camps)
     same("Exclusão de promoções", d["promotion"], promos)
-    r = _scan(folder / FILE_PROMO_ROLLBACK, p_tags)
+    r = _scan(folder / file_name(FILE_PROMO_ROLLBACK, res.store), p_tags)
     same("Rollback de campanhas", r["campaign"], camps)
     same("Rollback de promoções", r["promotion"], promos)
 
-    d = _scan(folder / FILE_COUPON_DELETE, {"coupon": "coupon-id"})
+    d = _scan(folder / file_name(FILE_COUPON_DELETE, res.store), {"coupon": "coupon-id"})
     same("Exclusão de cupons", d["coupon"], c_del)
-    r = _scan(folder / FILE_COUPON_ROLLBACK, {"coupon": "coupon-id", "coupon-codes": "coupon-id"})
+    r = _scan(folder / file_name(FILE_COUPON_ROLLBACK, res.store), {"coupon": "coupon-id", "coupon-codes": "coupon-id"})
     same("Rollback de cupons", r["coupon"], c_del)
     for cid in c_del:
         want = engine.coupons[cid]["codes"]
@@ -786,9 +1011,9 @@ def verify_export(res: SimulationResult, engine: LimpezaEngine, folder: Path) ->
             problems.append(f"Rollback de cupons: códigos de um cupom não batem ({r['code'].get(cid, 0)} de {want})")
             break
 
-    d = _scan(folder / FILE_GROUP_DELETE, {"customer-group": "group-id"})
+    d = _scan(folder / file_name(FILE_GROUP_DELETE, res.store), {"customer-group": "group-id"})
     same("Exclusão de customer groups", d["customer-group"], g_del)
-    r = _scan(folder / FILE_GROUP_ROLLBACK, {"customer-group": "group-id", "group-assignment": "group-id"})
+    r = _scan(folder / file_name(FILE_GROUP_ROLLBACK, res.store), {"customer-group": "group-id", "group-assignment": "group-id"})
     same("Rollback de customer groups", r["customer-group"], g_del)
     for gid in g_del:
         if r["group-assignment"].get(gid, 0) != engine.groups[gid]["members"]:
@@ -813,7 +1038,7 @@ def build_workbook(res: SimulationResult) -> Workbook:
     ws.title = "Resumo"
     ws["A1"] = "LIMPEZA DE CAMPANHAS — SIMULAÇÃO"
     ws["A1"].font = Font(bold=True, size=14, color="1F497D")
-    ws["A2"] = (f"Loja: {res.loja}  |  Execução: {res.now.astimezone().strftime('%d/%m/%Y %H:%M')}"
+    ws["A2"] = (f"Loja: {res.store_name}  |  Execução: {res.now.astimezone().strftime('%d/%m/%Y %H:%M')}"
                 f"  |  Carência: {res.grace_days} dias")
     ws.append([])
     ws.append(["Entidade", "Total", *STATUSES])
@@ -823,6 +1048,9 @@ def build_workbook(res: SimulationResult) -> Workbook:
         c = res.counts(e)
         ws.append([ENTITY_LABELS[e], len(res.items[e]), *(c[s] for s in STATUSES)])
     ws.append([])
+    ws.append(["Loja identificada pelos arquivos", "OK" if res.detection.ok else "BLOQUEADO"])
+    if not res.detection.ok:
+        ws.append([res.detection.message])
     ws.append(["Coerência entre os arquivos", "OK" if res.coherence_ok else "BLOQUEADO"])
     if res.coherence_msg:
         ws.append([res.coherence_msg])
@@ -833,10 +1061,12 @@ def build_workbook(res: SimulationResult) -> Workbook:
     ws.append([])
     ws.append(["Ordem de importação no Business Manager"])
     ws.cell(ws.max_row, 1).font = Font(bold=True)
-    for title, names in IMPORT_ORDER:
-        ws.append([title])
-        for i, n in enumerate(names, 1):
-            ws.append([f"   {i}. {n}"])
+    if res.store is not None:
+        ws.append([f"Importe SOMENTE no site {res.store.name}."])
+        for title, names in IMPORT_ORDER:
+            ws.append([title])
+            for i, n in enumerate(names, 1):
+                ws.append([f"   {i}. {file_name(n, res.store)}"])
     ws.append([])
     ws.append(["O rollback não restaura o histórico de resgates dos cupons."])
     ws.column_dimensions["A"].width = 34

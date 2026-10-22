@@ -25,7 +25,8 @@ def _iso(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
-def _promotions_xml(campaigns=(), promotions=(), assignments=()):
+def _promotions_xml(campaigns=(), promotions=(), assignments=(), catalog="natura-br-storefront-catalog",
+                    skus=("NATBRA-1001",)):
     out = [f'<?xml version="1.0" encoding="UTF-8"?>\n<promotions xmlns="{le.PROMOTIONS_NS}">']
     for c in campaigns:
         out.append(f'<campaign campaign-id="{c["id"]}">')
@@ -43,7 +44,12 @@ def _promotions_xml(campaigns=(), promotions=(), assignments=()):
         out.append("</campaign>")
     for p in promotions:
         out.append(f'<promotion promotion-id="{p}"><enabled-flag>true</enabled-flag>'
-                   f'<name xml:lang="x-default">{p}</name></promotion>')
+                   f'<name xml:lang="x-default">{p}</name>'
+                   '<product-promotion-rule><discounted-products><included-products><condition-group>'
+                   f'<product-id-condition catalog-id="{catalog}">'
+                   + "".join(f"<product-id>{k}</product-id>" for k in skus)
+                   + '</product-id-condition></condition-group></included-products></discounted-products>'
+                   '</product-promotion-rule></promotion>')
     for a in assignments:
         out.append(f'<promotion-campaign-assignment promotion-id="{a["promo"]}" campaign-id="{a["camp"]}">'
                    '<qualifiers match-mode="any"/>')
@@ -107,11 +113,20 @@ SYSTEM = [{"id": "Everyone"}, {"id": "Registered"}]
 OLD = _iso(NOW - timedelta(days=60))
 
 
+BASE_CAMP = {"id": "BASE-PERENE"}
+BASE_PROMO = "BASE-PROMO"
+
+
 def _run(tmp_path, campaigns=({"id": "QUALQUER"},), promotions=(), assignments=(), coupons=(),
-         groups=SYSTEM, now=NOW, loja="Natura Brasil", **kw):
-    files = _write(tmp_path, _promotions_xml(campaigns, promotions, assignments),
+         groups=SYSTEM, now=NOW, catalog="natura-br-storefront-catalog", skus=("NATBRA-1001",), **kw):
+    """Sempre inclui uma campanha perene com uma promoção que cita o catálogo
+    da loja — é a impressão digital que identifica a loja (ficam Protegidas)."""
+    files = _write(tmp_path,
+                   _promotions_xml([BASE_CAMP, *campaigns], [BASE_PROMO, *promotions],
+                                   [{"camp": BASE_CAMP["id"], "promo": BASE_PROMO}, *assignments],
+                                   catalog=catalog, skus=skus),
                    _coupons_xml(coupons), _groups_xml(groups))
-    eng = LimpezaEngine(files, loja, now=now, **kw)
+    eng = LimpezaEngine(files, now=now, **kw)
     return eng, eng.simulate()
 
 
@@ -144,7 +159,7 @@ def test_motor_recusa_arquivo_no_tipo_errado(tmp_path):
     files = _write(tmp_path, _promotions_xml(), _coupons_xml(), _groups_xml())
     files[KIND_COUPONS], files[KIND_PROMOTIONS] = files[KIND_PROMOTIONS], files[KIND_COUPONS]
     with pytest.raises(LimpezaError):
-        LimpezaEngine(files, "Natura Brasil", now=NOW)
+        LimpezaEngine(files, now=NOW)
 
 
 # ── Datas ────────────────────────────────────────────────────────────────────
@@ -194,7 +209,7 @@ def test_regua_fora_dos_limites_e_recusada(tmp_path):
     files = _write(tmp_path, _promotions_xml(), _coupons_xml(), _groups_xml())
     for bad in (le.GRACE_MIN_DAYS - 1, le.GRACE_MAX_DAYS + 1):
         with pytest.raises(LimpezaError):
-            LimpezaEngine(files, "Natura Brasil", grace_days=bad, now=NOW)
+            LimpezaEngine(files, grace_days=bad, now=NOW)
 
 
 # ── Itens sem campanha: saem já na primeira rodada (regra do negócio) ────────
@@ -295,15 +310,108 @@ def test_lista_protegida_vazia_por_padrao_e_opcional(tmp_path):
     assert _status(res, ENT_COUPONS, "crm-boas-vindas") == PROTEGIDO
 
 
-# ── Lojas LATAM ──────────────────────────────────────────────────────────────
-def test_loja_livre_para_latam(tmp_path):
-    assert le.loja_key("Natura Chile") == "natura-chile"
-    assert le.loja_key("  Avon   Colômbia ") == le.loja_key("avon colombia") == "avon-colombia"
-    eng, res = _run(tmp_path, campaigns=[{"id": "VELHA", "end": OLD}], loja="Natura Chile")
-    assert res.loja == "Natura Chile" and res.loja_key == "natura-chile"
-    assert Path(eng.export(res, str(tmp_path)).folder).name.startswith("LIMPEZA_NATURA-CHILE_")
+# ── Identificação da loja (regra 3 — incidente do Chile) ────────────────────
+def test_loja_identificada_pelo_catalogo(tmp_path):
+    _, res = _run(tmp_path)
+    assert res.detection.ok and res.store.key == "natura-br" and res.store.name == "Natura Brasil"
+    _, avon_mx = _run(tmp_path, catalog="avon-mx-storefront-catalog", skus=("AVNMEX-197114",))
+    assert avon_mx.detection.ok and avon_mx.store.name == "Avon México"
+
+
+def test_export_de_outra_loja_e_identificado_como_ela(tmp_path):
+    _, res = _run(tmp_path, catalog="natura-cl-storefront-catalog", skus=("NATCHL-218971",))
+    assert res.detection.ok and res.store.key == "natura-cl"
+
+
+def test_produto_de_outro_pais_bloqueia(tmp_path):
+    _, res = _run(tmp_path, skus=("NATBRA-1001", "NATCHL-48863"))
+    assert not res.detection.ok and "Chile" in res.blocked_msg and not res.can_export
+
+
+def test_produto_de_outro_pais_no_arquivo_de_cupons_bloqueia(tmp_path):
+    _, res = _run(tmp_path, coupons=[{"id": "NATPER-14168"}])
+    assert not res.detection.ok and "Peru" in res.blocked_msg
+
+
+def test_catalogo_desconhecido_bloqueia(tmp_path):
+    _, res = _run(tmp_path, catalog="tbs-chile-storefront-catalog", skus=())
+    assert not res.detection.ok and "tbs-chile-storefront-catalog" in res.blocked_msg
+
+
+def test_sem_catalogo_nenhum_bloqueia(tmp_path):
+    files = _write(tmp_path, _promotions_xml([{"id": "C"}]), _coupons_xml(), _groups_xml(SYSTEM))
+    res = LimpezaEngine(files, now=NOW).simulate()
+    assert not res.detection.ok and res.store is None and "nenhum catálogo" in res.blocked_msg
+
+
+def test_catalogos_de_duas_lojas_bloqueiam(tmp_path):
+    promos = _promotions_xml([{"id": "C"}], ["P1"]).replace(
+        "</promotions>",
+        '<promotion promotion-id="P2"><x catalog-id="avon-br-storefront-catalog"/></promotion></promotions>')
+    files = _write(tmp_path, promos, _coupons_xml(), _groups_xml(SYSTEM))
+    res = LimpezaEngine(files, now=NOW).simulate()
+    assert not res.detection.ok and "mais de uma loja" in res.blocked_msg
+
+
+def test_catalogo_compartilhado_nao_conta(tmp_path):
+    promos = _promotions_xml([{"id": "C"}], ["P1"]).replace(
+        "</promotions>",
+        '<promotion promotion-id="P2"><x catalog-id="nat-master-catalog"/></promotion></promotions>')
+    files = _write(tmp_path, promos, _coupons_xml(), _groups_xml(SYSTEM))
+    res = LimpezaEngine(files, now=NOW).simulate()
+    assert res.detection.ok and res.store.key == "natura-br"
+
+
+def test_loja_bloqueada_nao_exporta(tmp_path):
+    eng, res = _run(tmp_path, campaigns=[{"id": "VELHA", "end": OLD}], skus=("NATBRA-1", "NATMEX-50212"))
+    assert res.affected_total > 0 and not res.can_export
     with pytest.raises(LimpezaError):
-        _run(tmp_path, loja="   ")
+        eng.export(res, str(tmp_path))
+
+
+def test_arquivos_gerados_levam_a_loja_no_nome_e_no_topo(tmp_path):
+    eng, res = _run(tmp_path, campaigns=[{"id": "VELHA", "end": OLD}])
+    out = eng.export(res, str(tmp_path))
+    assert Path(out.folder).name.startswith("LIMPEZA_NATURA-BR_")
+    for f in out.files:
+        assert "NATURA-BR" in Path(f).name
+        if f.endswith(".xml"):
+            head = Path(f).read_text(encoding="utf-8")[:400]
+            assert "Importe SOMENTE no site Natura Brasil" in head
+
+
+def test_emoji_exportado_em_par_de_referencias_nao_derruba_e_volta_no_rollback(tmp_path):
+    # O SFCC exporta 📝 como "&#55357;&#56541;" (inválido em XML) — caso real do Chile
+    eng, res = _run(tmp_path, campaigns=[{"id": "VELHA", "end": OLD}], promotions=["PROMO-EMOJI"],
+                    assignments=[{"camp": "VELHA", "promo": "PROMO-EMOJI"}])
+    promo_path = Path(eng.files[KIND_PROMOTIONS])
+    promo_path.write_text(promo_path.read_text(encoding="utf-8").replace(
+        ">PROMO-EMOJI</name>", ">Oferta &#55357;&#56541; &#1; fim</name>"), encoding="utf-8")
+    eng = LimpezaEngine(eng.files, now=NOW)
+    res = eng.simulate()
+    assert res.items[ENT_PROMOTIONS]["PROMO-EMOJI"].info["Nome"] == "Oferta \U0001F4DD  fim"
+    out = eng.export(res, str(tmp_path))
+    rb = Path(out.folder, le.file_name(le.FILE_PROMO_ROLLBACK, res.store)).read_text(encoding="utf-8")
+    assert "Oferta \U0001F4DD  fim" in rb
+
+
+def test_leitor_corrige_par_cortado_entre_blocos(tmp_path):
+    p = tmp_path / "x.xml"
+    p.write_bytes(b"<a>" + b"y" * 20 + b"&#55357;&#56541;</a>")
+    reader = le._CleanXmlReader(str(p))
+    data = b""
+    while chunk := reader.read(26):   # corta no meio do par
+        data += chunk
+    reader.close()
+    assert data == b"<a>" + b"y" * 20 + b"&#128221;</a>"
+
+
+def test_varredura_nao_perde_sinal_na_divisa_dos_blocos(tmp_path):
+    p = tmp_path / "grande.xml"
+    filler = b"x" * ((4 << 20) - 10)
+    p.write_bytes(filler + b' catalog-id="natura-cl-storefront-catalog" NATCHL-1 ' + filler)
+    cats, countries = le._scan_signals(str(p))
+    assert cats == {"natura-cl-storefront-catalog": 1} and countries == {"cl": 1}
 
 
 # ── Exportação e conferência do rollback ─────────────────────────────────────
@@ -323,25 +431,25 @@ def test_ca13_rollback_completo_com_codigos_e_membros(tmp_path):
     eng, res = _cenario_completo(tmp_path)
     assert res.ids(ENT_COUPONS, ELEGIVEL) == {"CUP-MULTI", "CUP-ORFAO"}
     out = eng.export(res, str(tmp_path))
-    delete = ET.parse(Path(out.folder, le.FILE_COUPON_DELETE)).getroot()
+    delete = ET.parse(Path(out.folder, le.file_name(le.FILE_COUPON_DELETE, res.store))).getroot()
     assert {c.attrib["coupon-id"] for c in delete} == {"CUP-MULTI", "CUP-ORFAO"}
     assert all(c.attrib["mode"] == "delete" for c in delete)
-    rb = ET.parse(Path(out.folder, le.FILE_COUPON_ROLLBACK)).getroot()
+    rb = ET.parse(Path(out.folder, le.file_name(le.FILE_COUPON_ROLLBACK, res.store))).getroot()
     blocks = rb.findall("{*}coupon-codes")
     assert [b.attrib["coupon-id"] for b in blocks] == ["CUP-MULTI"]
     assert len(blocks[0]) == 25
     tags = [le._local(e.tag) for e in rb]
     assert tags.index("coupon-codes") > max(i for i, t in enumerate(tags) if t == "coupon")
-    grb = ET.parse(Path(out.folder, le.FILE_GROUP_ROLLBACK)).getroot()
+    grb = ET.parse(Path(out.folder, le.file_name(le.FILE_GROUP_ROLLBACK, res.store))).getroot()
     assert len(grb.findall("{*}group-assignment")) == 3
-    prb = ET.parse(Path(out.folder, le.FILE_PROMO_ROLLBACK)).getroot()
+    prb = ET.parse(Path(out.folder, le.file_name(le.FILE_PROMO_ROLLBACK, res.store))).getroot()
     assert [le._local(e.tag) for e in prb] == ["campaign", "promotion", "promotion-campaign-assignment"]
     name = prb.find("{*}promotion/{*}name")
     assert name is not None and name.attrib   # xml:lang preservado
     names = {Path(f).name for f in out.files}
-    assert names == {le.FILE_PROMO_DELETE, le.FILE_COUPON_DELETE, le.FILE_GROUP_DELETE,
-                     le.FILE_GROUP_ROLLBACK, le.FILE_COUPON_ROLLBACK, le.FILE_PROMO_ROLLBACK,
-                     "SIMULACAO_LIMPEZA.xlsx"}
+    assert names == {le.file_name(t, res.store) for t in (
+        le.FILE_PROMO_DELETE, le.FILE_COUPON_DELETE, le.FILE_GROUP_DELETE, le.FILE_GROUP_ROLLBACK,
+        le.FILE_COUPON_ROLLBACK, le.FILE_PROMO_ROLLBACK, le.FILE_SHEET)}
 
 
 def test_ca13_divergencia_na_conferencia_nao_gera_nada(tmp_path):
@@ -357,9 +465,10 @@ def test_ca13_divergencia_na_conferencia_nao_gera_nada(tmp_path):
 def test_os_3_rollbacks_sao_gerados_mesmo_vazios(tmp_path):
     eng, res = _run(tmp_path, campaigns=[{"id": "VELHA", "end": OLD}])
     out = eng.export(res, str(tmp_path))
-    for name in (le.FILE_GROUP_ROLLBACK, le.FILE_COUPON_ROLLBACK, le.FILE_PROMO_ROLLBACK):
-        assert Path(out.folder, name).exists()
-        ET.parse(Path(out.folder, name))   # XML válido
+    for t in (le.FILE_GROUP_ROLLBACK, le.FILE_COUPON_ROLLBACK, le.file_name(le.FILE_PROMO_ROLLBACK, res.store)):
+        path = Path(out.folder, le.file_name(t, res.store))
+        assert path.exists()
+        ET.parse(path)   # XML válido
 
 
 # ── Travas ───────────────────────────────────────────────────────────────────

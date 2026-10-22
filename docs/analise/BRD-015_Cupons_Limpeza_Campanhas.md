@@ -3,7 +3,7 @@
 **Documento:** BRD-015
 **Autor:** Marcos (Analista de Negócios Jr)
 **Data:** 20-10-2026 (atualizado no mesmo dia com o teste nos exports reais — seção 5.5 e pendências T1, T2 e T5)
-**Status:** Implementado na branch, com as respostas N1–N6 (seção 13) e a revisão após o teste do Ed (seção 14 — **itens sem vínculo saem já na 1ª rodada; sem desativação de cupons; sem registro local**). **Uso em produção só depois dos testes em sandbox (T4, CA-14)**; N4 aguarda entendimento
+**Status:** Implementado na branch, com as respostas N1–N6 (seção 13) e a revisão após o teste do Ed (seção 14 — **itens sem vínculo saem já na 1ª rodada; sem desativação de cupons; sem registro local**). Loja identificada pelos arquivos, nunca escolhida (seção 15). **Uso em produção só depois dos testes em sandbox (T4, CA-14)**; N4 aguarda entendimento
 **Branch:** `feature/cupons-limpeza-campanhas`
 **Origem:** Pacote do gestor gerado por IA (`sanitizador_sfcc.py`, `analisador_sfcc.py` e guia de integração), revisado e formalizado neste BRD
 **Pré-requisitos:** nenhum. Módulo novo; não altera nenhum motor existente.
@@ -25,7 +25,7 @@ O gestor trouxe um pacote pronto que automatiza essa limpeza a partir de 3 expor
 | Itens sem data (órfãos e campanhas sem data de fim desativadas) | *(revisado em 22-10-2026, seção 14)* **Elegíveis já na 1ª rodada.** A carência por observação foi removida |
 | Cupons | *(revisado em 22-10-2026, seção 14)* **Excluídos direto**, sem a etapa de desativação; o rollback traz a definição e os códigos |
 | Carência | **Régua ajustável** de 7 a 365 dias, padrão 30 (N3) — vale só para campanhas vencidas |
-| Lojas | **Todas as lojas LATAM**: o operador escolhe ou digita a loja (N6) |
+| Lojas | **Todas as lojas LATAM** (N6). *(revisado em 22-10-2026, seção 15)* A loja é **identificada pelos arquivos**; loja não reconhecida é bloqueada |
 | Cupons | **Desativar antes de apagar**: a primeira etapa só desativa (reversível); a exclusão vem depois de 30 dias desativado |
 | Execução no SFCC | O SIC **só gera arquivos**. Quem importa no Business Manager é o operador, como em todos os módulos |
 
@@ -373,3 +373,45 @@ As respostas do Ed às pendências N1–N6 (seção 10.1) foram aplicadas no có
 **Pendência T3 encerrada:** como não há mais XML de desativação, o teste de desativação em sandbox deixou de ser necessário. Continuam T4 (ordem de importação) e CA-14 (restauração pelo rollback).
 
 **Resultado com os exports reais (só leitura):** com carência de 30 dias, a 1ª rodada traz 1 campanha, 2 promoções, **185 cupons** (184 sem campanha + 1 de campanha que sai) e **100 customer groups** para excluir; o freio de volume dispara para cupons (61%) e grupos (79%). A geração passou na conferência, com pico de 167 MB e cerca de 22 segundos. Testes automatizados: 30 no módulo, todos com XMLs inventados.
+
+---
+
+## 15. Identificação da Loja pelos Arquivos (22-10-2026)
+
+**Risco tratado.** O export do Business Manager não diz de qual site veio. Se alguém exportar da loja errada (ex.: Chile achando que é Brasil), nada no arquivo avisa — o mesmo cenário do incidente do Chile. Com a loja digitada à mão, o SIC aceitaria.
+
+**Solução: a loja é deduzida do conteúdo ("impressão digital") e nunca escolhida.**
+
+| Sinal | Onde aparece | O que indica |
+|---|---|---|
+| `catalog-id` citado nas regras das promoções | arquivo de promoções (no export real da Natura Brasil: `natura-br-storefront-catalog`, 107 vezes) | marca + país |
+| Prefixo dos produtos (`NATBRA-`, `NATCHL-`, `NATCOL-`, `NATPER-`, `NATMEX-`, `NATARG-`, `AVNBRA-`, `AVNMEX-`, `AVNARG-`) | qualquer um dos 3 arquivos | país |
+
+**Lojas cadastradas** (catálogos informados pelo usuário): Natura Brasil, Argentina, Chile, Colômbia, Peru e México; Avon Brasil, Argentina e México; Minha Loja (CB) Brasil. Catálogos compartilhados (`nat-master-catalog`, `storefront-catalog-en`, `catalog-id`, `apparel-catalog`) não contam para nenhuma loja.
+
+**Regra 3 — loja não reconhecida é bloqueada** (decisão do usuário). A simulação mostra o resultado, mas nenhum arquivo pode ser gerado quando:
+- nenhum catálogo de loja atendida aparece nos arquivos;
+- aparece um catálogo que o SIC não atende (ex.: Aesop, TBS, Biome ou um catálogo novo);
+- aparecem catálogos de mais de uma loja;
+- aparece produto de outro país em qualquer um dos 3 arquivos (ex.: `NATCHL-` num export identificado como Natura Brasil).
+
+Os arquivos de cupons e de customer groups quase não têm catálogo; eles ficam amarrados ao de promoções pela trava de coerência (seção 7.1) e pela varredura de produtos de outro país.
+
+**A loja vai junto com os arquivos gerados** (o formato de importação do SFCC não tem campo de site):
+- no nome da pasta e de cada arquivo (ex.: `2_EXCLUIR_CUPONS_NATURA-BR.xml`);
+- num comentário no topo de cada XML: *"Importe SOMENTE no site Natura Brasil"* (ignorado na importação);
+- em destaque na confirmação e na mensagem final.
+
+**Limites conhecidos:**
+- Importar no site errado continua dependendo de quem importa; as marcações acima e o rollback reduzem o risco, mas o SIC não controla o Business Manager.
+- Uma loja cujo export de promoções não cite nenhum catálogo (sem regra de produto) fica bloqueada até ganhar outro sinal — falha segura.
+- Para atender uma loja nova, é preciso cadastrar o catálogo e o prefixo dela no motor (`STORES`, `CATALOG_STORE`, `SKU_COUNTRY`).
+
+**Teste com os exports reais:** identificados como **Natura Brasil** (107 citações do catálogo; 33 produtos `NATBRA-` nas promoções e 16 nos cupons; nenhum sinal de outro país); a varredura dos 3 arquivos levou 1,2 segundo. Testes automatizados: 38 no módulo (11 novos de identificação de loja), todos com XMLs inventados.
+
+**Teste com o export real do Chile (22-10-2026, só leitura, fora do repositório):**
+- O export de promoções do Chile foi identificado como **Natura Chile** (214 citações de `natura-cl-storefront-catalog`; 104 produtos `NATCHL-`).
+- Cenário do incidente — promoções do Chile com cupons e grupos do Brasil: **bloqueado** por dois motivos ao mesmo tempo ("o arquivo de cupons tem produtos de outro país (Brasil)" e coerência: 50 de 51 cupons citados não existem no arquivo de cupons).
+- Controle — os 3 exports do Brasil: Natura Brasil, liberado.
+
+**Defeito encontrado e corrigido com esse arquivo:** o SFCC exporta emoji como um par de referências UTF-16 (ex.: `&#55357;&#56541;` para 📝), o que o padrão XML proíbe — a leitura quebrava. Antes de ler qualquer export, o SIC agora junta o par na referência correta do emoji (que volta intacto no rollback) e descarta referência que não vira caractere válido. A correção é feita em fluxo, sem carregar o arquivo inteiro na memória.
